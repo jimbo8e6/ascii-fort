@@ -312,6 +312,12 @@ Object.assign(TEX, {
     for (let x = 0; x < s; x += 8) g.fillRect(x, 0, 1, s);
     for (let i = 0; i < 6; i++) g.fillRect(rand() * s | 0, rand() * s | 0, 1, 1);
   }),
+  plaster: canvasTexture(32, (g, s) => noiseFill(g, s, [214, 204, 180], 14)),
+  timber: canvasTexture(32, (g, s) => {
+    noiseFill(g, s, [70, 48, 30], 14);
+    g.fillStyle = 'rgba(30,18,8,.6)';
+    for (let y = 2; y < s; y += 5) g.fillRect(0, y, s, 1);
+  }),
   deckPlank: canvasTexture(32, (g, s) => {
     noiseFill(g, s, [140, 104, 64], 18);
     g.fillStyle = 'rgba(40,26,12,.85)';
@@ -827,8 +833,8 @@ function buildVillage(set, plan, rnd) {
   for (let x = -1; x <= 1; x++) for (let z = -1; z <= 1; z++) set(C + x, 3, C + z, ROOF);
   torches.push([C + 2.3, 1.4, C + .5]);
 
-  // Cottages along each street, alternating sides
-  const used = new Uint8Array(N * N);
+  // Cottages along each street, alternating sides, turned to face the road
+  const used = new Uint8Array(N * N), models = [];
   const free = (x0, x1, z0, z1) => {
     if (x0 < 2 || z0 < 2 || x1 > N - 3 || z1 > N - 3) return false;
     for (let z = z0 - 1; z <= z1 + 1; z++) for (let x = x0 - 1; x <= x1 + 1; x++) if (used[x + z * N] || nearRoad(x + .5, z + .5, ROAD_HALF + 1.2)) return false;
@@ -839,77 +845,40 @@ function buildVillage(set, plan, rnd) {
   for (const p of streets) for (let i = 1; i < p.length; i++) {
     const [ax, az] = p[i - 1], [bx, bz] = p[i];
     const len = Math.hypot(bx - ax, bz - az) || 1, ux = (bx - ax) / len, uz = (bz - az) / len;
-    if (Math.hypot(bx - C, bz - C) > C - 4) break;
+    if (Math.hypot(bx - C, bz - C) > C - 6) break;
     side = -side;
-    const w = 5 + (rnd() * 3 | 0), d = 5 + (rnd() * 2 | 0), off = ROAD_HALF + 2.2 + d / 2;
-    const hx = Math.round(bx + -uz * side * off - w / 2), hz = Math.round(bz + ux * side * off - d / 2);
-    if (!free(hx, hx + w - 1, hz, hz + d - 1)) continue;
-    for (let z = hz - 1; z <= hz + d; z++) for (let x = hx - 1; x <= hx + w; x++) used[x + z * N] = 1;
-    // Door on the side facing the road
-    const fx = bx - (hx + w / 2), fz = bz - (hz + d / 2);
-    const door = Math.abs(fx) > Math.abs(fz) ? (fx > 0 ? 'E' : 'W') : (fz > 0 ? 'S' : 'N');
-    const doorAt = door === 'E' ? [hx + w - 1, hz + (d >> 1)] : door === 'W' ? [hx, hz + (d >> 1)] : door === 'S' ? [hx + (w >> 1), hz + d - 1] : [hx + (w >> 1), hz];
-    buildCottage(set, hx, hz, w, d, doorAt);
-    const out = { E: [1, 0], W: [-1, 0], S: [0, 1], N: [0, -1] }[door];
-    const lx = doorAt[0] + .5 + out[0] * .3 + (out[1] ? 1 : 0), lz = doorAt[1] + .5 + out[1] * .3 + (out[0] ? 1 : 0);
-    torches.push([lx, 2.6, lz]);
+    const storeys = rnd() < .45 ? 2 : 1, w = storeys === 2 ? 8 + (rnd() * 3 | 0) * .5 : 7 + (rnd() * 3 | 0) * .5, d = 6 + (rnd() * 3 | 0) * .5;
+    const nx = -uz * side, nz = ux * side, off = ROAD_HALF + 2 + d / 2, cx = bx + nx * off, cz = bz + nz * off;
+    const yaw = Math.atan2(-nx, -nz), c = Math.cos(yaw), s = Math.sin(yaw);      // the front (+z) faces the road
+    // Footprint (plus a margin) must be clear of roads and other buildings
+    const cells = [];
+    let ok = true;
+    for (let lx = -w / 2 - 1; lx <= w / 2 + 1.01 && ok; lx += .7) for (let lz = -d / 2 - 1; lz <= d / 2 + 1.01 && ok; lz += .7) {
+      const wx = cx + lx * c + lz * s, wz = cz - lx * s + lz * c, ix = Math.floor(wx), iz = Math.floor(wz);
+      if (ix < 2 || iz < 2 || ix > N - 3 || iz > N - 3 || used[ix + iz * N]) ok = false;
+      else if (Math.abs(lx) <= w / 2 + .3 && Math.abs(lz) <= d / 2 + .3 && nearRoad(wx, wz, ROAD_HALF + .4)) ok = false;
+      else cells.push(ix + iz * N);
+    }
+    if (!ok) continue;
+    for (const k of cells) used[k] = 1;
+    models.push({ kind: 'cottage', x: cx, y: 0, z: cz, angle: yaw, w, d, storeys, seed: rnd() * 1e9 | 0 });
     if (rnd() < .7) {                                              // a villager pottering outside the door
-      const sx = doorAt[0] + .5 + out[0] * 2, sz = doorAt[1] + .5 + out[1] * 2;
+      const sx = cx + (d / 2 + 1.8) * s, sz = cz + (d / 2 + 1.8) * c;
       guards.push({ a: [sx, 0, sz], b: [sx + ux * 4, 0, sz + uz * 4], speed: .5 + rnd() * .3, kind: 'villager', color: tunics[rnd() * tunics.length | 0] });
     }
   }
-  // A windmill at the edge of about half of all villages: block tower with a pyramid roof; the sails are a model
-  const models = [];
+  // A windmill (tower mill) at the edge of about half of all villages, door towards the square
   if (rnd() < .5) for (let k = 0, a0 = rnd() * Math.PI * 2; k < 16; k++) {
     const a = a0 + k * Math.PI / 8, cx = Math.round(C + Math.cos(a) * (C - 9)), cz = Math.round(C + Math.sin(a) * (C - 9));
-    const x0 = cx - 2, z0 = cz - 2;
-    if (!free(x0, x0 + 4, z0, z0 + 4)) continue;
-    for (let z = z0 - 1; z <= z0 + 5; z++) for (let x = x0 - 1; x <= x0 + 5; x++) used[x + z * N] = 1;
-    for (let y = 0; y < 9; y++) for (let z = z0; z <= z0 + 4; z++) for (let x = x0; x <= x0 + 4; x++) {
-      const ex = x === x0 || x === x0 + 4, ez = z === z0 || z === z0 + 4;
-      if (ex || ez) set(x, y, z, y < 2 ? ROCK : ex && ez ? LOG : PLANK);
-    }
-    // Pyramid roof of wedges rising towards the middle, capped with a tile block
-    for (const [r, y] of [[2, 9], [1, 10]]) for (let z = cz - r; z <= cz + r; z++) for (let x = cx - r; x <= cx + r; x++) {
-      if (Math.max(Math.abs(x - cx), Math.abs(z - cz)) === r) set(x, y, z, wedgeOf(dirFromVec(cx - x, cz - z)));
-    }
-    set(cx, 11, cz, ROOF);
-    // Door facing the square; sails on the opposite face
-    const ix = C - cx, iz = C - cz, inward = dirFromVec(ix, iz), [dx, dz] = DIR_VEC[inward];
-    set(cx + dx * 2, 0, cz + dz * 2, AIR); set(cx + dx * 2, 1, cz + dz * 2, AIR);
-    torches.push([cx + .5 + dx * 2.8 + (dz ? 1 : 0), 2.6, cz + .5 + dz * 2.8 + (dx ? 1 : 0)]);
-    models.push({ kind: 'windmill', x: cx + .5 - dx * 2.85, y: 7.5, z: cz + .5 - dz * 2.85, angle: Math.atan2(-dx, -dz) });
+    if (!free(cx - 3, cx + 3, cz - 3, cz + 3)) continue;
+    for (let z = cz - 4; z <= cz + 4; z++) for (let x = cx - 4; x <= cx + 4; x++) used[x + z * N] = 1;
+    const ix = C - cx, iz = C - cz, l = Math.hypot(ix, iz) || 1;
+    models.push({ kind: 'windmill', x: cx + .5, y: 0, z: cz + .5, angle: Math.atan2(-ix / l, -iz / l) });
     break;
   }
   return { torches, guards, models };
 }
 
-// A cottage: plank walls with log corners, windows, and a gabled tiled roof along its longer side
-function buildCottage(set, x0, z0, w, d, [dx, dz]) {
-  const x1 = x0 + w - 1, z1 = z0 + d - 1, WALLH = 4;
-  for (let y = 0; y < WALLH; y++) for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) {
-    const edgeX = x === x0 || x === x1, edgeZ = z === z0 || z === z1;
-    if (!edgeX && !edgeZ) continue;
-    set(x, y, z, edgeX && edgeZ ? LOG : PLANK);
-  }
-  set(dx, 0, dz, AIR); set(dx, 1, dz, AIR);                        // door
-  // Windows in the middle of each wall
-  for (const [x, z] of [[x0, (z0 + z1) >> 1], [x1, (z0 + z1) >> 1], [(x0 + x1) >> 1, z0], [(x0 + x1) >> 1, z1]]) {
-    if (Math.abs(x - dx) + Math.abs(z - dz) > 1) set(x, 2, z, AIR);
-  }
-  const alongX = w >= d;
-  const a0 = alongX ? x0 : z0, a1 = alongX ? x1 : z1, c0 = alongX ? z0 : x0, c1 = alongX ? z1 : x1;
-  const at = (a, c, y, v) => alongX ? set(a, y, c, v) : set(c, y, a, v);
-  for (let k = 0; c0 - 1 + k <= c1 + 1 - k; k++) {
-    const y = WALLH + k, lo = c0 - 1 + k, hi = c1 + 1 - k;
-    const up = alongX ? [2, 3] : [0, 1];                          // the two slopes rise towards the ridge
-    for (let a = a0 - 1; a <= a1 + 1; a++) {
-      if (lo === hi) at(a, lo, y, ROOF);
-      else { at(a, lo, y, wedgeOf(up[0])); at(a, hi, y, wedgeOf(up[1])); }
-    }
-    for (let c = lo + 1; c < hi; c++) { at(a0, c, y, PLANK); at(a1, c, y, PLANK); }   // gable ends
-  }
-}
 
 // The main fort at the start, on ground level G
 // Generated place names: 'Fort Ashwick', 'Greywatch Tower', 'the ruins of Old Merrow'
@@ -1799,20 +1768,6 @@ function wheel(parent, r, x, y, z) {
 }
 const animated = new Set();
 
-function makeWindmill(m) {
-  const g = new THREE.Group(), sails = new THREE.Group();
-  g.position.set(...m.pos); g.rotation.y = m.angle;
-  part(g, .5, .5, .5, 0x4a3420, 0, 0, 0);
-  for (let i = 0; i < 4; i++) {
-    const arm = new THREE.Group(); arm.rotation.z = i * Math.PI / 2;
-    part(arm, .16, 4.4, .12, 0x5a4028, 0, 2.2, .1);
-    part(arm, .9, 3.2, .05, 0xd8d0b8, .55, 2.6, .12);      // canvas
-    sails.add(arm);
-  }
-  g.add(sails); scene.add(g);
-  const obj = { g, tick: (dt) => { sails.rotation.z -= dt * .9; } };
-  animated.add(obj); return obj;
-}
 
 function makeBoat(x, z, sea, seed) {
   const g = new THREE.Group(), hull = sea ? 0x6a2a20 : 0x6a4a2a;
@@ -1956,6 +1911,400 @@ function updateModels(dt) {
   updateCarts(dt);
 }
 
+// ---------------------------------------------------------------------------
+// Modelled buildings (cottages, windmills). A parts kit merges each building into one mesh per
+// material, and general colliders (boxes and cylinders) make walls, floors, stairs and furniture
+// solid for walking, landing and step-ups.
+// ---------------------------------------------------------------------------
+const BDEF = { plaster: 'plaster', timber: 'timber', stone: 'rock', roof: 'roof', floor: 'deckPlank', wood: 'plank', log: 'log' };
+const BMAT = {};
+// Material keys: a texture name, or '#rrggbb' for a plain colour; ':in' marks an interior surface,
+// drawn darker since it gets less daylight
+function buildingMat(key) {
+  if (BMAT[key]) return BMAT[key];
+  const [base, mod] = key.split(':');
+  const m = base[0] === '#' ? new THREE.MeshLambertMaterial({ color: parseInt(base.slice(1), 16) })
+    : base === 'glass' ? new THREE.MeshLambertMaterial({ color: 0x2c3c4c })
+    : new THREE.MeshLambertMaterial({ map: TEX[BDEF[base]] });
+  if (mod === 'in') m.color.multiplyScalar(.55);
+  return BMAT[key] = m;
+}
+const WINDOW_GLOW = new THREE.MeshBasicMaterial({ color: 0xe8a050 });
+
+function mergeGeos(geos) {
+  let nv = 0, ni = 0;
+  for (const g of geos) { nv += g.attributes.position.count; ni += g.index ? g.index.count : g.attributes.position.count; }
+  const pos = new Float32Array(nv * 3), nrm = new Float32Array(nv * 3), uv = new Float32Array(nv * 2), idx = new Uint32Array(ni);
+  let vo = 0, io = 0;
+  for (const g of geos) {
+    const n = g.attributes.position.count;
+    pos.set(g.attributes.position.array, vo * 3); nrm.set(g.attributes.normal.array, vo * 3);
+    if (g.attributes.uv) uv.set(g.attributes.uv.array, vo * 2);
+    if (g.index) { for (let i = 0; i < g.index.count; i++) idx[io + i] = g.index.array[i] + vo; io += g.index.count; }
+    else { for (let i = 0; i < n; i++) idx[io + i] = vo + i; io += n; }
+    vo += n; g.dispose();
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  out.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
+  out.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  out.setIndex(new THREE.BufferAttribute(idx, 1));
+  out.computeBoundingSphere();
+  return out;
+}
+function scaleUV(g, su, sv) { const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * su, uv.getY(i) * sv); return g; }
+
+class Kit {
+  constructor() { this.parts = new Map(); this.cols = []; }
+  add(key, geo) { if (!this.parts.has(key)) this.parts.set(key, []); this.parts.get(key).push(geo); return geo; }
+  box(key, w, h, d, x, y, z, ry = 0, rx = 0) {
+    const g = scaledBox(w, h, d); if (rx) g.rotateX(rx); if (ry) g.rotateY(ry); g.translate(x, y, z); return this.add(key, g);
+  }
+  // Axis-aligned box from corners, optionally solid
+  aabb(key, x0, y0, z0, x1, y1, z1, solid = false) {
+    this.box(key, x1 - x0, y1 - y0, z1 - z0, (x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
+    if (solid) this.solid(x0, y0, z0, x1, y1, z1);
+  }
+  solid(x0, y0, z0, x1, y1, z1) { this.cols.push({ cx: (x0 + x1) / 2, cz: (z0 + z1) / 2, hx: Math.abs(x1 - x0) / 2, hz: Math.abs(z1 - z0) / 2, y0, y1 }); }
+  cyl(key, r0, r1, h, x, y, z, seg = 10, solid = false) {
+    const g = scaleUV(new THREE.CylinderGeometry(r0, r1, h, seg), Math.PI * (r0 + r1), h); g.translate(x, y + h / 2, z); this.add(key, g);
+    if (solid) this.cols.push({ cyl: true, cx: x, cz: z, r: Math.max(r0, r1), y0: y, y1: y + h });
+  }
+  // Build: a group of merged meshes placed at (ox, oy, oz) turned by yaw, plus world colliders
+  build(ox, oy, oz, yaw) {
+    const group = new THREE.Group(), meshes = {};
+    for (const [key, geos] of this.parts) { const m = new THREE.Mesh(mergeGeos(geos), buildingMat(key)); group.add(m); meshes[key] = m; }
+    group.position.set(ox, oy, oz); group.rotation.y = yaw;
+    const c = Math.cos(yaw), s = Math.sin(yaw);
+    const colliders = this.cols.map(k => ({ ...k, x: ox + k.cx * c + k.cz * s, z: oz - k.cx * s + k.cz * c, y0: oy + k.y0, y1: oy + k.y1, c, s }));
+    return { group, meshes, colliders, toWorld: (lx, ly, lz) => [ox + lx * c + lz * s, oy + ly, oz - lx * s + lz * c] };
+  }
+}
+
+// Collider registry: each collider is filed under every chunk its footprint (plus a margin) touches
+const colliderGrid = new Map();
+function eachColliderChunk(k, fn) {
+  const r = (k.cyl ? k.r : Math.hypot(k.hx, k.hz)) + 1;
+  for (let cz = Math.floor((k.z - r) / CHUNK); cz <= Math.floor((k.z + r) / CHUNK); cz++)
+    for (let cx = Math.floor((k.x - r) / CHUNK); cx <= Math.floor((k.x + r) / CHUNK); cx++) fn(chunkKey(cx, cz));
+}
+function addColliders(list) { for (const k of list) eachColliderChunk(k, key => { if (!colliderGrid.has(key)) colliderGrid.set(key, new Set()); colliderGrid.get(key).add(k); }); }
+function removeColliders(list) { for (const k of list) eachColliderChunk(k, key => colliderGrid.get(key)?.delete(k)); }
+function colliderOver(k, x, z) {
+  if (k.cyl) return Math.hypot(x - k.x, z - k.z) < k.r + RADIUS;
+  const dx = x - k.x, dz = z - k.z, lx = dx * k.c - dz * k.s, lz = dx * k.s + dz * k.c;
+  return Math.abs(lx) < k.hx + RADIUS && Math.abs(lz) < k.hz + RADIUS;
+}
+function colliderHit(x, y, z) {
+  const set = colliderGrid.get(chunkKey(Math.floor(x) >> 4, Math.floor(z) >> 4));
+  if (set) for (const k of set) if (y < k.y1 - 1e-4 && y + HEIGHT > k.y0 + 1e-4 && colliderOver(k, x, z)) return true;
+  return false;
+}
+// The top of a collider the feet have sunk into while falling (or -Infinity)
+function colliderTop(x, y, z) {
+  let best = -Infinity;
+  const set = colliderGrid.get(chunkKey(Math.floor(x) >> 4, Math.floor(z) >> 4));
+  if (set) for (const k of set) if (k.y1 > y - 1e-4 && k.y1 - y < .7 && k.y0 < y + .05 && colliderOver(k, x, z)) best = Math.max(best, k.y1);
+  return best;
+}
+
+// ---- Cottages ----
+// Local frame: x across the front, z front-to-back (+z is the front, facing the road), y = 0 at ground
+const cottages = new Set();
+function makeCottage(m) {
+  const rnd = mulberry32(m.seed), K = new Kit(), W = m.w, D = m.d, two = m.storeys === 2;
+  const t = .25, floorY = .3, H1 = 2.8, H2 = 2.5, slab = .2;
+  const ix0 = -W / 2 + t, ix1 = W / 2 - t, iz0 = -D / 2 + t, iz1 = D / 2 - t;
+  const groundTop = floorY + H1 + (two ? slab : 0), wallTop = two ? groundTop + H2 : groundTop;
+  const pitch = .72, ov = .45, rise = D / 2 * Math.tan(pitch), ridgeY = wallTop + rise;
+  const shutter = ['#3a5a7a', '#5a7a3a', '#7a3a3a', '#3a6a6a', '#6a5a2a'][rnd() * 5 | 0];
+  const cloth = ['#8a2a2a', '#2a4a8a', '#3a6a3a', '#7a5a2a'][rnd() * 4 | 0], rug = ['#7a3a2a', '#3a4a6a', '#6a5a3a'][rnd() * 3 | 0];
+
+  // Plinth and floors
+  K.aabb('stone', -W / 2 - .15, 0, -D / 2 - .15, W / 2 + .15, floorY - .05, D / 2 + .15);
+  K.solid(-W / 2 - .15, 0, -D / 2 - .15, W / 2 + .15, floorY, D / 2 + .15);
+  K.aabb('floor:in', ix0, floorY - .05, iz0, ix1, floorY, iz1);
+
+  // Layout
+  const partX = ix0 + 2.6;                                     // single storey: bedroom on the -x side
+  const doorX = two ? .5 : (partX + ix1 - .7) / 2;
+  const stairX0 = ix0, stairX1 = ix0 + 1, stairZ0 = iz1 - .9, RUN = 3;   // two storeys: stairs along the -x wall, rising to the back
+
+  // Walls with openings. A wall runs along u (local) from 0..len; openings are [u0, u1, y0, y1].
+  const wall = (side, y0, h, openings) => {
+    const along = side === 'front' || side === 'back', len = along ? W : D - 2 * t;
+    const place = (u0, u1, v0, v1, key, inset, depth) => {           // u along the wall, v height; inset 0 = outer face
+      const w = u1 - u0, hh = v1 - v0, d = depth, uc = (u0 + u1) / 2 - len / 2, yc = y0 + (v0 + v1) / 2;
+      const off = { front: [0, D / 2 - inset - d / 2], back: [0, -D / 2 + inset + d / 2], right: [W / 2 - inset - d / 2, 0], left: [-W / 2 + inset + d / 2, 0] }[side];
+      if (along) K.box(key, w, hh, d, uc + off[0], yc, off[1]); else K.box(key, d, hh, w, off[0], yc, uc + off[1]);
+    };
+    const cuts = [...openings].sort((a, b) => a[0] - b[0]);
+    const pieces = []; let u = 0;
+    for (const [u0, u1, v0, v1] of cuts) { if (u0 > u) pieces.push([u, u0, 0, h]); if (v0 > 0) pieces.push([u0, u1, 0, v0]); if (v1 < h) pieces.push([u0, u1, v1, h]); u = u1; }
+    if (u < len) pieces.push([u, len, 0, h]);
+    for (const [u0, u1, v0, v1] of pieces) {
+      place(u0, u1, v0, v1, 'plaster', 0, t * .55); place(u0, u1, v0, v1, 'plaster:in', t * .55, t * .45);
+      // collider for the piece
+      const a = u0 - len / 2, b = u1 - len / 2;
+      if (along) K.solid(a, y0 + v0, side === 'front' ? D / 2 - t : -D / 2, b, y0 + v1, side === 'front' ? D / 2 : -D / 2 + t);
+      else K.solid(side === 'right' ? W / 2 - t : -W / 2, y0 + v0, a, side === 'right' ? W / 2 : -W / 2 + t, y0 + v1, b);
+    }
+    // Timber frame on the outside: sill and head beams, corner posts, posts at every opening edge
+    const beam = (u0, u1, v0, v1) => place(u0, u1, v0, v1, 'timber', -.04, .1);
+    beam(0, len, 0, .18); beam(0, len, h - .18, h);
+    const posts = new Set([0, len - .18]);
+    for (const [u0, u1] of cuts) { posts.add(Math.max(0, u0 - .16)); posts.add(Math.min(len - .18, u1)); }
+    for (let p = 1.6; p < len - 1; p += 1.6) if (!cuts.some(([u0, u1]) => p > u0 - .4 && p < u1 + .4)) posts.add(p);
+    for (const p of posts) beam(p, p + .16, .18, h - .18);
+    for (const [u0, u1, v0, v1] of cuts) { if (v0 > 0) beam(u0 - .1, u1 + .1, v0 - .12, v0); beam(u0 - .1, u1 + .1, v1, v1 + .12); }
+    return cuts;
+  };
+  // Windows: glass, frame bars and shutters, for an opening on a wall
+  const glassParts = [];
+  const windowAt = (side, y0, [u0, u1, v0, v1]) => {
+    const along = side === 'front' || side === 'back', len = along ? W : D - 2 * t, uc = (u0 + u1) / 2 - len / 2, yc = y0 + (v0 + v1) / 2, w = u1 - u0, h = v1 - v0;
+    const n = { front: [0, 1], back: [0, -1], right: [1, 0], left: [-1, 0] }[side];
+    const face = along ? [uc, n[1] * (D / 2 - t * .5)] : [n[0] * (W / 2 - t * .5), uc];
+    const g = along ? K.box('glass', w, h, .04, face[0], yc, face[1]) : K.box('glass', .04, h, w, face[0], yc, face[1]);
+    glassParts.push(g);
+    if (along) { K.box('timber', .06, h, .08, face[0], yc, face[1]); K.box('timber', w, .06, .08, face[0], yc, face[1]); }
+    else { K.box('timber', .08, h, .06, face[0], yc, face[1]); K.box('timber', .08, .06, w, face[0], yc, face[1]); }
+    for (const sd of [-1, 1]) {                                          // shutters, open against the wall
+      const o = sd * (w / 2 + .22);
+      if (along) K.box(shutter, .42, h, .05, face[0] + o, yc, n[1] * (D / 2 + .05)); else K.box(shutter, .05, h, .42, n[0] * (W / 2 + .05), yc, face[1] + o);
+    }
+  };
+  const win = (u, sill = 1, h = .9, w = .8) => [u - w / 2, u + w / 2, sill, sill + h];
+
+  // Ground storey
+  const front1 = [[doorX + W / 2 - .5, doorX + W / 2 + .5, 0, 2.1]];
+  const frontWins1 = two ? [win(W / 2 - 2.2), win(W / 2 + 2.4)] : [win(W / 2 + (partX + ix0) / 2), win(W / 2 + doorX + 1.2)];
+  wall('front', floorY, groundTop - floorY, [...front1, ...frontWins1]).forEach(o => o[3] - o[2] < 2 && windowAt('front', floorY, o));
+  const backWins1 = two ? [win(W / 2 + 1)] : [win(W / 2 + (partX + ix1) / 2)];
+  wall('back', floorY, groundTop - floorY, backWins1).forEach(o => windowAt('back', floorY, o));
+  const leftWin1 = two ? [] : [win((D - 2 * t) / 2 + .2)];
+  wall('left', floorY, groundTop - floorY, leftWin1).forEach(o => windowAt('left', floorY, o));
+  wall('right', floorY, groundTop - floorY, []);
+  // Door: frame and an open leaf swung inwards
+  const leaf = K.box('#4a3020', .9, 2.05, .07, 0, 0, 0);
+  leaf.translate(.45, 0, 0); leaf.rotateY(1.2); leaf.translate(doorX - .5, floorY + 1.03, D / 2 - t);
+
+  // Upper storey
+  if (two) {
+    const fw = [win(W / 2 - 2), win(W / 2 + 1.8)], bw = [win(W / 2 - 1.5), win(W / 2 + 1.5)], lw = [win((D - 2 * t) / 2 - 1)];
+    wall('front', groundTop, H2, fw).forEach(o => windowAt('front', groundTop, o));
+    wall('back', groundTop, H2, bw).forEach(o => windowAt('back', groundTop, o));
+    wall('left', groundTop, H2, lw).forEach(o => windowAt('left', groundTop, o));
+    wall('right', groundTop, H2, []);
+    // Upper floor with a stairwell
+    const hx1 = stairX1 + .05, hz0 = stairZ0 - RUN - .1, hz1 = stairZ0 + .05, y0 = groundTop - slab;
+    for (const [a, b, c, d] of [[ix0, hx1, iz0, hz0], [ix0, hx1, hz1, iz1], [hx1, ix1, iz0, iz1]]) if (b > a && d > c) K.aabb('floor:in', a, y0, c, b, groundTop, d, true);
+    // Stairs: 12 drawn steps; collision in 6 half-block steps
+    for (let k = 1; k <= 12; k++) K.aabb('wood:in', stairX0, floorY, stairZ0 - k * .25, stairX1, floorY + k * (groundTop - floorY) / 12, stairZ0 - (k - 1) * .25);
+    for (let k = 1; k <= 6; k++) K.solid(stairX0, floorY, stairZ0 - k * .5, stairX1, floorY + k * (groundTop - floorY) / 6, stairZ0 - (k - 1) * .5);
+    // Banister around the stairwell (open at the top of the stairs)
+    K.aabb('timber:in', hx1, groundTop, hz0, hx1 + .08, groundTop + 1, hz1, true);
+    K.aabb('timber:in', ix0, groundTop, hz1, hx1 + .08, groundTop + 1, hz1 + .08, true);
+    K.aabb('timber:in', hx1, groundTop + .92, hz0, hx1 + .1, groundTop + 1.02, hz1);
+  }
+
+  // Roof: two pitched planes with overhangs, ridge beam, gable ends
+  const half = D / 2 + ov, slope = half / Math.cos(pitch), ry = wallTop + (rise - ov * Math.tan(pitch)) / 2;
+  K.box('roof', W + 2 * ov, .16, slope, 0, ry + .08, half / 2, 0, pitch);
+  K.box('roof', W + 2 * ov, .16, slope, 0, ry + .08, -half / 2, 0, -pitch);
+  K.box('timber', W + 2 * ov, .2, .2, 0, ridgeY + .12, 0);
+  for (const sx of [1, -1]) {
+    const shape = new THREE.Shape([new THREE.Vector2(-D / 2, 0), new THREE.Vector2(D / 2, 0), new THREE.Vector2(0, rise)]);
+    const g = new THREE.ExtrudeGeometry(shape, { depth: t, bevelEnabled: false });
+    g.rotateY(Math.PI / 2); g.translate(sx > 0 ? W / 2 - t : -W / 2, wallTop, 0);
+    K.add('plaster', g);
+    K.box('timber', .1, rise * .9, .14, sx * (W / 2 + .03), wallTop + rise * .45, 0);          // king post on the gable
+  }
+  if (!two) for (const z of [-1.2, 1.2]) K.aabb('timber:in', ix0, wallTop - .2, z - .1, ix1, wallTop, z + .1);   // tie beams
+
+  // Fireplace on the +x gable wall, chimney stack up through the roof
+  const fx0 = ix1 - .7, hearthY = floorY;
+  K.aabb('stone:in', fx0, hearthY, -.8, ix1, groundTop - (two ? slab : 0), -.5, true);       // jambs
+  K.aabb('stone:in', fx0, hearthY, .5, ix1, groundTop - (two ? slab : 0), .8, true);
+  K.aabb('stone:in', fx0, hearthY + 1.1, -.5, ix1, groundTop - (two ? slab : 0), .5, true);  // over the opening
+  K.aabb('stone:in', ix1 - .15, hearthY, -.5, ix1, hearthY + 1.1, .5);                       // back of the hearth
+  K.aabb('stone:in', fx0 - .25, hearthY, -.9, ix1, hearthY + .06, .9);                      // hearthstone
+  K.solid(fx0, hearthY, -.5, ix1, hearthY + 1.1, .5);                                        // keep out of the fire
+  K.aabb('#2a1a10:in', ix1 - .55, hearthY + .06, -.3, ix1 - .25, hearthY + .16, .3);         // logs
+  K.aabb('#3a2414:in', ix1 - .5, hearthY + .1, -.15, ix1 - .3, hearthY + .2, .15);
+  K.aabb('stone:in', fx0 - .1, hearthY + 1.1, -.9, ix1, hearthY + 1.2, .9);                  // mantel
+  if (two) K.aabb('stone:in', ix1 - .6, groundTop, -.5, ix1, wallTop, .5, true);             // stack through the bedroom
+  const cx = W / 2 - .55, chimTop = ridgeY + 1;
+  K.aabb('stone', cx - .45, wallTop - .3, -.5, cx + .45, chimTop, .5);
+  K.aabb('stone', cx - .52, chimTop - .15, -.57, cx + .52, chimTop + .05, .57);
+  K.cyl('#8a5a3a', .14, .17, .35, cx, chimTop + .05, 0, 8);                                  // chimney pot
+
+  // Furniture
+  const table = (x, z, w, d, y = floorY) => {
+    K.aabb('wood:in', x - w / 2, y + .7, z - d / 2, x + w / 2, y + .78, z + d / 2);
+    for (const [a, b] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) K.aabb('wood:in', x + a * (w / 2 - .08) - .04, y, z + b * (d / 2 - .08) - .04, x + a * (w / 2 - .08) + .04, y + .7, z + b * (d / 2 - .08) + .04);
+    K.solid(x - w / 2, y, z - d / 2, x + w / 2, y + .78, z + d / 2);
+  };
+  const bench = (x, z, w, y = floorY) => {
+    K.aabb('wood:in', x - w / 2, y + .42, z - .15, x + w / 2, y + .48, z + .15);
+    for (const a of [-1, 1]) K.aabb('wood:in', x + a * (w / 2 - .1) - .03, y, z - .12, x + a * (w / 2 - .1) + .03, y + .42, z + .12);
+    K.solid(x - w / 2, y, z - .15, x + w / 2, y + .48, z + .15);
+  };
+  const bed = (x0, z0, y = floorY) => {                          // 1 x 2, head at z0
+    K.aabb('wood:in', x0, y, z0, x0 + 1, y + .35, z0 + 2, true);
+    K.aabb('wood:in', x0, y, z0, x0 + 1, y + .9, z0 + .08);                    // headboard
+    K.aabb('#d8d0b8:in', x0 + .05, y + .35, z0 + .1, x0 + .95, y + .5, z0 + 1.95);
+    K.aabb('#f0ece0:in', x0 + .2, y + .5, z0 + .15, x0 + .8, y + .62, z0 + .5);
+    K.aabb(cloth + ':in', x0 + .02, y + .5, z0 + .65, x0 + .98, y + .56, z0 + 1.97);
+  };
+  const chest = (x, z, y = floorY) => { K.aabb('wood:in', x - .4, y, z - .25, x + .4, y + .5, z + .25, true); K.aabb('#2a2a2e:in', x - .41, y + .38, z - .26, x + .41, y + .43, z + .26); };
+  const barrel = (x, z, y = floorY) => { K.cyl('wood:in', .28, .32, .8, x, y, z, 10, true); K.cyl('#2a2a2e:in', .3, .3, .05, x, y + .2, z, 10); K.cyl('#2a2a2e:in', .3, .3, .05, x, y + .6, z, 10); };
+  const shelf = (x, z, y) => {
+    K.aabb('wood:in', x - .6, y, z, x + .6, y + .05, z + .25);
+    [['#8a5a3a', -.4], ['#c8b890', -.1], ['#6a7a8a', .2], ['#8a5a3a', .45]].forEach(([c, o]) => K.cyl(c + ':in', .07, .09, .18, x + o, y + .05, z + .12, 8));
+  };
+  const rugAt = (x, z, w, d, y = floorY) => K.aabb(rug + ':in', x - w / 2, y, z - d / 2, x + w / 2, y + .02, z + d / 2);
+
+  if (two) {
+    const tx = (stairX1 + fx0) / 2 + .1;
+    rugAt(tx, -.2, 2.2, 1.6); table(tx, -.2, 1.4, .8); bench(tx, -.95, 1.3); bench(tx, .55, 1.3);
+    barrel(ix1 - .4, iz0 + .4); shelf(tx, iz0, floorY + 1.5);
+    bed(-.5, iz0 + .05, groundTop); chest(0, iz0 + 2.5, groundTop); rugAt(.5, iz0 + 3, 1.6, 1, groundTop);
+  } else {
+    // Partition between living room and bedroom, with a doorway at the front end
+    const dz0 = iz1 - 1.5, dz1 = iz1 - .5;
+    for (const [a, b] of [[iz0, dz0], [dz1, iz1]]) K.aabb('plaster:in', partX - .06, floorY, a, partX + .06, groundTop, b, true);
+    K.aabb('plaster:in', partX - .06, floorY + 2.1, dz0, partX + .06, groundTop, dz1);
+    const tx = (partX + fx0) / 2;
+    rugAt(tx, -.3, 2, 1.5); table(tx, -.3, 1.2, .8); bench(tx, -1, 1.1);
+    barrel(partX + .45, iz0 + .45); shelf(tx, iz0, floorY + 1.5);
+    bed(ix0 + .15, iz0 + .05); chest(ix0 + .6, iz0 + 2.55); rugAt(ix0 + 1.6, iz0 + 2.5, 1, 1.4);
+  }
+
+  // Assemble, light and register
+  const built = K.build(m.pos[0], m.pos[1], m.pos[2], m.angle);
+  scene.add(built.group);
+  addColliders(built.colliders);
+  const fireAt = built.toWorld(ix1 - .4, hearthY + .25, 0), lampAt = built.toWorld(doorX + .85, floorY + 2.2, D / 2 + .2);
+  const fire = addFire(...fireAt), lamp = addLantern(...lampAt);
+  const obj = { g: built.group, spec: m, doorX, colliders: built.colliders, torches: [fire, lamp], fire, glass: built.meshes.glass,
+    seed: m.seed, chimney: built.toWorld(cx, chimTop + .45, 0), smokeT: 0, on: null };   // null: first update sets the fire
+  cottages.add(obj);
+  return obj;
+}
+
+// Whether a cottage's fire is lit: most are lit in the evening, at night and first thing; some cook at midday
+function fireLit(seed, h) {
+  const r = (seed % 1000) / 1000;
+  if (h >= 18 || h < 7.5) return r < .85;
+  if (h >= 11.5 && h < 13.5) return r < .4;
+  return r < .1;
+}
+
+// A hearth fire: two flames that flicker; joins the torch list so it lights the room
+function addFire(x, y, z) {
+  const g = new THREE.Group(), flame = new THREE.Mesh(...TORCH_PARTS.flame), core = new THREE.Mesh(...TORCH_PARTS.core);
+  g.position.set(x, y, z); flame.scale.set(1.6, 2.4, 1.6); core.position.y = -.05; core.scale.setScalar(1.6);
+  g.add(flame, core); scene.add(g);
+  const t = { g, flame, seed: (x * 3 + z * 5) % 100, f: 1, d: 0, big: true };
+  torches.push(t);
+  return t;
+}
+
+// A lantern on a bracket (also used by cottages and the windmill door)
+function addLantern(x, y, z) {
+  const g = new THREE.Group();
+  g.position.set(x, y, z);
+  for (const [px, pz] of [[.12, .12], [-.12, .12], [.12, -.12], [-.12, -.12]]) part(g, .04, .32, .04, 0x2a2a2e, px, .02, pz);
+  const glow = part(g, .2, .26, .2, 0xffd08a, 0, .02, 0); glow.material = LANTERN_GLOW;
+  part(g, .32, .05, .32, 0x2a2a2e, 0, .2, 0); part(g, .06, .3, .06, 0x2a2a2e, 0, .38, 0);
+  scene.add(g);
+  const t = { g, flame: glow, seed: (x * 7 + z * 13) % 100, f: 1, d: 0, steady: true };
+  torches.push(t);
+  return t;
+}
+
+// ---- Windmill (tower mill) ----
+function makeTowerMill(m) {
+  const K = new Kit();
+  K.cyl('stone', 2.75, 2.85, .9, 0, 0, 0, 8);
+  K.cyl('plaster', 1.9, 2.6, 8, 0, .9, 0, 8);
+  K.cyl('timber', 1.98, 1.98, .25, 0, 8.75, 0, 8);
+  const cap = scaleUV(new THREE.ConeGeometry(2.35, 2.6, 8), 14, 2.6); cap.translate(0, 9 + 1.3, 0); K.add('roof', cap);
+  K.box('#3a2616', .95, 1.9, .2, 0, 1.85, -2.5);                  // door (towards the village)
+  K.box('timber', 1.15, .12, .24, 0, 2.86, -2.5);
+  for (const [a, y] of [[.6, 4.2], [-.9, 5.8], [2.4, 6.6], [3.6, 4.6]]) {
+    const r = 2.6 - (y - .9) / 8 * .7 + .02;
+    K.box('glass', .45, .6, .08, Math.sin(a) * r, y, -Math.cos(a) * r, -a);
+  }
+  K.cols.push({ cyl: true, cx: 0, cz: 0, r: 2.6, y0: 0, y1: 12 });
+  const built = K.build(m.pos[0], m.pos[1], m.pos[2], m.angle);
+  scene.add(built.group); addColliders(built.colliders);
+  // Sails on the front of the cap, facing out from the village
+  const sails = new THREE.Group(), hub = new THREE.Group();
+  hub.position.set(...built.toWorld(0, 9.3, 2.35)); hub.rotation.y = m.angle;
+  part(hub, .5, .5, .5, 0x4a3420, 0, 0, 0);
+  for (let i = 0; i < 4; i++) {
+    const arm = new THREE.Group(); arm.rotation.z = i * Math.PI / 2;
+    part(arm, .16, 4.6, .12, 0x5a4028, 0, 2.3, .1);
+    part(arm, .9, 3.4, .05, 0xd8d0b8, .55, 2.7, .12);
+    sails.add(arm);
+  }
+  hub.add(sails); scene.add(hub);
+  const lamp = addLantern(...built.toWorld(.8, 2.4, -2.75));
+  const obj = { g: built.group, extra: [hub], colliders: built.colliders, torches: [lamp], tick: dt => { sails.rotation.z -= dt * .9; } };
+  animated.add(obj);
+  return obj;
+}
+
+function removeBuilding(obj) {
+  scene.remove(obj.g);
+  for (const e of obj.extra || []) scene.remove(e);
+  removeColliders(obj.colliders);
+  for (const t of obj.torches) removeTorch(t);
+  animated.delete(obj); cottages.delete(obj);
+  obj.g.traverse(o => o.geometry && o.geometry.dispose());
+}
+
+// ---- Fires and chimney smoke ----
+const smokeTex = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 32;
+  const g = c.getContext('2d'), gr = g.createRadialGradient(16, 16, 2, 16, 16, 16);
+  gr.addColorStop(0, 'rgba(255,255,255,.9)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 32, 32);
+  return new THREE.CanvasTexture(c);
+})();
+const puffs = [], puffPool = [];
+function updateCottages(dt) {
+  for (const h of cottages) {
+    const on = fireLit(h.seed, env.time);
+    if (on !== h.on) {
+      h.on = on; h.fire.off = !on;
+      if (h.glass) h.glass.material = on && env.daylight < .5 ? WINDOW_GLOW : buildingMat('glass');
+    }
+    if (h.glass && on) h.glass.material = env.daylight < .5 ? WINDOW_GLOW : buildingMat('glass');
+    // Smoke rises from the chimney while the fire burns (only for houses nearby)
+    if (!on || Math.hypot(h.chimney[0] - P.pos.x, h.chimney[2] - P.pos.z) > 110) continue;
+    h.smokeT -= dt;
+    if (h.smokeT <= 0) {
+      h.smokeT = .35 + Math.random() * .25;
+      const s = puffPool.pop() || new THREE.Sprite(new THREE.SpriteMaterial({ map: smokeTex, color: 0xb0b0b0, transparent: true, depthWrite: false }));
+      s.position.set(h.chimney[0] + (Math.random() - .5) * .2, h.chimney[1], h.chimney[2] + (Math.random() - .5) * .2);
+      s.scale.setScalar(.5); scene.add(s);
+      puffs.push({ s, age: 0, life: 4.5 + Math.random() * 1.5, vx: .25 + Math.random() * .15, vz: .08 * (Math.random() - .5) });
+    }
+  }
+  for (let i = puffs.length - 1; i >= 0; i--) {
+    const p = puffs[i];
+    p.age += dt;
+    if (p.age >= p.life) { scene.remove(p.s); puffPool.push(p.s); puffs.splice(i, 1); continue; }
+    const k = p.age / p.life;
+    p.s.position.y += dt * (.9 - k * .4); p.s.position.x += dt * p.vx; p.s.position.z += dt * p.vz;
+    p.s.scale.setScalar(.5 + p.age * .55);
+    p.s.material.opacity = .55 * (1 - k) * Math.min(1, p.age * 3);
+  }
+}
+
 // Torches and guards of procedural structures live with the chunk they stand in
 function addChunkDecor(c) {
   const plan = planFor(regionOf(c.cx * CHUNK), regionOf(c.cz * CHUNK));
@@ -1966,11 +2315,11 @@ function addChunkDecor(c) {
   plan.edits();
   const mine = (x, z) => Math.floor(x / CHUNK) === c.cx && Math.floor(z / CHUNK) === c.cz;
   for (const [x, y, z] of plan.decor.torches) if (mine(x, z)) c.decor.push(['torch', addTorch(x, y, z)]);
-  for (const m of plan.decor.models) if (mine(m.pos[0], m.pos[2])) c.decor.push(['model', makeWindmill(m)]);
+  for (const m of plan.decor.models) if (mine(m.pos[0], m.pos[2])) c.decor.push(['building', m.kind === 'cottage' ? makeCottage(m) : makeTowerMill(m)]);
   for (const gd of plan.decor.guards) if (mine(gd.a[0], gd.a[2])) c.decor.push(['guard', addGuard(gd.a, gd.b, gd.speed, gd.face ?? 0, { title: plan.title, plan, kind: gd.kind, color: gd.color })]);
 }
 function removeChunkDecor(c) {
-  for (const [kind, obj] of c.decor || []) kind === 'torch' ? removeTorch(obj) : kind === 'model' ? removeModel(obj) : removeGuard(obj);
+  for (const [kind, obj] of c.decor || []) kind === 'torch' ? removeTorch(obj) : kind === 'model' ? removeModel(obj) : kind === 'building' ? removeBuilding(obj) : removeGuard(obj);
   c.decor = null;
 }
 
@@ -2094,7 +2443,7 @@ function collides(x, y, z) {
         const top = cellTop(get(ix, iy, iz), ix, iz, x, z);
         if (top && y < iy + top - eps) return true;
       }
-  return bridgeHit(x, y, z) !== null;
+  return bridgeHit(x, y, z) !== null || colliderHit(x, y, z);
 }
 // Where feet land when falling into the layer at y: the highest solid top under the footprint
 function landingY(x, y, z) {
@@ -2107,6 +2456,7 @@ function landingY(x, y, z) {
     }
   const bt = bridgeHit(x, y, z);
   if (typeof bt === 'number') best = Math.max(best, bt);
+  best = Math.max(best, colliderTop(x, y, z));
   return best > -Infinity ? best : iy + 1;
 }
 
@@ -2752,11 +3102,14 @@ function update(dt, t) {
 
   // Torch flicker; the light pool moves to the nearest torches
   for (const tr of torches) {
+    tr.flame.visible = !tr.off;
+    if (tr.off) { tr.d = Infinity; continue; }                 // an unlit hearth
     const f = .8 + .12 * Math.sin(t * 11 + tr.seed) + .08 * Math.sin(t * 23.7 + tr.seed * 2) + .05 * Math.sin(t * 37 + tr.seed);
     tr.f = f;
     tr.d = tr.g.position.distanceToSquared(camera.position);
     if (tr.steady) continue;                                   // lanterns glow steadily
-    tr.flame.scale.set(.9 + .15 * f, 1.4 + .6 * f, .9 + .15 * f);
+    const b = tr.big ? 1.6 : 1;
+    tr.flame.scale.set((.9 + .15 * f) * b, (1.4 + .6 * f) * b, (.9 + .15 * f) * b);
     tr.flame.rotation.y = t * 3 + tr.seed;
   }
   const lit = torches.filter(tr => tr.d < 70 * 70).sort((a, b) => a.d - b.d);
@@ -2769,6 +3122,7 @@ function update(dt, t) {
   updateLantern(dt);
   checkDiscoveries(dt);
   updateModels(dt);
+  updateCottages(dt);
   if (dt) pushFromSolids();
   updateBridges(dt);
 }
@@ -2880,7 +3234,7 @@ streamChunks(P.pos.x, P.pos.z, Infinity);
 // If the world changed under a saved position (e.g. a newer version of the generator), step out on top
 if (collides(P.pos.x, P.pos.y, P.pos.z)) { P.pos.y = surfaceY(Math.floor(P.pos.x), Math.floor(P.pos.z)); P.eye = P.pos.y + 1.6; }
 camera.position.set(P.pos.x, P.eye, P.pos.z);
-window.__fort = { solids, activeBridges, roadInfo, boatSpot, carts, animated, shapeOf, collides, roadsAtNode, linksOf, discovered, roadAt, roadBetween, rawHeight, dlg, describeArea, MAIN_TITLE, lantern, guards, talk, saveGame, store, env, planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
+window.__fort = { cottages, colliderGrid, solids, activeBridges, roadInfo, boatSpot, carts, animated, shapeOf, collides, roadsAtNode, linksOf, discovered, roadAt, roadBetween, rawHeight, dlg, describeArea, MAIN_TITLE, lantern, guards, talk, saveGame, store, env, planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
 frame();
 </script>
 </body>

@@ -37,12 +37,19 @@ npx serve .        # or: python3 -m http.server
 
 ## Villages
 
-Villages sit on the road network. The roads meet at a village square with a stone well, and cottages line each road on alternating sides with their doors facing the street.
+Villages sit on the road network. The roads meet at a village square with a stone well, and cottages line each road on alternating sides, turned to face the street at any angle.
 
-- **Cottages:** plank walls, log corners, windows, gabled red-tiled roofs, and a torch by the door.
+- **Cottages** are built as 3D models, not blocks:
+  - **Outside:** a stone plinth, plaster walls with dark timber framing, framed windows with coloured shutters, an open door with a lantern beside it, and a pitched tiled roof with overhangs and a chimney with a pot.
+  - **Single-storey:** a living room and a bedroom, split by an inner wall with a doorway.
+  - **Two-storey:** a living room downstairs, stairs up the side wall, a bedroom on a proper upper floor with a banister round the stairwell.
+  - **Furniture:** a table and benches, a rug, a shelf of pots, a barrel, a bed with pillow and blanket, and a chest. Inside surfaces are a little darker than outside.
+  - **Fireplace:** a stone fireplace with a hearth, logs and a mantel.
+- **Fires:** most houses light the fire in the evening, through the night and early morning, and some cook at midday. A lit fire flickers and lights the room. At night its windows glow, and smoke drifts up from the chimney. When the fire's out there's no flame and no smoke.
+- **Solid:** walls, the plinth, floors, stairs and furniture are all solid. You go in through the door and climb the stairs, and you can't walk through tables or into the fire.
+- **Windmills:** about half of all villages have one, a tapered tower mill with a stone base, a door facing the square with a lantern, small windows, a pointed cap and turning sails.
 - **Villagers:** they wear coloured tunics and straw hats and potter about outside their doors. They greet you ("Hello there!", "Welcome, stranger.") and talk like guards, with the same "about this area" answer from their village.
 - **On the map:** villages show as a little house marker once discovered.
-- **Isolated villages:** a village with no road gets a street of its own.
 
 ## Windmills, carts and boats
 
@@ -133,6 +140,7 @@ The world map (M) shows biomes, water depth and hill shading, with the fort and 
    - A structure's plan (type, size, rotation, ground level) is cheap to work out. Its blocks are only built when a nearby chunk needs them.
    - The ground is flattened under each structure and blended into the surroundings, all within its own region, so chunks never need neighbouring regions.
    - Sites in water or on very rugged ground are skipped, and forts on rough ground become watchtowers.
+   - **Modelled buildings:** cottages and windmills are built from a parts kit that merges each building into one mesh per material. They use general colliders (oriented boxes and cylinders), which walking, landing and step-ups all respect.
    - All forts share one builder, including the starting fort, which comes out identical to the original hand-built version.
    - Torches and guards appear with the chunk they stand in. A fixed pool of 10 point lights moves to the nearest torches, so more forts never add rendering cost.
    - Structures appear on the world map: red squares are forts, triangles are watchtowers and crosses are ruins.
