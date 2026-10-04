@@ -28,7 +28,7 @@ npx serve .        # or: python3 -m http.server
 - **Roads:** every fort, watchtower and village links to its two nearest neighbours within two regions (about 450 blocks), and the starting fort joins in too. The roads wind gently between them.
   - **Bridges:** where a road crosses a river it runs straight over a bridge model, with clean straight edges at any angle. The deck is level with the higher bank and carries on level until it meets ground, so you never step down more than one block. The seed picks one of two kinds:
     - **Wooden:** a slatted deck on stringer beams, posted handrails with top and middle rails, and braced piles down to the riverbed.
-    - **Stone:** elliptical arches (two or three on longer spans, with piers between), parapet walls with capstones and a paved deck. Built in sandstone in the desert. Spans over 40 blocks are always wooden.
+    - **Stone:** elliptical arches (two or three on longer spans, with piers between), parapet walls with capstones and a paved deck. Built in sandstone in the desert. Spans up to 40 blocks are stone about 55% of the time. Longer ones are usually wooden trestles, but about 1 in 8 is a long multi-arched stone viaduct.
     - **Collision** follows the real deck, and the rails and parapets stop you walking off the side. Boats fit underneath, and no road is built across open sea.
   - **Leaving places:** roads leave fort gates and tower doors straight outwards before turning, so they never cut across a structure's walls.
   - Trees never grow on them, and they show on the map when zoomed in.

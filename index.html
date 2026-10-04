@@ -1242,7 +1242,8 @@ function planBridges(road, rx, rz) {
     for (let k = a; k <= b; k++) bed = Math.min(bed, low[k]);
     const cl = climate(Math.floor(ax), Math.floor(az));
     road.bridges.push({ ax, az, bx, bz, len, deck: level, bed, dirx: (bx - ax) / len, dirz: (bz - az) / len,
-      type: len <= 40 && seed < .55 ? 'stone' : 'wood', mat: cl.desert > .5 ? SANDSTONE : BRICK, mesh: null });
+      type: seed < (len <= 40 ? .55 : .12) ? 'stone' : 'wood',   // long stone viaducts are rare
+      mat: cl.desert > .5 ? SANDSTONE : BRICK, mesh: null });
     i = b;
   }
   road.deck = deck;
