@@ -2469,7 +2469,8 @@ function startVillage(plan) {
     const h = V.houses.filter(h => h !== bh).reduce((a, b) => Math.hypot(b.out.x - V.mill.x, b.out.z - V.mill.z) < Math.hypot(a.out.x - V.mill.x, a.out.z - V.mill.z) ? b : a, V.houses[0]);
     if (h) { h.people[0].job = 'miller'; h.stock.wheatSeed = 3 + (rnd() * 3 | 0); }
   }
-  V.houses.forEach((h, i) => { if (h !== bh && h.people[0].job === 'homemaker' && i % 2 === 0) { h.people[0].job = 'farmer'; h.stock.wheatSeed = 2 + (rnd() * 4 | 0); } });
+  const rest = V.houses.filter(h => h !== bh && h.people[0].job === 'homemaker');
+  rest.forEach((h, i) => { if (i < Math.max(1, Math.ceil(rest.length / 2))) { h.people[0].job = 'farmer'; h.stock.wheatSeed = 2 + (rnd() * 4 | 0); } });
   // Fields for the farming households, each at some point in its season; the mill's store
   const T = gameHours();
   V.fields = [];
