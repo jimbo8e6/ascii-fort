@@ -22,6 +22,15 @@ npx serve .        # or: python3 -m http.server
 | E: talk to a guard nearby; 1–2 or click to choose, Esc to leave | TALK button (appears near a guard) |
 | Esc: pause and free the mouse (top-right buttons stay clickable) | |
 
+## Rivers, roads and discovery
+
+- **Rivers:** long meandering rivers wind across the continents, roughly 8–12 blocks wide. Each sits in a wide grassy valley with sandy banks and a channel cut just below sea level, so it fills with water and runs out to the coast. They freeze over in the far north and are rarer and thinner in deserts.
+- **Roads:** dirt roads link each fort and watchtower (and the starting fort) to those in the neighbouring regions, winding gently between them.
+  - They cross rivers on wooden plank bridges, but no road is built across open sea.
+  - Trees never grow on them, and they show on the map when zoomed in.
+  - A guard will tell you when a road leads to a place they mention.
+- **Discovery:** forts, watchtowers and ruins are hidden on the map until you've been near one. Then a banner announces it (*DISCOVERED — Ravenvale Tower*) and its marker appears. The starting fort is announced when you first enter a world. Discoveries are saved with each world.
+
 ## Caves
 
 Winding tunnels and big caverns run under the land, and in some areas they break through to the surface as entrances.

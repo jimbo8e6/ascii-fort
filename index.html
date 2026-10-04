@@ -24,6 +24,11 @@
     border: 1px solid rgba(255, 179, 71, .55); font-size: 13px; white-space: nowrap; opacity: 0; transition: opacity .2s; }
   #talk { position: fixed; left: 50%; bottom: 40px; transform: translateX(-50%); z-index: 3; padding: 10px 18px; }
   #talk[hidden], #talkHint[hidden], #dialogue[hidden] { display: none; }
+  #discover { position: fixed; left: 50%; top: 22%; transform: translate(-50%, -8px); z-index: 4; pointer-events: none;
+    text-align: center; opacity: 0; transition: opacity .6s, transform .6s; text-shadow: 0 2px 6px #000; }
+  #discover.show { opacity: 1; transform: translate(-50%, 0); }
+  #discover .label { font-size: 12px; letter-spacing: .35em; color: #e8d9b0; text-transform: uppercase; }
+  #discover .name { font-size: clamp(20px, 4vw, 30px); letter-spacing: .08em; color: #ffb347; margin-top: 4px; }
   #dialogue { position: fixed; left: 50%; bottom: max(24px, env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 6;
     width: min(640px, calc(100vw - 32px)); background: rgba(8, 9, 18, .93); border: 1px solid rgba(255, 179, 71, .6);
     padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
@@ -107,6 +112,7 @@
 <button class="btn" id="jump">JUMP</button>
 <div id="bubbles"></div>
 <button class="btn" id="talk" hidden>TALK</button>
+<div id="discover"><div class="label">discovered</div><div class="name"></div></div>
 <div id="talkHint" hidden>E &middot; talk</div>
 <div id="dialogue" hidden><div class="who"></div><div class="text"></div><div class="opts"></div></div>
 <div id="stick"><div id="knob"></div></div>
@@ -398,7 +404,7 @@ const inCourtyard = (x, z) => x >= F0 && x < F1 && z >= F0 && z < F1;
 //  - Rainfall: wetter along coasts, drier deep inland and in the hot south. Deserts form where it is
 //    hot and dry, forests where it is temperate and wet, grassland in between.
 const noiseT = makeNoise2D(SEED + 3), noiseM = makeNoise2D(SEED + 4), noiseK = makeNoise2D(SEED + 5);
-const noiseW1 = makeNoise2D(SEED + 6), noiseW2 = makeNoise2D(SEED + 7);
+const noiseW1 = makeNoise2D(SEED + 6), noiseW2 = makeNoise2D(SEED + 7), noiseRiver = makeNoise2D(SEED + 20);
 const LATITUDE = 10000;    // blocks from the temperate middle to fully polar (north) or fully tropical (south)
 const COAST = .08;        // continent value at the shoreline
 
@@ -439,6 +445,16 @@ function rawHeight(x, z, cl = climate(x, z)) {
     }
     // The occasional lake in wet lowlands
     h -= smoothstep(.62, .8, noiseC(x * .01 + 300, z * .01)) * cl.wet * (1 - inland * .6) * 8;
+    // Rivers: long meandering lines where a warped noise crosses zero. A wide valley slopes down to a
+    // channel cut just below sea level, so it fills with water and runs out to the coast. Fewer in deserts.
+    const flow = 1 - cl.desert * .85;
+    if (flow > .05) {
+      const wx = x + 140 * noiseW1(x * .004, z * .004), wz = z + 140 * noiseW2(x * .004 + 7, z * .004);
+      const d = Math.abs(noiseRiver(wx * .0008, wz * .0008)) / (1.25 - inland * .45);        // wider towards the sea
+      const valley = (1 - smoothstep(.045, .26, d)) * flow, channel = (1 - smoothstep(.03, .046, d)) * flow;
+      h += (SEA + 1.4 - h) * valley * .85;
+      h += (SEA - 2.2 - h) * channel;
+    }
   }
   h += (G - h) * flatness(x, z);
   return Math.max(2, Math.min(H - 12, Math.round(h)));
@@ -494,7 +510,8 @@ function generateChunk(cx, cz) {
     const slope = Math.max(Math.abs(h - hAt(lx + 1, lz)), Math.abs(h - hAt(lx - 1, lz)), Math.abs(h - hAt(lx, lz + 1)), Math.abs(h - hAt(lx, lz - 1)));
     let top = GRASS, sub = DIRT;
     const st = structureAt(x, z);
-    if (inCourtyard(x, z) || isRoad(x, z) || st?.inside && st.plan.type === FORT) top = PATH;
+    const road = !st?.inside && roadAt(x, z);
+    if (inCourtyard(x, z) || isRoad(x, z) || st?.inside && st.plan.type === FORT || road && h > SEA) top = PATH;
     else if (biome === OCEAN) { top = h < SEA - 4 ? DIRT : SAND; sub = SAND; }
     else if (biome === DESERT) { top = slope >= 4 ? SANDSTONE : SAND; sub = SANDSTONE; }
     else if (slope >= 3) top = sub = ROCK;
@@ -503,6 +520,7 @@ function generateChunk(cx, cz) {
     else if (h > G + 22) top = sub = ROCK;
     for (let y = 0; y < h; y++) put(lx, y, lz, y === h - 1 ? top : y >= h - 4 ? sub : ROCK);
     for (let y = h; y < SEA; y++) put(lx, y, lz, y === SEA - 1 && cold[i] > .6 ? ICE : WATER);
+    if (road && h < SEA) put(lx, SEA - 1, lz, WOOD);                          // plank bridge
   }
 
   // Caves. Three 3D noise fields are sampled every 4 blocks and interpolated between. Winding
@@ -549,7 +567,7 @@ function generateChunk(cx, cz) {
     const x = ox + tx, z = oz + tz, r0 = hash2(x, z);
     if (r0 > .05) continue;                                                     // cheap early out
     const i = at(tx, tz), h = hm[i], biome = bm[i];
-    if (biome === OCEAN || h <= SEA + 1 || h > G + 24 || flatness(x, z) > .05 || structureAt(x, z)) continue;
+    if (biome === OCEAN || h <= SEA + 1 || h > G + 24 || flatness(x, z) > .05 || structureAt(x, z) || roadAt(x, z)) continue;
     if (Math.abs(h - hAt(tx + 1, tz)) + Math.abs(h - hAt(tx, tz + 1)) > 2) continue;
     const r = hash2(z, x);
     if (biome === FOREST || biome === SNOWY) {
@@ -791,6 +809,81 @@ function buildPlan(plan) {
   };
   plan._edits = out;
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// Roads: dirt tracks linking each fort or watchtower (and the starting fort) to the ones in the
+// four neighbouring regions. Each road is a gently winding polyline; it becomes a plank bridge
+// over rivers, and isn't built at all across a long stretch of water.
+// ---------------------------------------------------------------------------
+const ROAD_HALF = 1.6;                            // half width in blocks
+const roadCache = new Map(), regionRoads = new Map();
+
+// Where a region's roads meet: a fort's gate, a tower's door side, or the end of the starting road
+function roadNode(rx, rz) {
+  if (rx === 0 && rz === 0) return [CX + .5, ROAD_END - 8];
+  const plan = planFor(rx, rz);
+  if (!plan || plan.type === RUINS) return null;
+  if (plan.type === FORT) {
+    const [lx, lz] = rotateLocal(plan.N / 2, plan.N + 4, plan.N, plan.rot);
+    return [plan.ox + lx, plan.oz + lz];
+  }
+  const [lx, lz] = rotateLocal(-3, 2.5, 7, plan.rot);
+  return [plan.ox + lx, plan.oz + lz];
+}
+
+// The road between two neighbouring regions (or null): a polyline of points every ~6 blocks
+function roadBetween(ax, az, bx, bz) {
+  if (ax > bx || ax === bx && az > bz) [ax, az, bx, bz] = [bx, bz, ax, az];
+  const key = `${ax},${az},${bx},${bz}`;
+  if (roadCache.has(key)) return roadCache.get(key);
+  let road = null;
+  const a = roadNode(ax, az), b = roadNode(bx, bz);
+  if (a && b) {
+    const dx = b[0] - a[0], dz = b[1] - a[1], len = Math.hypot(dx, dz), n = Math.max(2, Math.ceil(len / 6));
+    const px = -dz / len, pz = dx / len, pts = [];
+    let wet = 0, maxWet = 0;
+    for (let i = 0; i <= n; i++) {
+      const t = i / n, bend = Math.sin(t * Math.PI) * 14 * noiseC(ax * 3.1 + bx + t * 2.2, az * 1.7 + bz);   // winding, pinned at both ends
+      const x = a[0] + dx * t + px * bend, z = a[1] + dz * t + pz * bend;
+      pts.push(x, z);
+      wet = rawHeight(Math.floor(x), Math.floor(z)) <= SEA ? wet + 1 : 0;
+      maxWet = Math.max(maxWet, wet);
+    }
+    if (maxWet <= 6) {                                   // bridges over rivers, never across the sea
+      let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+      for (let i = 0; i < pts.length; i += 2) { x0 = Math.min(x0, pts[i]); x1 = Math.max(x1, pts[i]); z0 = Math.min(z0, pts[i + 1]); z1 = Math.max(z1, pts[i + 1]); }
+      road = { pts, box: [x0 - 3, z0 - 3, x1 + 3, z1 + 3] };
+    }
+  }
+  roadCache.set(key, road);
+  return road;
+}
+
+// All roads that touch a region (each road stays within the two regions it joins)
+function roadsForRegion(rx, rz) {
+  const key = chunkKey(rx, rz);
+  if (!regionRoads.has(key)) {
+    regionRoads.set(key, [roadBetween(rx, rz, rx + 1, rz), roadBetween(rx - 1, rz, rx, rz),
+      roadBetween(rx, rz, rx, rz + 1), roadBetween(rx, rz - 1, rx, rz)].filter(Boolean));
+  }
+  return regionRoads.get(key);
+}
+
+// Is this column on a road?
+function roadAt(x, z) {
+  const px = x + .5, pz = z + .5;
+  for (const road of roadsForRegion(regionOf(x), regionOf(z))) {
+    const [x0, z0, x1, z1] = road.box;
+    if (px < x0 || px > x1 || pz < z0 || pz > z1) continue;
+    const p = road.pts;
+    for (let i = 0; i + 3 < p.length; i += 2) {
+      const ax = p[i], az = p[i + 1], dx = p[i + 2] - ax, dz = p[i + 3] - az;
+      const t = Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / (dx * dx + dz * dz)));
+      if (Math.hypot(px - ax - dx * t, pz - az - dz * t) < ROAD_HALF) return true;
+    }
+  }
+  return false;
 }
 
 // Flattening around a structure: weight 1 inside the padded footprint, fading over `blend` blocks
@@ -1343,7 +1436,10 @@ if (isTouch) document.body.classList.add('touch');
 
 const startEl = document.getElementById('start');
 startEl.addEventListener('click', () => {
-  if (!started) P.yaw = P.homeYaw;
+  if (!started) {
+    P.yaw = P.homeYaw;
+    if (!saved && !P.welcomed) { P.welcomed = true; setTimeout(() => announce(MAIN_TITLE), 600); }   // first visit to this world
+  }
   started = true; startEl.style.display = 'none';
   if (!isTouch) renderer.domElement.requestPointerLock?.();
 });
@@ -1450,7 +1546,7 @@ renderer.domElement.addEventListener('touchcancel', endTouch);
 // ---------------------------------------------------------------------------
 const MAP_COLORS = {
   [DESERT]: [201, 178, 122], [PLAINS]: [122, 154, 74], [FOREST]: [58, 102, 50], [SNOWY]: [222, 230, 238],
-  beach: [210, 194, 142], rock: [128, 126, 124], path: [156, 124, 88], ice: [150, 182, 210],
+  beach: [210, 194, 142], rock: [128, 126, 124], path: [156, 124, 88], bridge: [120, 84, 50], ice: [150, 182, 210],
   shallow: [72, 124, 184], deep: [22, 48, 92], fort: [190, 70, 50],
 };
 const LEGEND = [['Ocean', MAP_COLORS.shallow], ['Beach', MAP_COLORS.beach], ['Desert', MAP_COLORS[DESERT]],
@@ -1507,7 +1603,7 @@ class MapView {
       for (let i = 0; i < size; i++) {
         const x = this.bx + (i - size / 2) * this.bscale;
         const cl = climate(x, z), h = this.bscale >= 8 ? rawHeight(x, z, cl) : terrainHeight(x, z, cl), biome = biomeOf(cl, h);
-        let [r, g, b] = mapColor(x, z, h, biome, cl);
+        let [r, g, b] = this.bscale <= 4 && roadAt(x, z) ? (h > SEA ? MAP_COLORS.path : MAP_COLORS.bridge) : mapColor(x, z, h, biome, cl);
         if (h > SEA) {   // hill shading from the north-west, slightly brighter with height
           const up = job.row ? job.prevRow[i] : h, lf = i ? left : h;
           const shade = Math.max(.65, Math.min(1.35, 1 + ((h - up) + (h - lf)) * .06 / Math.sqrt(this.bscale) + (h - G) * .006));
@@ -1554,7 +1650,7 @@ class MapView {
     };
     // Zoomed far out there are too many to show: only forts at 32 blocks per pixel, none beyond
     if (scale <= 32) for (const plan of plans.values()) {
-      if (plan && (scale <= 16 || plan.type === FORT) && Math.abs(plan.cx - cx) < half && Math.abs(plan.cz - cz) < half) marker(plan.type, plan.cx, plan.cz, plan.N);
+      if (plan && isDiscovered(plan) && (scale <= 16 || plan.type === FORT) && Math.abs(plan.cx - cx) < half && Math.abs(plan.cz - cz) < half) marker(plan.type, plan.cx, plan.cz, plan.N);
     }
     marker(FORT, CX, CX, 52);
     if (canvas.width >= 400) {                           // north marker on the big map
@@ -1799,15 +1895,17 @@ function describeArea(gd) {
   const places = [];
   for (let rz = regionOf(z0) - 3; rz <= regionOf(z0) + 3; rz++) for (let rx = regionOf(x0) - 3; rx <= regionOf(x0) + 3; rx++) {
     const plan = planFor(rx, rz);
-    if (plan && plan !== gd.home?.plan) places.push({ title: plan.title, type: plan.type, x: plan.cx, z: plan.cz });
+    if (plan && plan !== gd.home?.plan) places.push({ title: plan.title, type: plan.type, x: plan.cx, z: plan.cz, rx, rz });
   }
-  if (gd.home?.title !== MAIN_TITLE) places.push({ title: MAIN_TITLE, type: FORT, x: CX, z: CX });
+  if (gd.home?.title !== MAIN_TITLE) places.push({ title: MAIN_TITLE, type: FORT, x: CX, z: CX, rx: 0, rz: 0 });
+  const hx = gd.home?.plan ? regionOf(gd.home.plan.ox) : 0, hz = gd.home?.plan ? regionOf(gd.home.plan.oz) : 0;
   places.forEach(p => { p.d = Math.hypot(p.x - x0, p.z - z0); });
   places.sort((a, b) => a.d - b.d);
   const tail = { [FORT]: ['They keep a garrison there.', 'Good walls on that one.'], [TOWER]: ['You can see for miles from the top.', 'Climb it if you want a look around.'],
     [RUINS]: ['Nothing but old stones now.', "Nobody's lived there in an age."] };
   for (const p of places.slice(0, 2).filter(p => p.d < 700)) {
-    out.push(`${cap(p.title)} ${p.type === RUINS ? 'lie' : 'lies'} ${paces(p.d)} to the ${compass(p.x - x0, p.z - z0)}. ${pick(tail[p.type])}`);
+    const byRoad = gd.home && Math.abs(p.rx - hx) + Math.abs(p.rz - hz) === 1 && roadBetween(hx, hz, p.rx, p.rz);
+    out.push(`${cap(p.title)} ${p.type === RUINS ? 'lie' : 'lies'} ${paces(p.d)} to the ${compass(p.x - x0, p.z - z0)}. ${byRoad ? 'Follow the road and you can\'t miss it.' : pick(tail[p.type])}`);
   }
 
   // Which way the land changes: the nearest different biomes in eight directions
@@ -1861,6 +1959,38 @@ function guardBlocks(nx, nz, y) {
   }
   return false;
 }
+
+// ---------------------------------------------------------------------------
+// Discovery: places only appear on the map once you've been near them
+// ---------------------------------------------------------------------------
+const discovered = new Set(['main']);
+const discoverEl = document.getElementById('discover');
+let discoverT = 0, discoverHide = 0;
+const placeKey = plan => `${regionOf(plan.ox)},${regionOf(plan.oz)}`;
+
+function announce(title) {
+  discoverEl.querySelector('.name').textContent = cap(title);
+  discoverEl.classList.add('show');
+  clearTimeout(discoverHide);
+  discoverHide = setTimeout(() => discoverEl.classList.remove('show'), 4000);
+}
+
+function checkDiscoveries(dt) {
+  discoverT -= dt;
+  if (discoverT > 0) return;
+  discoverT = .5;
+  const rx0 = regionOf(P.pos.x), rz0 = regionOf(P.pos.z);
+  for (let rz = rz0 - 1; rz <= rz0 + 1; rz++) for (let rx = rx0 - 1; rx <= rx0 + 1; rx++) {
+    const plan = planFor(rx, rz);
+    if (!plan || discovered.has(placeKey(plan))) continue;
+    const reach = plan.type === FORT ? plan.N * .5 + 30 : plan.type === TOWER ? 34 : plan.N * .5 + 18;
+    if (Math.hypot(P.pos.x - plan.cx, P.pos.z - plan.cz) < reach) {
+      discovered.add(placeKey(plan));
+      announce(plan.title);
+    }
+  }
+}
+const isDiscovered = plan => discovered.has(placeKey(plan));
 
 // ---------------------------------------------------------------------------
 // Main loop
@@ -1928,6 +2058,7 @@ function update(dt, t) {
 
   updateGuards(dt);
   updateLantern(dt);
+  checkDiscoveries(dt);
 }
 
 function frame() {
@@ -1968,7 +2099,7 @@ function saveSettings() {
 }
 function saveGame() {
   if (savingOff) return;
-  const save = { v: 1, seed: SEED, x: P.pos.x, y: P.pos.y, z: P.pos.z, yaw: P.yaw, pitch: P.pitch,
+  const save = { v: 1, seed: SEED, x: P.pos.x, y: P.pos.y, z: P.pos.z, yaw: P.yaw, pitch: P.pitch, discovered: [...discovered],
     time: env.time, day: env.day, savedAt: Date.now() };
   if (!store.set('world:' + SEED, save)) return;
   store.set('lastSeed', SEED);
@@ -1996,6 +2127,11 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) saveG
 
 // Restore this world's save, or start at the fort
 const saved = store.get('world:' + SEED);
+if (Array.isArray(saved?.discovered)) for (const k of saved.discovered) {
+  discovered.add(k);
+  const [rx, rz] = String(k).split(',').map(Number);
+  if (Number.isFinite(rz)) planFor(rx, rz);              // so the marker can be drawn straight away
+}
 if (saved?.v === 1 && [saved.x, saved.y, saved.z].every(Number.isFinite)) {
   P.pos.set(saved.x, saved.y, saved.z);
   P.yaw = P.homeYaw = saved.yaw || 0; P.pitch = saved.pitch || 0;
@@ -2032,7 +2168,7 @@ streamChunks(P.pos.x, P.pos.z, Infinity);
 // If the world changed under a saved position (e.g. a newer version of the generator), step out on top
 if (collides(P.pos.x, P.pos.y, P.pos.z)) { P.pos.y = surfaceY(Math.floor(P.pos.x), Math.floor(P.pos.z)); P.eye = P.pos.y + 1.6; }
 camera.position.set(P.pos.x, P.eye, P.pos.z);
-window.__fort = { dlg, describeArea, MAIN_TITLE, lantern, guards, talk, saveGame, store, env, planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
+window.__fort = { discovered, roadAt, roadBetween, rawHeight, dlg, describeArea, MAIN_TITLE, lantern, guards, talk, saveGame, store, env, planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
 frame();
 </script>
 </body>
