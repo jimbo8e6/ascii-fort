@@ -306,6 +306,17 @@ Object.assign(TEX, {
     g.fillStyle = 'rgba(175,182,196,.9)';
     for (let i = 0; i < 70; i++) g.fillRect(rand() * s | 0, rand() * s | 0, 3, 2);
   }),
+  plank: canvasTexture(32, (g, s) => {
+    noiseFill(g, s, [150, 112, 70], 18);
+    g.fillStyle = 'rgba(60,40,20,.75)';
+    for (let x = 0; x < s; x += 8) g.fillRect(x, 0, 1, s);
+    for (let i = 0; i < 6; i++) g.fillRect(rand() * s | 0, rand() * s | 0, 1, 1);
+  }),
+  roof: canvasTexture(32, (g, s) => {
+    noiseFill(g, s, [140, 62, 46], 22);
+    g.fillStyle = 'rgba(50,20,15,.75)';
+    for (let y = 0; y < s; y += 6) { g.fillRect(0, y, s, 1); for (let x = (y / 6 % 2) * 4; x < s; x += 8) g.fillRect(x, y, 1, 6); }
+  }),
   crystal: canvasTexture(32, (g, s) => {
     noiseFill(g, s, [120, 70, 200], 40);
     g.strokeStyle = 'rgba(210,190,255,.9)';
@@ -322,7 +333,7 @@ Object.assign(TEX, {
 
 // Material ids (1-based, used by the mesher); index = id - 1
 const MAT_NAMES = ['brick', 'wood', 'grassTop', 'grassSide', 'dirt', 'path', 'rock', 'log', 'logTop', 'leaves',
-  'sand', 'sandstone', 'snowTop', 'snowSide', 'ice', 'cactus', 'cactusTop', 'oakLeaves', 'snowLeaves', 'water', 'crystal'];
+  'sand', 'sandstone', 'snowTop', 'snowSide', 'ice', 'cactus', 'cactusTop', 'oakLeaves', 'snowLeaves', 'water', 'crystal', 'plank', 'roof'];
 const MAT = Object.fromEntries(MAT_NAMES.map((n, i) => [n, i + 1]));
 // Chunk materials read a per-vertex 'sky' value (how much open sky the face can see) and scale only
 // the sun/moon and sky light by it, so caves and interiors go dark but torches and the lantern still light them.
@@ -350,7 +361,7 @@ const materials = MAT_NAMES.map(n =>
 // Blocks, climate and terrain
 // ---------------------------------------------------------------------------
 const AIR = 0, BRICK = 1, WOOD = 2, GRASS = 3, DIRT = 4, PATH = 5, ROCK = 6, LOG = 7, LEAVES = 8,
-      WATER = 9, SAND = 10, SANDSTONE = 11, SNOW = 12, ICE = 13, CACTUS = 14, OAK_LEAVES = 15, SNOW_LEAVES = 16, CRYSTAL = 17;
+      WATER = 9, SAND = 10, SANDSTONE = 11, SNOW = 12, ICE = 13, CACTUS = 14, OAK_LEAVES = 15, SNOW_LEAVES = 16, CRYSTAL = 17, PLANK = 18, ROOF = 19;
 const isLeaves = v => v === LEAVES || v === OAK_LEAVES || v === SNOW_LEAVES;
 const solid = v => v !== AIR && v !== WATER;
 const CHUNK = 16, H = 64;                 // chunk footprint and world height
@@ -379,6 +390,8 @@ function faceMaterial(type, face) {
     case OAK_LEAVES: return MAT.oakLeaves;
     case SNOW_LEAVES: return MAT.snowLeaves;
     case CRYSTAL: return MAT.crystal;
+    case PLANK: return MAT.plank;
+    case ROOF: return MAT.roof;
   }
   return 0;
 }
@@ -719,13 +732,109 @@ function buildRuins(set, { N, mat, rnd }) {
   return { torches: [], guards: [] };
 }
 
+// Village: roads meet at a square with a well; cottages line the roads on alternating sides, doors
+// facing the road. Built unrotated, in coordinates local to the plan's origin. Cottages need a few
+// blocks of clearance from every road, so streets stay open.
+function buildVillage(set, plan, rnd) {
+  const N = plan.N, C = N / 2, roads = roadsAtNode(regionOf(plan.ox), regionOf(plan.oz));
+  const torches = [], guards = [];
+  // Road polylines in local coordinates, starting at the square; an isolated village gets its own street
+  const streets = roads.map(r => {
+    const p = [];
+    for (let i = 0; i < r.pts.length; i += 2) p.push([r.pts[i] - plan.ox, r.pts[i + 1] - plan.oz]);
+    const d0 = Math.hypot(p[0][0] - C, p[0][1] - C), d1 = Math.hypot(p[p.length - 1][0] - C, p[p.length - 1][1] - C);
+    return d0 <= d1 ? p : p.reverse();
+  });
+  if (!streets.length) {
+    const a = rnd() * Math.PI;
+    for (const s of [1, -1]) streets.push([0, 1, 2, 3, 4, 5].map(i => [C + Math.cos(a) * s * i * 6, C + Math.sin(a) * s * i * 6]));
+  }
+  const nearRoad = (x, z, pad) => streets.some(p => {
+    for (let i = 0; i + 1 < p.length; i++) {
+      const [ax, az] = p[i], dx = p[i + 1][0] - ax, dz = p[i + 1][1] - az;
+      const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz || 1)));
+      if (Math.hypot(x - ax - dx * t, z - az - dz * t) < pad) return true;
+    }
+    return false;
+  });
+  // Paint the village's own streets (network roads are already surfaced) and the square
+  for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
+    const sq = Math.hypot(x + .5 - C, z + .5 - C) < 6.5;
+    if (sq || !roads.length && nearRoad(x + .5, z + .5, ROAD_HALF)) set(x, -1, z, PATH);
+  }
+  // Well
+  for (let z = -1; z <= 1; z++) for (let x = -1; x <= 1; x++) {
+    set(C + x, -1, C + z, x || z ? ROCK : WATER);
+    if (x || z) set(C + x, 0, C + z, ROCK);
+  }
+  for (const [x, z] of [[-1, -1], [1, 1]]) { set(C + x, 1, C + z, LOG); set(C + x, 2, C + z, LOG); }
+  for (let x = -1; x <= 1; x++) for (let z = -1; z <= 1; z++) set(C + x, 3, C + z, ROOF);
+  torches.push([C + 2.3, 1.4, C + .5]);
+
+  // Cottages along each street, alternating sides
+  const used = new Uint8Array(N * N);
+  const free = (x0, x1, z0, z1) => {
+    if (x0 < 2 || z0 < 2 || x1 > N - 3 || z1 > N - 3) return false;
+    for (let z = z0 - 1; z <= z1 + 1; z++) for (let x = x0 - 1; x <= x1 + 1; x++) if (used[x + z * N] || nearRoad(x + .5, z + .5, ROAD_HALF + 1.2)) return false;
+    return true;
+  };
+  const tunics = [0x3c6e8a, 0x6a8a3c, 0x8a6a3c, 0x7a4a6a, 0x9a8a5a];
+  let side = 1;
+  for (const p of streets) for (let i = 1; i < p.length; i++) {
+    const [ax, az] = p[i - 1], [bx, bz] = p[i];
+    const len = Math.hypot(bx - ax, bz - az) || 1, ux = (bx - ax) / len, uz = (bz - az) / len;
+    if (Math.hypot(bx - C, bz - C) > C - 4) break;
+    side = -side;
+    const w = 5 + (rnd() * 3 | 0), d = 5 + (rnd() * 2 | 0), off = ROAD_HALF + 2.2 + d / 2;
+    const hx = Math.round(bx + -uz * side * off - w / 2), hz = Math.round(bz + ux * side * off - d / 2);
+    if (!free(hx, hx + w - 1, hz, hz + d - 1)) continue;
+    for (let z = hz - 1; z <= hz + d; z++) for (let x = hx - 1; x <= hx + w; x++) used[x + z * N] = 1;
+    // Door on the side facing the road
+    const fx = bx - (hx + w / 2), fz = bz - (hz + d / 2);
+    const door = Math.abs(fx) > Math.abs(fz) ? (fx > 0 ? 'E' : 'W') : (fz > 0 ? 'S' : 'N');
+    const doorAt = door === 'E' ? [hx + w - 1, hz + (d >> 1)] : door === 'W' ? [hx, hz + (d >> 1)] : door === 'S' ? [hx + (w >> 1), hz + d - 1] : [hx + (w >> 1), hz];
+    buildCottage(set, hx, hz, w, d, doorAt);
+    const out = { E: [1, 0], W: [-1, 0], S: [0, 1], N: [0, -1] }[door];
+    const lx = doorAt[0] + .5 + out[0] * .3 + (out[1] ? 1 : 0), lz = doorAt[1] + .5 + out[1] * .3 + (out[0] ? 1 : 0);
+    torches.push([lx, 2.6, lz]);
+    if (rnd() < .7) {                                              // a villager pottering outside the door
+      const sx = doorAt[0] + .5 + out[0] * 2, sz = doorAt[1] + .5 + out[1] * 2;
+      guards.push({ a: [sx, 0, sz], b: [sx + ux * 4, 0, sz + uz * 4], speed: .5 + rnd() * .3, kind: 'villager', color: tunics[rnd() * tunics.length | 0] });
+    }
+  }
+  return { torches, guards };
+}
+
+// A cottage: plank walls with log corners, windows, and a gabled tiled roof along its longer side
+function buildCottage(set, x0, z0, w, d, [dx, dz]) {
+  const x1 = x0 + w - 1, z1 = z0 + d - 1, WALLH = 4;
+  for (let y = 0; y < WALLH; y++) for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) {
+    const edgeX = x === x0 || x === x1, edgeZ = z === z0 || z === z1;
+    if (!edgeX && !edgeZ) continue;
+    set(x, y, z, edgeX && edgeZ ? LOG : PLANK);
+  }
+  set(dx, 0, dz, AIR); set(dx, 1, dz, AIR);                        // door
+  // Windows in the middle of each wall
+  for (const [x, z] of [[x0, (z0 + z1) >> 1], [x1, (z0 + z1) >> 1], [(x0 + x1) >> 1, z0], [(x0 + x1) >> 1, z1]]) {
+    if (Math.abs(x - dx) + Math.abs(z - dz) > 1) set(x, 2, z, AIR);
+  }
+  const alongX = w >= d;
+  const a0 = alongX ? x0 : z0, a1 = alongX ? x1 : z1, c0 = alongX ? z0 : x0, c1 = alongX ? z1 : x1;
+  const at = (a, c, y, v) => alongX ? set(a, y, c, v) : set(c, y, a, v);
+  for (let k = 0; c0 - 1 + k <= c1 + 1 - k; k++) {
+    const y = WALLH + k, lo = c0 - 1 + k, hi = c1 + 1 - k;
+    for (let a = a0 - 1; a <= a1 + 1; a++) { at(a, lo, y, ROOF); at(a, hi, y, ROOF); }
+    for (let c = lo + 1; c < hi; c++) { at(a0, c, y, PLANK); at(a1, c, y, PLANK); }   // gable ends
+  }
+}
+
 // The main fort at the start, on ground level G
 // Generated place names: 'Fort Ashwick', 'Greywatch Tower', 'the ruins of Old Merrow'
 const NAME_A = ['Ash', 'Grey', 'Hal', 'Iron', 'Raven', 'Stone', 'Wolf', 'Thorn', 'Elder', 'Black', 'Mar', 'Cold', 'Brack', 'Dun', 'Wyn', 'Holl', 'Ost', 'Kel', 'Red', 'Wester'];
 const NAME_B = ['wick', 'den', 'mere', 'hold', 'ford', 'gate', 'moor', 'watch', 'crest', 'barrow', 'fell', 'stead', 'rook', 'vale', 'ridge', 'holm'];
 function placeName(type, rnd) {
   const base = NAME_A[rnd() * NAME_A.length | 0] + NAME_B[rnd() * NAME_B.length | 0];
-  return type === 1 ? `Fort ${base}` : type === 2 ? `${base} Tower` : `the ruins of Old ${base}`;   // 1 fort, 2 tower, 3 ruins
+  return type === 1 ? `Fort ${base}` : type === 2 ? `${base} Tower` : type === 4 ? base : `the ruins of Old ${base}`;   // 1 fort, 2 tower, 3 ruins, 4 village
 }
 const MAIN_TITLE = placeName(1, mulberry32(SEED ^ 0x5eed));
 
@@ -739,8 +848,8 @@ const MAIN_FORT = buildFort((x, y, z, v) => setEdit(x + F0, y + G, z + F0, v), {
 // footprint and the flattened ground around it stay inside the region
 // ---------------------------------------------------------------------------
 const REGION = 192;
-const FORT = 1, TOWER = 2, RUINS = 3;
-const STRUCT_NAMES = ['', 'fort', 'watchtower', 'ruins'];
+const FORT = 1, TOWER = 2, RUINS = 3, VILLAGE = 4;
+const STRUCT_NAMES = ['', 'fort', 'watchtower', 'ruins', 'village'];
 const regionOf = v => Math.floor(v / REGION);
 const plans = new Map();
 
@@ -756,12 +865,13 @@ function planFor(rx, rz) {
   if (rx !== 0 || rz !== 0) {                            // region (0, 0) holds the main fort
     const rnd = mulberry32(Math.imul(rx, 73856093) ^ Math.imul(rz, 19349663) ^ SEED);
     const r = rnd();
-    let type = r < .34 ? FORT : r < .64 ? TOWER : r < .9 ? RUINS : 0;
+    // About half of all regions are left empty
+    let type = r < .1 ? FORT : r < .22 ? TOWER : r < .32 ? RUINS : r < .52 ? VILLAGE : 0;
     if (type) {
-      const N = type === FORT ? 40 + 4 * (rnd() * 3 | 0) : type === TOWER ? 7 : 16 + (rnd() * 10 | 0);
+      const N = type === FORT ? 40 + 4 * (rnd() * 3 | 0) : type === TOWER ? 7 : type === VILLAGE ? 56 : 16 + (rnd() * 10 | 0);
       const ox = rx * REGION + 50 + Math.floor(rnd() * (REGION - 100 - N));
       const oz = rz * REGION + 50 + Math.floor(rnd() * (REGION - 100 - N));
-      const pad = type === FORT ? 4 : 2, blend = type === FORT ? 14 : 9;
+      const pad = type === FORT ? 4 : 2, blend = type === FORT || type === VILLAGE ? 14 : 9;
       // Sample the natural ground over the footprint
       let sum = 0, n = 0, lo = Infinity, hi = -Infinity;
       for (let z = -pad; z <= N + pad; z += 4) for (let x = -pad; x <= N + pad; x += 4) {
@@ -770,8 +880,9 @@ function planFor(rx, rz) {
       const cl = climate(ox + N / 2, oz + N / 2), base = Math.round(sum / n);
       if (lo <= SEA || base <= SEA + 1 || base > H - 24) type = 0;                 // no building in water
       else if (type === FORT && hi - lo > 16) type = TOWER;                             // too rugged for a fort
+      else if (type === VILLAGE && hi - lo > 12) type = 0;
       if (type) plan = {
-        type, N, ox, oz, base, pad, blend, rot: rnd() * 4 | 0, seed: rnd() * 1e9 | 0,
+        type, N, ox, oz, base, pad, blend, rot: type === VILLAGE ? 0 : rnd() * 4 | 0, seed: rnd() * 1e9 | 0,
         mat: cl.desert > .5 ? SANDSTONE : BRICK, towerH: 11 + (rnd() * 4 | 0),
         name: STRUCT_NAMES[type], title: placeName(type, rnd), cx: ox + N / 2, cz: oz + N / 2,
         _edits: null, decor: null, edits() { return this._edits || buildPlan(this); },
@@ -796,6 +907,7 @@ function buildPlan(plan) {
   const extra = plan.type === FORT ? buildFort(set, { N: plan.N, wall: 6 + (rnd() * 2 | 0), mat: plan.mat, keep: plan.N >= 44,
       crates: [[6, 0, 6], [7, 0, 6], [6, 1, 6], [plan.N - 8, 0, plan.N / 2], [plan.N - 8, 0, plan.N / 2 + 1]] })
     : plan.type === TOWER ? buildTower(set, { mat: plan.mat, h: plan.towerH })
+    : plan.type === VILLAGE ? buildVillage(set, plan, rnd)
     : buildRuins(set, { N: plan.N, mat: plan.mat, rnd });
   const toWorld = ([x, y, z]) => { const [lx, lz] = rotateLocal(x, z, S, plan.rot); return [plan.ox + lx, plan.base + y, plan.oz + lz]; };
   plan.decor = {
@@ -804,7 +916,7 @@ function buildPlan(plan) {
       const a = toWorld(g.a), b = g.b ? toWorld(g.b) : null;
       let face = null;
       if (g.face) { const [fx, fz] = rotateLocal(g.face[0], g.face[1], 0, plan.rot); face = Math.atan2(fx, fz); }
-      return { a, b: g.speed ? b : null, speed: g.speed || 0, face };
+      return { a, b: g.speed ? b : null, speed: g.speed || 0, face, kind: g.kind || 'guard', color: g.color };
     }),
   };
   plan._edits = out;
@@ -824,6 +936,7 @@ function roadNode(rx, rz) {
   if (rx === 0 && rz === 0) return [CX + .5, ROAD_END - 8];
   const plan = planFor(rx, rz);
   if (!plan || plan.type === RUINS) return null;
+  if (plan.type === VILLAGE) return [plan.cx, plan.cz];
   if (plan.type === FORT) {
     const [lx, lz] = rotateLocal(plan.N / 2, plan.N + 4, plan.N, plan.rot);
     return [plan.ox + lx, plan.oz + lz];
@@ -860,12 +973,52 @@ function roadBetween(ax, az, bx, bz) {
   return road;
 }
 
-// All roads that touch a region (each road stays within the two regions it joins)
+// Road graph: every fort, watchtower and village links to its two nearest neighbours within two
+// regions (and the starting fort's road end joins in too). Links are symmetric.
+const linkCache = new Map(), nodeRoadCache = new Map();
+function linksOf(rx, rz) {
+  const key = chunkKey(rx, rz);
+  if (linkCache.has(key)) return linkCache.get(key);
+  let out = [];
+  const a = roadNode(rx, rz);
+  if (a) {
+    const cand = [];
+    for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) {
+      if (!dx && !dz) continue;
+      const b = roadNode(rx + dx, rz + dz);
+      if (b) cand.push([rx + dx, rz + dz, Math.hypot(b[0] - a[0], b[1] - a[1])]);
+    }
+    out = cand.filter(c => c[2] < REGION * 2.4).sort((p, q) => p[2] - q[2]).slice(0, 2).map(c => [c[0], c[1]]);
+  }
+  linkCache.set(key, out);
+  return out;
+}
+// Roads that end at a node (both its own picks and nodes that picked it)
+function roadsAtNode(rx, rz) {
+  const key = chunkKey(rx, rz);
+  if (nodeRoadCache.has(key)) return nodeRoadCache.get(key);
+  const set = new Set(), out = [];
+  for (const [bx, bz] of linksOf(rx, rz)) set.add(bx + ',' + bz);
+  for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) {
+    if ((dx || dz) && linksOf(rx + dx, rz + dz).some(([x, z]) => x === rx && z === rz)) set.add((rx + dx) + ',' + (rz + dz));
+  }
+  for (const k of set) { const [bx, bz] = k.split(',').map(Number); const r = roadBetween(rx, rz, bx, bz); if (r) out.push(r); }
+  nodeRoadCache.set(key, out);
+  return out;
+}
+
+// All roads that touch a region: any such road has an end within three regions of it
 function roadsForRegion(rx, rz) {
   const key = chunkKey(rx, rz);
   if (!regionRoads.has(key)) {
-    regionRoads.set(key, [roadBetween(rx, rz, rx + 1, rz), roadBetween(rx - 1, rz, rx, rz),
-      roadBetween(rx, rz, rx, rz + 1), roadBetween(rx, rz - 1, rx, rz)].filter(Boolean));
+    const seen = new Set(), out = [], x0 = rx * REGION, z0 = rz * REGION, x1 = x0 + REGION, z1 = z0 + REGION;
+    for (let dz = -3; dz <= 3; dz++) for (let dx = -3; dx <= 3; dx++) for (const r of roadsAtNode(rx + dx, rz + dz)) {
+      if (seen.has(r)) continue;
+      seen.add(r);
+      const [bx0, bz0, bx1, bz1] = r.box;
+      if (bx1 >= x0 && bx0 <= x1 && bz1 >= z0 && bz0 <= z1) out.push(r);
+    }
+    regionRoads.set(key, out);
   }
   return regionRoads.get(key);
 }
@@ -1245,7 +1398,7 @@ addTorch(CX, G + 3.4, 22.5);                             // inside the main keep
 // Guards: patrol between a and b, or stand still facing `face` (radians)
 const guards = [];
 const guardGeo = new Map(), guardMat = new Map();
-function makeGuard() {
+function makeGuard(kind = 'guard', color = 0x3c6e8a) {
   const g = new THREE.Group();
   const box = (w, h, d, c, x, y, z) => {
     const gk = `${w},${h},${d}`;
@@ -1257,16 +1410,22 @@ function makeGuard() {
     const pivot = new THREE.Group(); pivot.position.set(x, .8, 0);
     pivot.add(box(.18, .8, .2, 0x3a2a1a, 0, -.4, 0)); g.add(pivot); return pivot;
   });
-  g.add(box(.5, .7, .3, 0x8a2020, 0, 1.15, 0));             // tabard
   g.add(box(.3, .3, .3, 0xc89a70, 0, 1.65, 0));             // head
-  g.add(box(.36, .14, .36, 0x777a80, 0, 1.84, 0));          // helmet
-  g.add(box(.05, 2.4, .05, 0x5a4028, .35, 1.2, .1));        // spear
-  g.add(box(.1, .25, .1, 0xaaaaaa, .35, 2.5, .1));
+  if (kind === 'villager') {
+    g.add(box(.5, .7, .3, color, 0, 1.15, 0));              // tunic
+    g.add(box(.44, .06, .44, 0xc8b070, 0, 1.82, 0));        // straw hat
+    g.add(box(.26, .12, .26, 0xc8b070, 0, 1.88, 0));
+  } else {
+    g.add(box(.5, .7, .3, 0x8a2020, 0, 1.15, 0));           // tabard
+    g.add(box(.36, .14, .36, 0x777a80, 0, 1.84, 0));        // helmet
+    g.add(box(.05, 2.4, .05, 0x5a4028, .35, 1.2, .1));      // spear
+    g.add(box(.1, .25, .1, 0xaaaaaa, .35, 2.5, .1));
+  }
   scene.add(g);
   return { g, legs };
 }
 function addGuard(a, b, speed, face = 0, home = null) {
-  const guard = makeGuard();
+  const guard = makeGuard(home?.kind, home?.color);
   guard.a = new THREE.Vector3(...a); guard.b = b && new THREE.Vector3(...b);
   guard.speed = speed; guard.t = rand() * 10; guard.face = face; guard.home = home;
   guard.g.position.copy(guard.a);
@@ -1292,7 +1451,7 @@ function addChunkDecor(c) {
   plan.edits();
   const mine = (x, z) => Math.floor(x / CHUNK) === c.cx && Math.floor(z / CHUNK) === c.cz;
   for (const [x, y, z] of plan.decor.torches) if (mine(x, z)) c.decor.push(['torch', addTorch(x, y, z)]);
-  for (const gd of plan.decor.guards) if (mine(gd.a[0], gd.a[2])) c.decor.push(['guard', addGuard(gd.a, gd.b, gd.speed, gd.face ?? 0, { title: plan.title, plan })]);
+  for (const gd of plan.decor.guards) if (mine(gd.a[0], gd.a[2])) c.decor.push(['guard', addGuard(gd.a, gd.b, gd.speed, gd.face ?? 0, { title: plan.title, plan, kind: gd.kind, color: gd.color })]);
 }
 function removeChunkDecor(c) {
   for (const [kind, obj] of c.decor || []) kind === 'torch' ? removeTorch(obj) : removeGuard(obj);
@@ -1642,6 +1801,11 @@ class MapView {
         ctx.fillStyle = 'rgb(240,170,70)'; ctx.strokeStyle = '#05060d';
         ctx.beginPath(); ctx.moveTo(sx, sz - r); ctx.lineTo(sx + r * .85, sz + r * .6); ctx.lineTo(sx - r * .85, sz + r * .6); ctx.closePath();
         ctx.fill(); ctx.stroke();
+      } else if (type === VILLAGE) {                       // a little house
+        const r = 3.2 * k;
+        ctx.fillStyle = 'rgb(120,200,230)'; ctx.strokeStyle = '#05060d';
+        ctx.beginPath(); ctx.moveTo(sx - r, sz + r); ctx.lineTo(sx - r, sz - r * .1); ctx.lineTo(sx, sz - r); ctx.lineTo(sx + r, sz - r * .1); ctx.lineTo(sx + r, sz + r); ctx.closePath();
+        ctx.fill(); ctx.stroke();
       } else {
         const r = 2.5 * k;
         ctx.strokeStyle = 'rgb(205,200,190)';
@@ -1650,7 +1814,7 @@ class MapView {
     };
     // Zoomed far out there are too many to show: only forts at 32 blocks per pixel, none beyond
     if (scale <= 32) for (const plan of plans.values()) {
-      if (plan && isDiscovered(plan) && (scale <= 16 || plan.type === FORT) && Math.abs(plan.cx - cx) < half && Math.abs(plan.cz - cz) < half) marker(plan.type, plan.cx, plan.cz, plan.N);
+      if (plan && isDiscovered(plan) && (scale <= 16 || plan.type === FORT || plan.type === VILLAGE) && Math.abs(plan.cx - cx) < half && Math.abs(plan.cz - cz) < half) marker(plan.type, plan.cx, plan.cz, plan.N);
     }
     marker(FORT, CX, CX, 52);
     if (canvas.width >= 400) {                           // north marker on the big map
@@ -1680,7 +1844,7 @@ let mapOpen = false, miniOn = true;
 document.getElementById('mapLegend').innerHTML = LEGEND.map(([n, c]) =>
   `<span><i style="background:rgb(${c})"></i>${n}</span>`).join('') +
   '<span><i style="border:2px solid rgb(220,80,55);background:rgba(190,70,50,.35)"></i>Fort</span>' +
-  '<span><b style="color:rgb(240,170,70)">&#9650;</b> Watchtower</span><span><b style="color:rgb(205,200,190)">&#10005;</b> Ruins</span>';
+  '<span><b style="color:rgb(120,200,230)">&#8962;</b> Village</span><span><b style="color:rgb(240,170,70)">&#9650;</b> Watchtower</span><span><b style="color:rgb(205,200,190)">&#10005;</b> Ruins</span>';
 document.getElementById('mapSeed').value = SEED;
 
 function renderBigMap() { bigMap.request(mapState.cx, mapState.cz, MAP_SCALES[mapState.scaleIdx]); }
@@ -1755,6 +1919,8 @@ const LINES = {
   greet: ['Good day, traveller.', 'Well met.', 'Fine weather for walking.', 'Morning.'],
   greetNight: ['Evening, traveller.', 'Cold night for it.', 'Keep to the torchlight.'],
   farewell: ['Safe travels.', 'Mind how you go.', 'Off you go, then.'],
+  villager: ['Hello there!', 'Welcome, stranger.', 'Lovely day for it.', 'Mind the chickens.'],
+  villagerNight: ['Evening.', "Late to be about, isn't it?", 'Stay near the lamps.'],
 };
 const pick = a => a[Math.floor(Math.random() * a.length)];
 const bubbleBox = document.getElementById('bubbles');
@@ -1805,7 +1971,10 @@ function updateGuards(dt) {
     gd.lostT = sees ? 0 : gd.lostT + dt;
 
     // Greet once per encounter when you come near; forget you a few seconds after you've gone
-    if (sees && dist < 7 && !gd.greeted && now - gd.lastSay > 2) { say(gd, pick(night ? LINES.greetNight : LINES.greet)); gd.greeted = true; }
+    if (sees && dist < 7 && !gd.greeted && now - gd.lastSay > 2) {
+      const v = gd.home?.kind === 'villager';
+      say(gd, pick(v ? (night ? LINES.villagerNight : LINES.villager) : night ? LINES.greetNight : LINES.greet)); gd.greeted = true;
+    }
     if (gd.lostT > 5) gd.greeted = false;
     if (sees && dist < TALK_RANGE && (!talkTarget || dist < talkTarget.dist)) talkTarget = { gd, dist };
 
@@ -1852,7 +2021,8 @@ function talk() {
 function openDialogue(gd) {
   dlg.open = true; dlg.gd = gd; dlg.area = null;
   if (document.pointerLockElement) document.exitPointerLock();
-  dlgEl.querySelector('.who').textContent = gd.home ? `Guard · ${gd.home.title}` : 'Guard';
+  const role = gd.home?.kind === 'villager' ? 'Villager' : 'Guard';
+  dlgEl.querySelector('.who').textContent = gd.home ? `${role} \u00b7 ${gd.home.title}` : role;
   const night = env.daylight < .35;
   showDialogue(night ? 'Evening, traveller. Something you need?' : 'Good day. What can I do for you?');
 }
@@ -1901,10 +2071,10 @@ function describeArea(gd) {
   const hx = gd.home?.plan ? regionOf(gd.home.plan.ox) : 0, hz = gd.home?.plan ? regionOf(gd.home.plan.oz) : 0;
   places.forEach(p => { p.d = Math.hypot(p.x - x0, p.z - z0); });
   places.sort((a, b) => a.d - b.d);
-  const tail = { [FORT]: ['They keep a garrison there.', 'Good walls on that one.'], [TOWER]: ['You can see for miles from the top.', 'Climb it if you want a look around.'],
+  const tail = { [VILLAGE]: ['Friendly folk live there.', 'You can get a warm meal there.'], [FORT]: ['They keep a garrison there.', 'Good walls on that one.'], [TOWER]: ['You can see for miles from the top.', 'Climb it if you want a look around.'],
     [RUINS]: ['Nothing but old stones now.', "Nobody's lived there in an age."] };
   for (const p of places.slice(0, 2).filter(p => p.d < 700)) {
-    const byRoad = gd.home && Math.abs(p.rx - hx) + Math.abs(p.rz - hz) === 1 && roadBetween(hx, hz, p.rx, p.rz);
+    const link = gd.home && roadBetween(hx, hz, p.rx, p.rz), byRoad = link && roadsAtNode(hx, hz).includes(link);
     out.push(`${cap(p.title)} ${p.type === RUINS ? 'lie' : 'lies'} ${paces(p.d)} to the ${compass(p.x - x0, p.z - z0)}. ${byRoad ? 'Follow the road and you can\'t miss it.' : pick(tail[p.type])}`);
   }
 
@@ -1983,7 +2153,7 @@ function checkDiscoveries(dt) {
   for (let rz = rz0 - 1; rz <= rz0 + 1; rz++) for (let rx = rx0 - 1; rx <= rx0 + 1; rx++) {
     const plan = planFor(rx, rz);
     if (!plan || discovered.has(placeKey(plan))) continue;
-    const reach = plan.type === FORT ? plan.N * .5 + 30 : plan.type === TOWER ? 34 : plan.N * .5 + 18;
+    const reach = plan.type === FORT ? plan.N * .5 + 30 : plan.type === TOWER ? 34 : plan.type === VILLAGE ? plan.N * .5 + 6 : plan.N * .5 + 18;
     if (Math.hypot(P.pos.x - plan.cx, P.pos.z - plan.cz) < reach) {
       discovered.add(placeKey(plan));
       announce(plan.title);
@@ -2168,7 +2338,7 @@ streamChunks(P.pos.x, P.pos.z, Infinity);
 // If the world changed under a saved position (e.g. a newer version of the generator), step out on top
 if (collides(P.pos.x, P.pos.y, P.pos.z)) { P.pos.y = surfaceY(Math.floor(P.pos.x), Math.floor(P.pos.z)); P.eye = P.pos.y + 1.6; }
 camera.position.set(P.pos.x, P.eye, P.pos.z);
-window.__fort = { discovered, roadAt, roadBetween, rawHeight, dlg, describeArea, MAIN_TITLE, lantern, guards, talk, saveGame, store, env, planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
+window.__fort = { roadsAtNode, linksOf, discovered, roadAt, roadBetween, rawHeight, dlg, describeArea, MAIN_TITLE, lantern, guards, talk, saveGame, store, env, planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
 frame();
 </script>
 </body>

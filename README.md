@@ -25,11 +25,20 @@ npx serve .        # or: python3 -m http.server
 ## Rivers, roads and discovery
 
 - **Rivers:** long meandering rivers wind across the continents, roughly 8–12 blocks wide. Each sits in a wide grassy valley with sandy banks and a channel cut just below sea level, so it fills with water and runs out to the coast. They freeze over in the far north and are rarer and thinner in deserts.
-- **Roads:** dirt roads link each fort and watchtower (and the starting fort) to those in the neighbouring regions, winding gently between them.
+- **Roads:** every fort, watchtower and village links to its two nearest neighbours within two regions (about 450 blocks), and the starting fort joins in too. The roads wind gently between them.
   - They cross rivers on wooden plank bridges, but no road is built across open sea.
   - Trees never grow on them, and they show on the map when zoomed in.
   - A guard will tell you when a road leads to a place they mention.
 - **Discovery:** forts, watchtowers and ruins are hidden on the map until you've been near one. Then a banner announces it (*DISCOVERED — Ravenvale Tower*) and its marker appears. The starting fort is announced when you first enter a world. Discoveries are saved with each world.
+
+## Villages
+
+Villages sit on the road network. The roads meet at a village square with a stone well, and cottages line each road on alternating sides with their doors facing the street.
+
+- **Cottages:** plank walls, log corners, windows, gabled red-tiled roofs, and a torch by the door.
+- **Villagers:** they wear coloured tunics and straw hats and potter about outside their doors. They greet you ("Hello there!", "Welcome, stranger.") and talk like guards, with the same "about this area" answer from their village.
+- **On the map:** villages show as a little house marker once discovered.
+- **Isolated villages:** a village with no road gets a street of its own.
 
 ## Caves
 
@@ -98,7 +107,7 @@ The world map (M) shows biomes, water depth and hill shading, with the fort and 
    - **Blocks:** beaches form where land meets the sea, and steep slopes are bare rock. Underwater is sand, and empty space below sea level fills with water.
    - **Swimming:** water is a separate see-through mesh with drifting ripples. Below the surface you swim slowly and hold jump to rise, and the fog turns murky blue.
 3. **Chunks.** The world is split into 16×16×64 chunks. Each chunk is generated purely from the seed, so any chunk can be built on demand, including neighbours that the mesher or collision needs. Chunks within 6 of the player are meshed nearest-first, within a few milliseconds per frame. Far chunks are unloaded.
-4. **Structures.** The world is divided into 192×192-block regions, and each holds at most one structure, picked from the seed:
+4. **Structures.** The world is divided into 192×192-block regions, and each holds at most one structure, picked from the seed. About half of all regions (more counting the sea) are left empty; of the rest, roughly 10% are forts, 12% watchtowers, 10% ruins and 20% villages:
    - **Forts:** 40, 44 or 48 blocks across, with a gate on a random side, corner towers, wall walks, stairs, a keep in larger ones, torches and guards.
    - **Watchtowers:** 7×7, with spiral stairs inside up to a lookout platform.
    - **Ruins:** broken, overgrown walls with a fallen corner tower and rubble.
