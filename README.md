@@ -119,7 +119,7 @@ The game saves to this browser's local storage, automatically every 10 seconds a
 
 ## Day and night
 
-A full day lasts 10 minutes. The game starts at 18:30, just after sunset. Add `?time=` to the URL to start at another hour, e.g. `index.html?time=12` for noon. The clock and day number show under the minimap and on the world map.
+A full day lasts an hour of real time, or 3 minutes at 20× fast-forward (K). The game starts at 18:30, just after sunset. Add `?time=` to the URL to start at another hour, e.g. `index.html?time=12` for noon. The clock and day number show under the minimap and on the world map.
 
 - **Sky:** a gradient dome with a glow around the sun. Dawn and dusk are pink and orange, noon is blue, and stars fade in at night.
 - **Sun and moon:** the sun rises in the east, peaks to the south and sets in the west, and the moon is always opposite it.

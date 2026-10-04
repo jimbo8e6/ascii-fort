@@ -1376,7 +1376,7 @@ const starMat = new THREE.PointsMaterial({ color: 0x6a7498, size: 1, sizeAttenua
 // ---------------------------------------------------------------------------
 // Day / night cycle. time runs 0..24 (hours); a full day lasts DAY_SECONDS of real time.
 // ---------------------------------------------------------------------------
-const DAY_SECONDS = 600;
+const DAY_SECONDS = 3600;                 // a full day lasts an hour of real time
 const TIME_SPEEDS = [1, 20, 0];               // normal, fast, frozen
 const env = {
   time: (() => { const t = parseFloat(params.get('time')); return isNaN(t) ? 18.5 : ((t % 24) + 24) % 24; })(),
@@ -2465,7 +2465,7 @@ function stepAgent(gd, dt) {
   }
   const pos = gd.g.position;
   if (A.path.length) {
-    const n = A.path[0], dx = n.x - pos.x, dy = n.y - pos.y, dz = n.z - pos.z, d = Math.hypot(dx, dz), step = 2.3 * dt;
+    const n = A.path[0], dx = n.x - pos.x, dy = n.y - pos.y, dz = n.z - pos.z, d = Math.hypot(dx, dz), step = 1.6 * dt;
     if (d <= step) { pos.set(n.x, n.y, n.z); A.node = n; A.path.shift(); }
     else {
       pos.x += dx / d * step; pos.z += dz / d * step; pos.y += dy * step / d;
