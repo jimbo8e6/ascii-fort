@@ -55,6 +55,7 @@ These are placed by the seed like everything else:
   - Only carts within about 120 blocks are drawn.
 - **Boats:** about 7% of chunks with open water have a moored boat bobbing on the surface: rowboats with oars on rivers and lakes, and sailboats at sea.
 - These are 3D models built from boxes and cylinders, not blocks, so they can move and turn freely.
+- **Solid:** carts and boats each have an oriented collision box matching the hull, or the cart and horse together. You can't walk or swim into them, but you can always move out if you end up overlapping one. A cart that runs into you pushes you aside instead of driving through.
 
 ## Caves
 

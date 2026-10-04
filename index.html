@@ -1825,9 +1825,46 @@ function makeBoat(x, z, sea, seed) {
   const base = SEA - .2;
   g.position.set(x, base, z); g.rotation.y = seed * Math.PI * 2; scene.add(g);
   const obj = { g, tick: (dt, t) => { g.position.y = base + Math.sin(t * 1.2 + seed * 9) * .06; g.rotation.z = Math.sin(t * .9 + seed * 5) * .05; } };
+  // Hull footprint (the boat's long axis is its local x)
+  obj.solid = { g, cx: sea ? .2 : 0, cz: 0, hx: sea ? 2.25 : 1.35, hz: sea ? .8 : .58, y0: -.5, y1: .8 };
+  solids.add(obj.solid);
   animated.add(obj); return obj;
 }
-function removeModel(obj) { scene.remove(obj.g); animated.delete(obj); }
+function removeModel(obj) { scene.remove(obj.g); animated.delete(obj); if (obj.solid) solids.delete(obj.solid); }
+
+// Solid models (carts, boats): an oriented box each, in the model's local frame
+const solids = new Set();
+// How far the player at (x, z) with feet at y overlaps a model's box (0 = not at all)
+function solidPen(sd, x, y, z) {
+  const g = sd.g;
+  if (!g.visible || y >= g.position.y + sd.y1 || y + HEIGHT <= g.position.y + sd.y0) return 0;
+  const dx = x - g.position.x, dz = z - g.position.z, c = Math.cos(g.rotation.y), sn = Math.sin(g.rotation.y);
+  const lx = dx * c - dz * sn - sd.cx, lz = dx * sn + dz * c - sd.cz;
+  return Math.max(0, Math.min(sd.hx + RADIUS - Math.abs(lx), sd.hz + RADIUS - Math.abs(lz)));
+}
+// Block a move that goes into a model, or deeper into one; moving out is always allowed
+function solidBlocks(nx, nz, y) {
+  for (const sd of solids) {
+    if (Math.abs(sd.g.position.x - nx) > 8 || Math.abs(sd.g.position.z - nz) > 8) continue;
+    const after = solidPen(sd, nx, y, nz);
+    if (after > 0 && after > solidPen(sd, P.pos.x, y, P.pos.z) - 1e-3) return true;
+  }
+  return false;
+}
+// A cart that runs into the player shoves them out sideways
+function pushFromSolids() {
+  for (const sd of solids) {
+    if (!sd.moving || solidPen(sd, P.pos.x, P.pos.y, P.pos.z) <= 0) continue;
+    const g = sd.g, c = Math.cos(g.rotation.y), sn = Math.sin(g.rotation.y);
+    const dx = P.pos.x - g.position.x, dz = P.pos.z - g.position.z;
+    let lx = dx * c - dz * sn - sd.cx, lz = dx * sn + dz * c - sd.cz;
+    if (sd.hx + RADIUS - Math.abs(lx) < sd.hz + RADIUS - Math.abs(lz)) lx = Math.sign(lx || 1) * (sd.hx + RADIUS + .02);
+    else lz = Math.sign(lz || 1) * (sd.hz + RADIUS + .02);
+    lx += sd.cx; lz += sd.cz;
+    const nx = g.position.x + lx * c + lz * sn, nz = g.position.z - lx * sn + lz * c;
+    if (!collides(nx, P.pos.y, nz)) { P.pos.x = nx; P.pos.z = nz; }
+  }
+}
 
 // Moored boats: a few chunks with open water get one, on rivers and lakes a rowboat, at sea a sailboat
 function boatSpot(c) {
@@ -1880,10 +1917,13 @@ function updateCarts(dt) {
     const want = new Set(), rx0 = regionOf(P.pos.x), rz0 = regionOf(P.pos.z);
     for (let rz = rz0 - 1; rz <= rz0 + 1; rz++) for (let rx = rx0 - 1; rx <= rx0 + 1; rx++)
       for (const road of roadsForRegion(rx, rz)) if (road.seed < .5 && road.pts.length > 8) want.add(road);
-    for (const [road, cart] of carts) if (!want.has(road)) { scene.remove(cart.g); carts.delete(road); }
+    for (const [road, cart] of carts) if (!want.has(road)) { scene.remove(cart.g); solids.delete(cart.solid); carts.delete(road); }
     for (const road of want) if (!carts.has(road)) {
       if (!road.cum) { road.cum = [0]; for (let i = 2; i < road.pts.length; i += 2) road.cum.push(road.cum.at(-1) + Math.hypot(road.pts[i] - road.pts[i - 2], road.pts[i + 1] - road.pts[i - 1])); }
-      carts.set(road, makeCart([0x3c6e8a, 0x6a8a3c, 0x8a6a3c, 0x7a4a6a][road.seed * 8 & 3]));
+      const cart = makeCart([0x3c6e8a, 0x6a8a3c, 0x8a6a3c, 0x7a4a6a][road.seed * 8 & 3]);
+      cart.solid = { g: cart.g, cx: 0, cz: 1.2, hx: .78, hz: 2.2, y0: 0, y1: 2.1, moving: true };   // cart and horse
+      solids.add(cart.solid);
+      carts.set(road, cart);
     }
   }
   for (const [road, cart] of carts) {
@@ -2069,7 +2109,7 @@ function landingY(x, y, z) {
 
 function moveAxis(dx, dz) {
   const nx = P.pos.x + dx, nz = P.pos.z + dz;
-  if (guardBlocks(nx, nz, P.pos.y)) return;
+  if (guardBlocks(nx, nz, P.pos.y) || solidBlocks(nx, nz, P.pos.y)) return;
   if (!collides(nx, P.pos.y, nz)) { P.pos.x = nx; P.pos.z = nz; return; }
   if (!P.grounded && !P.inWater) return;                 // swimmers can climb out onto the bank
   for (const up of [.55, 1.05]) {              // auto step onto stairs / crates
@@ -2726,6 +2766,7 @@ function update(dt, t) {
   updateLantern(dt);
   checkDiscoveries(dt);
   updateModels(dt);
+  if (dt) pushFromSolids();
   updateBridges(dt);
 }
 
@@ -2836,7 +2877,7 @@ streamChunks(P.pos.x, P.pos.z, Infinity);
 // If the world changed under a saved position (e.g. a newer version of the generator), step out on top
 if (collides(P.pos.x, P.pos.y, P.pos.z)) { P.pos.y = surfaceY(Math.floor(P.pos.x), Math.floor(P.pos.z)); P.eye = P.pos.y + 1.6; }
 camera.position.set(P.pos.x, P.eye, P.pos.z);
-window.__fort = { activeBridges, roadInfo, boatSpot, carts, animated, shapeOf, collides, roadsAtNode, linksOf, discovered, roadAt, roadBetween, rawHeight, dlg, describeArea, MAIN_TITLE, lantern, guards, talk, saveGame, store, env, planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
+window.__fort = { solids, activeBridges, roadInfo, boatSpot, carts, animated, shapeOf, collides, roadsAtNode, linksOf, discovered, roadAt, roadBetween, rawHeight, dlg, describeArea, MAIN_TITLE, lantern, guards, talk, saveGame, store, env, planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
 frame();
 </script>
 </body>
