@@ -19,6 +19,14 @@
     gap: 8px; z-index: 6; max-width: calc(100vw - 170px); }
   .btn { background: rgba(10, 12, 24, .6); border: 1px solid rgba(255, 179, 71, .6); color: #ffb347;
     font: inherit; font-size: 12px; padding: 6px 10px; cursor: pointer; }
+  #bubbles { position: fixed; inset: 0; pointer-events: none; z-index: 4; overflow: hidden; }
+  .bubble { position: absolute; left: 0; top: 0; padding: 4px 8px; background: rgba(8, 9, 18, .82); color: #ffd9a0;
+    border: 1px solid rgba(255, 179, 71, .55); font-size: 13px; white-space: nowrap; opacity: 0; transition: opacity .2s; }
+  #talk { position: fixed; left: 50%; bottom: 40px; transform: translateX(-50%); z-index: 3; padding: 10px 18px; }
+  #talk[hidden], #talkHint[hidden] { display: none; }
+  #talkHint { position: fixed; left: 50%; bottom: 44px; transform: translateX(-50%); z-index: 3; font-size: 13px;
+    color: #ffd9a0; background: rgba(8, 9, 18, .7); padding: 6px 12px; pointer-events: none; }
+  body:not(.touch) #talk { display: none; }
   #jump { position: fixed; right: 24px; bottom: 32px; width: 64px; height: 64px; border-radius: 50%; display: none; z-index: 3;
     align-items: center; justify-content: center; }
   #stick { position: fixed; width: 110px; height: 110px; margin: -55px 0 0 -55px; border-radius: 50%;
@@ -54,7 +62,7 @@
 <div id="start">
   <h1>ASCII FORT</h1>
   <p class="keys">WASD / arrows: move &middot; mouse: look &middot; shift: run &middot; space: jump<br>
-     T: toggle ASCII &middot; G: style &middot; [ ]: character size &middot; M: map &middot; N: minimap &middot; K: time speed &middot; esc: pause</p>
+     T: toggle ASCII &middot; G: style &middot; [ ]: character size &middot; M: map &middot; N: minimap &middot; K: time speed &middot; E: talk &middot; esc: pause</p>
   <p class="touchhelp">Left thumb: move &middot; right thumb: look &middot; button: jump</p>
   <p id="saveInfo"></p>
   <div class="go" id="go">click / tap to enter</div>
@@ -88,6 +96,9 @@
   <button class="btn" id="btnTime">TIME</button>
 </div>
 <button class="btn" id="jump">JUMP</button>
+<div id="bubbles"></div>
+<button class="btn" id="talk" hidden>TALK</button>
+<div id="talkHint" hidden>E &middot; answer the guard</div>
 <div id="stick"><div id="knob"></div></div>
 
 <script type="module">
@@ -987,7 +998,7 @@ function addGuard(a, b, speed, face = 0) {
   guards.push(guard);
   return guard;
 }
-function removeGuard(gd) { scene.remove(gd.g); guards.splice(guards.indexOf(gd), 1); }
+function removeGuard(gd) { scene.remove(gd.g); gd.bubble?.remove(); guards.splice(guards.indexOf(gd), 1); }
 
 for (const [a, b, speed] of [
   [[14, 7, 9.5], [50, 7, 9.5], 1.4],
@@ -1129,6 +1140,7 @@ function collides(x, y, z) {
 
 function moveAxis(dx, dz) {
   const nx = P.pos.x + dx, nz = P.pos.z + dz;
+  if (guardBlocks(nx, nz, P.pos.y)) return;
   if (!collides(nx, P.pos.y, nz)) { P.pos.x = nx; P.pos.z = nz; return; }
   if (!P.grounded && !P.inWater) return;                 // swimmers can climb out onto the bank
   for (const up of [.55, 1.05]) {              // auto step onto stairs / crates
@@ -1195,6 +1207,7 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyM') toggleMap();
   if (e.code === 'KeyN') toggleMini();
   if (e.code === 'KeyK') cycleTime();
+  if (e.code === 'KeyE') talk();
   if (e.code === 'Escape' && mapOpen) toggleMap(false, false);
   if (mapOpen && (e.code === 'Equal' || e.code === 'NumpadAdd')) zoomMap(-1);
   if (mapOpen && (e.code === 'Minus' || e.code === 'NumpadSubtract')) zoomMap(1);
@@ -1443,6 +1456,146 @@ function updateMaps() {
 }
 
 // ---------------------------------------------------------------------------
+// Guard awareness: notice the player (range + line of sight), stop and face them,
+// challenge them up close, give up when they leave. Pressing E answers a challenge.
+// ---------------------------------------------------------------------------
+const LINES = {
+  notice: ['?', 'Hm?', "Who's that?"],
+  noticeNight: ['?', 'Who goes there?', 'Show yourself!'],
+  challenge: ['Halt! Who goes there?', 'State your business, stranger.', "That's close enough."],
+  wall: ["You can't be up here!", 'Off the walls, you!'],
+  repeat: ['I said halt!', 'Not one step further.', 'Speak up!'],
+  lost: ['Must have been the wind.', 'Hmph.', '...'],
+  leave: ['And stay away!', 'Hmph. Travellers.', 'Keep moving.'],
+  pass: ['Very well. Pass, friend.', 'Alright. Mind yourself.', 'Fine. Go on through.'],
+  greet: ['Good day.', 'Fine weather.', 'All quiet here.'],
+  greetNight: ['Evening, friend.', 'Cold night.', 'Keep to the torchlight.'],
+};
+const pick = a => a[Math.floor(Math.random() * a.length)];
+const bubbleBox = document.getElementById('bubbles');
+
+function say(gd, text, secs = 3.2) {
+  if (!gd.bubble) { gd.bubble = document.createElement('div'); gd.bubble.className = 'bubble'; bubbleBox.append(gd.bubble); }
+  gd.bubble.textContent = text;
+  gd.bubbleUntil = clock.elapsedTime + secs;
+  gd.lastSay = clock.elapsedTime;
+}
+
+// Line of sight through the block grid between two points (both at eye height)
+function canSee(ax, ay, az, bx, by, bz) {
+  const d = Math.hypot(bx - ax, by - ay, bz - az), n = Math.ceil(d * 3);
+  for (let i = 1; i < n; i++) {
+    const t = i / n;
+    if (solid(get(Math.floor(ax + (bx - ax) * t), Math.floor(ay + (by - ay) * t), Math.floor(az + (bz - az) * t)))) return false;
+  }
+  return true;
+}
+
+// Turn smoothly towards an angle
+function turnTowards(gd, target, dt) {
+  let diff = target - gd.g.rotation.y;
+  diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+  gd.g.rotation.y += diff * Math.min(1, dt * 6);
+}
+
+let talkTarget = null;
+document.getElementById('talk').addEventListener('click', e => { e.stopPropagation(); talk(); });
+function updateGuards(dt) {
+  const now = clock.elapsedTime, night = env.daylight < .35;
+  const range = 9 + env.daylight * 7;                          // they see further by day
+  talkTarget = null;
+  for (const gd of guards) {
+    gd.mode ??= 'patrol'; gd.lostT ??= 0; gd.lastSay ??= -99; gd.losT ??= 0;
+    const pos = gd.g.position, dx = P.pos.x - pos.x, dz = P.pos.z - pos.z, dy = P.pos.y - pos.y;
+    const dist = Math.hypot(dx, dz) + Math.max(0, Math.abs(dy) - 2) * .7;
+
+    // Awareness (line of sight is re-checked a few times a second)
+    if (dist < range + 2) {
+      gd.losT -= dt;
+      if (gd.losT <= 0) { gd.losT = .2; gd.seeing = dist < 2.5 || canSee(pos.x, pos.y + 1.65, pos.z, P.pos.x, P.pos.y + 1.6, P.pos.z); }
+    } else gd.seeing = false;
+    const sees = gd.seeing && dist < range;
+    gd.lostT = sees ? 0 : gd.lostT + dt;
+
+    if (gd.mode === 'friendly') {
+      if (now > gd.friendlyUntil) gd.mode = 'patrol';
+      else if (sees && dist < 5 && now - gd.lastSay > 25) say(gd, pick(night ? LINES.greetNight : LINES.greet));
+    } else if (gd.mode === 'patrol') {
+      if (sees) { gd.mode = 'alert'; say(gd, pick(night ? LINES.noticeNight : LINES.notice), 2); }
+    } else {
+      if (gd.mode === 'alert' && sees && dist < 6) {
+        gd.mode = 'challenge';
+        const onWall = P.pos.y - terrainHeight(Math.floor(P.pos.x), Math.floor(P.pos.z)) >= 4;    // up on the battlements
+        say(gd, pick(onWall ? LINES.wall : LINES.challenge));
+      } else if (gd.mode === 'challenge' && sees && dist < 6 && now - gd.lastSay > 7) say(gd, pick(LINES.repeat));
+      if (gd.lostT > 4 || dist > range + 6) {
+        say(gd, pick(gd.mode === 'challenge' ? LINES.leave : LINES.lost), 2.5);
+        gd.mode = 'patrol';
+      }
+    }
+    if (gd.mode === 'challenge' && dist < 6.5 && (!talkTarget || dist < talkTarget.dist)) talkTarget = { gd, dist };
+
+    // Movement: patrol when calm (or friendly), otherwise stand and face the player
+    const watching = gd.mode === 'alert' || gd.mode === 'challenge' || gd.mode === 'friendly' && sees && dist < 4;
+    if (watching) {
+      turnTowards(gd, Math.atan2(dx, dz), dt);
+      gd.legs[0].rotation.x = gd.legs[1].rotation.x = 0;
+    } else if (!gd.b) {
+      turnTowards(gd, gd.face, dt);
+    } else {
+      gd.t += dt * gd.speed;
+      const span = gd.a.distanceTo(gd.b), phase = (gd.t / span) % 2;
+      const k = phase < 1 ? phase : 2 - phase;
+      pos.lerpVectors(gd.a, gd.b, k);
+      const dir = phase < 1 ? gd.b.clone().sub(gd.a) : gd.a.clone().sub(gd.b);
+      turnTowards(gd, Math.atan2(dir.x, dir.z), dt * 2);
+      const swing = Math.sin(gd.t * 5) * .5;
+      gd.legs[0].rotation.x = swing; gd.legs[1].rotation.x = -swing;
+    }
+  }
+  document.getElementById('talk').hidden = !talkTarget;
+  document.getElementById('talkHint').hidden = !talkTarget || isTouch;
+}
+
+function talk() {
+  if (!talkTarget) return;
+  // Answering satisfies every guard close by who was watching you; the nearest one replies
+  for (const gd of guards) {
+    if (gd.mode !== 'alert' && gd.mode !== 'challenge') continue;
+    if (gd.g.position.distanceTo(P.pos) > 10) continue;
+    gd.mode = 'friendly'; gd.friendlyUntil = clock.elapsedTime + 120; gd.lastSay = clock.elapsedTime;
+  }
+  say(talkTarget.gd, pick(LINES.pass));
+}
+
+// Place speech bubbles over the guards' heads (HTML, so they stay readable in ASCII mode)
+const bubbleV = new THREE.Vector3();
+function updateBubbles() {
+  for (const gd of guards) {
+    const b = gd.bubble;
+    if (!b) continue;
+    const left = gd.bubbleUntil - clock.elapsedTime;
+    bubbleV.copy(gd.g.position); bubbleV.y += 2.75;
+    const d = bubbleV.distanceTo(camera.position);
+    bubbleV.project(camera);
+    if (left <= 0 || bubbleV.z > 1 || d > 40 || mapOpen) { b.style.opacity = 0; continue; }
+    b.style.opacity = Math.min(1, left * 2) * (1 - Math.max(0, d - 25) / 15);
+    b.style.transform = `translate(${(bubbleV.x * .5 + .5) * innerWidth}px, ${(-bubbleV.y * .5 + .5) * innerHeight}px) translate(-50%, -100%)`;
+  }
+}
+
+// The player can't walk through guards (but can always step away from one)
+function guardBlocks(nx, nz, y) {
+  for (const gd of guards) {
+    const p = gd.g.position;
+    if (Math.abs(p.y - y) > 1.7) continue;
+    const dNew = Math.hypot(nx - p.x, nz - p.z);
+    if (dNew < .65 && dNew < Math.hypot(P.pos.x - p.x, P.pos.z - p.z)) return true;
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------------------
 // Main loop
 // ---------------------------------------------------------------------------
 const clock = new THREE.Clock();
@@ -1506,24 +1659,14 @@ function update(dt, t) {
     if (tr) { l.position.copy(tr.g.position); l.position.y += .3; l.intensity = 10 * tr.f * (1 - env.daylight * .65); } else l.intensity = 0;
   });
 
-  // Guards ping-pong along their patrol line
-  for (const gd of guards) {
-    if (!gd.b) { gd.g.rotation.y = gd.face; continue; }
-    gd.t += dt * gd.speed;
-    const dist = gd.a.distanceTo(gd.b), phase = (gd.t / dist) % 2;
-    const k = phase < 1 ? phase : 2 - phase;
-    gd.g.position.lerpVectors(gd.a, gd.b, k);
-    const dir = phase < 1 ? gd.b.clone().sub(gd.a) : gd.a.clone().sub(gd.b);
-    gd.g.rotation.y = Math.atan2(dir.x, dir.z);
-    const swing = Math.sin(gd.t * 5) * .5;
-    gd.legs[0].rotation.x = swing; gd.legs[1].rotation.x = -swing;
-  }
+  updateGuards(dt);
 }
 
 function frame() {
   const dt = Math.min(clock.getDelta(), .05);
   streamChunks(P.pos.x, P.pos.z, 6);
   update(started && !mapOpen ? dt : 0, clock.elapsedTime);
+  updateBubbles();
   updateMaps();
   if (!started) { P.yaw = P.homeYaw + Math.sin(clock.elapsedTime * .15) * .25; camera.rotation.set(P.pitch, P.yaw, 0); }
   sky.position.copy(camera.position);
@@ -1621,7 +1764,7 @@ streamChunks(P.pos.x, P.pos.z, Infinity);
 // If the world changed under a saved position (e.g. a newer version of the generator), step out on top
 if (collides(P.pos.x, P.pos.y, P.pos.z)) { P.pos.y = surfaceY(Math.floor(P.pos.x), Math.floor(P.pos.z)); P.eye = P.pos.y + 1.6; }
 camera.position.set(P.pos.x, P.eye, P.pos.z);
-window.__fort = { saveGame, store, env, planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
+window.__fort = { guards, talk, saveGame, store, env, planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
 frame();
 </script>
 </body>

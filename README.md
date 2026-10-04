@@ -19,7 +19,20 @@ npx serve .        # or: python3 -m http.server
 | T: toggle ASCII, G: style, `[` `]`: character size | ASCII / STYLE / SIZE buttons |
 | M: world map, N: minimap | MAP button |
 | K: time speed (normal / 20× / paused) | TIME button |
+| E: answer a guard's challenge | TALK button (appears when challenged) |
 | Esc: pause and free the mouse (top-right buttons stay clickable) | |
+
+## Guards
+
+Guards patrol the walls and courtyards and stand watch at the gates. They now notice you.
+
+- **Seeing you:** a guard sees you within about 16 blocks by day and 9 at night, as long as no blocks are in the way. Walls, keeps and hills hide you, though they'll still hear you right up close.
+- **Noticing:** the guard stops, turns to face you and says something like "?" or "Who goes there?". Patrols resume where they left off.
+- **Challenging:** within about 6 blocks they challenge you ("Halt! Who goes there?"), with a different line if you're up on the battlements, and repeat it if you linger.
+- **Answering:** press **E** or tap **TALK** to answer. Every guard nearby who was watching you lets you pass and stays friendly for two minutes, with the odd greeting.
+- **Losing you:** walk off or slip out of sight for a few seconds and they give up ("Must have been the wind.", "And stay away!") and go back to their rounds.
+- **Speech bubbles** are drawn over the 3D view rather than inside it, so they stay readable in ASCII mode.
+- **Solid:** guards block your way, but you can always step away from one.
 
 ## Saving
 
