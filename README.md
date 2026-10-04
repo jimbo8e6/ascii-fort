@@ -65,6 +65,7 @@ Winding tunnels and big caverns run under the land, and in some areas they break
 - **Lantern:** you carry one that glows automatically whenever there's rock over your head. The minimap shows *underground*.
 - **Crystals:** glowing violet crystals grow on floors and ceilings deep down.
 - **Where they don't go:** caves never cut under the forts, the road or other structures, and they stay a few blocks below the sea bed.
+- **The surface stays whole:** caverns always keep at least 7 blocks of rock overhead, and tunnels narrow near the surface, so entrances are occasional holes in the ground rather than open pits.
 
 ## Guards and conversations
 

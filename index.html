@@ -603,11 +603,14 @@ function generateChunk(cx, cz) {
     for (let lz = 0; lz < CHUNK; lz++) for (let lx = 0; lx < CHUNK; lx++) {
       const x = ox + lx, z = oz + lz, h = hAt(lx, lz);
       if (flatness(x, z) > .01 || structureAt(x, z)) continue;                    // keep forts and the road solid
-      const open = noiseC(x * .009 + 500, z * .009 - 300) > .5;                   // entrance country
+      const open = noiseC(x * .009 + 500, z * .009 - 300) > .62;                  // the odd stretch of entrance country
       const cap = h <= SEA + 1 ? h - 6 : open ? h : h - 4;
       for (let y = 2; y < cap; y++) {
         const a = sample(fa, lx, y, lz), b = sample(fb, lx, y, lz);
-        if (a * a + b * b < .011 || y < 24 && sample(fc, lx, y, lz) > .38 + (24 - y) * -.004) {
+        // Tunnels narrow near the surface, so entrances are holes rather than trenches; caverns always
+        // keep at least 7 blocks of rock overhead
+        const tube = y > h - 5 ? .004 : .011;
+        if (a * a + b * b < tube || y < Math.min(24, h - 7) && sample(fc, lx, y, lz) > .38 + (24 - y) * -.004) {
           const i = lx + lz * CHUNK + y * 256;
           if (data[i] !== WATER) data[i] = AIR;
         }
