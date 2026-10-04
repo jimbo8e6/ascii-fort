@@ -364,6 +364,47 @@ const AIR = 0, BRICK = 1, WOOD = 2, GRASS = 3, DIRT = 4, PATH = 5, ROCK = 6, LOG
       WATER = 9, SAND = 10, SANDSTONE = 11, SNOW = 12, ICE = 13, CACTUS = 14, OAK_LEAVES = 15, SNOW_LEAVES = 16, CRYSTAL = 17, PLANK = 18, ROOF = 19;
 const isLeaves = v => v === LEAVES || v === OAK_LEAVES || v === SNOW_LEAVES;
 const solid = v => v !== AIR && v !== WATER;
+// Shaped blocks: slabs (half height), stairs and roof wedges. Each is a block id from 32 up that
+// records its base block (for textures), its shape and, for stairs and wedges, which way it rises:
+// 0 = towards +x (east), 1 = -x (west), 2 = +z (south), 3 = -z (north).
+const SHAPED = [];                                  // id - 32 -> { base, shape, dir }
+const shapedIds = new Map();
+function shapedId(base, shape, dir = 0) {
+  const key = `${base},${shape},${dir}`;
+  if (!shapedIds.has(key)) { shapedIds.set(key, 32 + SHAPED.length); SHAPED.push({ base, shape, dir }); }
+  return shapedIds.get(key);
+}
+for (const b of [GRASS, SAND, SNOW, ROCK, SANDSTONE, DIRT, PATH]) shapedId(b, 'slab');
+for (const b of [BRICK, SANDSTONE, PLANK, ROCK]) for (let d = 0; d < 4; d++) shapedId(b, 'stair', d);
+for (let d = 0; d < 4; d++) shapedId(ROOF, 'wedge', d);
+const shapeOf = v => v >= 32 ? SHAPED[v - 32] : null;
+const cube = v => v !== AIR && v !== WATER && v < 32;          // a full block (hides neighbours' faces)
+const SLAB_OF = new Map([GRASS, SAND, SNOW, ROCK, SANDSTONE, DIRT, PATH].map(b => [b, shapedId(b, 'slab')]));
+const stairOf = (base, dir) => shapedId(base, 'stair', dir);
+const wedgeOf = dir => shapedId(ROOF, 'wedge', dir);
+const DIR_VEC = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+const dirFromVec = (dx, dz) => Math.abs(dx) >= Math.abs(dz) ? (dx > 0 ? 0 : 1) : (dz > 0 ? 2 : 3);
+// Rotate a direction by quarter turns, matching rotateLocal
+function rotateDir(dir, rot) {
+  let [dx, dz] = DIR_VEC[dir];
+  for (let i = 0; i < rot; i++) [dx, dz] = [-dz, dx];
+  return dirFromVec(dx, dz);
+}
+function rotateShaped(v, rot) {
+  const s = shapeOf(v);
+  return !s || s.shape === 'slab' || !rot ? v : shapedId(s.base, s.shape, rotateDir(s.dir, rot));
+}
+
+// Height of a shape's top over a rectangle (cell-local 0..1 coordinates), for collision
+function shapeTop(s, x0, x1, z0, z1) {
+  if (s.shape === 'slab') return .5;
+  const [dx, dz] = DIR_VEC[s.dir];
+  // How far towards the high side the rectangle reaches (0..1)
+  const reach = dx > 0 ? x1 : dx < 0 ? 1 - x0 : dz > 0 ? z1 : 1 - z0;
+  if (s.shape === 'stair') return reach > .5 ? 1 : .5;
+  return Math.max(0, Math.min(1, reach));                     // wedge
+}
+
 const CHUNK = 16, H = 64;                 // chunk footprint and world height
 const G = 16;                             // ground level the fort is built on
 const SEA = G - 3;                        // water fills empty space below this height
@@ -532,6 +573,9 @@ function generateChunk(cx, cz) {
     else if (biome === SNOWY) top = SNOW;
     else if (h > G + 22) top = sub = ROCK;
     for (let y = 0; y < h; y++) put(lx, y, lz, y === h - 1 ? top : y >= h - 4 ? sub : ROCK);
+    // A half step where the ground rises by exactly one block next door, smoothing the terraces
+    if (h > SEA && !st && SLAB_OF.has(top) && (hAt(lx + 1, lz) === h + 1 || hAt(lx - 1, lz) === h + 1 || hAt(lx, lz + 1) === h + 1 || hAt(lx, lz - 1) === h + 1))
+      put(lx, h, lz, SLAB_OF.get(top));
     for (let y = h; y < SEA; y++) put(lx, y, lz, y === SEA - 1 && cold[i] > .6 ? ICE : WATER);
     if (road && h < SEA) put(lx, SEA - 1, lz, WOOD);                          // plank bridge
   }
@@ -664,8 +708,8 @@ function buildFort(set, { N, wall, mat, keep = true, crates = [] }) {
 
   // Stairs up to the gate-side wall walk, either side of the gate
   for (let k = 1; k <= wall; k++) {
-    fill(5 + k, 6 + k, 0, k, N - 5, N - 3);
-    fill(N - 6 - k, N - 5 - k, 0, k, N - 5, N - 3);
+    fill(5 + k, 6 + k, 0, k - 1, N - 5, N - 3); fill(5 + k, 6 + k, k - 1, k, N - 5, N - 3, stairOf(mat, 0));
+    fill(N - 6 - k, N - 5 - k, 0, k - 1, N - 5, N - 3); fill(N - 6 - k, N - 5 - k, k - 1, k, N - 5, N - 3, stairOf(mat, 1));
   }
 
   // Keep in the courtyard: hollow, with a door and window slits
@@ -701,7 +745,10 @@ function buildTower(set, { mat, h }) {
   const ring = [[1, 1], [2, 1], [3, 1], [4, 1], [5, 1], [5, 2], [5, 3], [5, 4], [5, 5], [4, 5], [3, 5], [2, 5], [1, 5], [1, 4], [1, 3], [1, 2]];
   // Platform over the ring, open above the last few steps for headroom
   ring.forEach(([x, z], i) => { if (i < h - 4 || i > h - 2) set(x, h - 1, z, mat); });
-  for (let k = 1; k < h; k++) { const [x, z] = ring[k - 1]; fill(x, x + 1, 0, k, z, z + 1); }
+  for (let k = 1; k < h; k++) {
+    const [x, z] = ring[k - 1], [nx, nz] = ring[k % ring.length];
+    fill(x, x + 1, 0, k - 1, z, z + 1); set(x, k - 1, z, stairOf(mat, dirFromVec(nx - x, nz - z)));
+  }
   clear(0, 1, 0, 2, 2, 3);                               // door into the bottom of the spiral
   for (const [x, z] of [[3, 0], [6, 3], [3, 6]]) clear(x, x + 1, 5, 7, z, z + 1);   // window slits
   return {
@@ -823,7 +870,11 @@ function buildCottage(set, x0, z0, w, d, [dx, dz]) {
   const at = (a, c, y, v) => alongX ? set(a, y, c, v) : set(c, y, a, v);
   for (let k = 0; c0 - 1 + k <= c1 + 1 - k; k++) {
     const y = WALLH + k, lo = c0 - 1 + k, hi = c1 + 1 - k;
-    for (let a = a0 - 1; a <= a1 + 1; a++) { at(a, lo, y, ROOF); at(a, hi, y, ROOF); }
+    const up = alongX ? [2, 3] : [0, 1];                          // the two slopes rise towards the ridge
+    for (let a = a0 - 1; a <= a1 + 1; a++) {
+      if (lo === hi) at(a, lo, y, ROOF);
+      else { at(a, lo, y, wedgeOf(up[0])); at(a, hi, y, wedgeOf(up[1])); }
+    }
     for (let c = lo + 1; c < hi; c++) { at(a0, c, y, PLANK); at(a1, c, y, PLANK); }   // gable ends
   }
 }
@@ -897,6 +948,7 @@ function planFor(rx, rz) {
 function buildPlan(plan) {
   const out = new Map(), S = plan.type === TOWER ? 7 : plan.N;
   const set = (x, y, z, v) => {
+    v = rotateShaped(v, plan.rot);
     const [lx, lz] = rotateLocal(x, z, S - 1, plan.rot), wx = plan.ox + lx, wz = plan.oz + lz, wy = plan.base + y;
     if (wy < 0 || wy >= H) return;
     const k = chunkKey(wx >> 4, wz >> 4);
@@ -1200,7 +1252,7 @@ function meshChunk(c, water = false) {
   const block = (x, y, z) => (x >= 0 && x < CHUNK && z >= 0 && z < CHUNK && y >= 0 && y < H)
     ? data[x + z * CHUNK + y * 256] : get(ox + x, y, oz + z);
   const buf = MAT_NAMES.map(() => ({ pos: [], nrm: [], uv: [], col: [], sky: [], idx: [] }));
-  const occ = (x, y, z) => solid(block(x, y, z)) ? 1 : 0;
+  const occ = (x, y, z) => cube(block(x, y, z)) ? 1 : 0;
   // Sky visibility: the lowest y with open sky above, per column (leaves let light through), one column of margin
   const skyTop = new Int16Array(18 * 18);
   for (let z = -1; z <= CHUNK; z++) for (let x = -1; x <= CHUNK; x++) {
@@ -1251,10 +1303,10 @@ function meshChunk(c, water = false) {
         const a = block(x[0], x[1], x[2]), b = block(x[0] + q[0], x[1] + q[1], x[2] + q[2]);
         const aIn = x[d] >= 0, bIn = x[d] < dims[d] - 1 || d === 1;
         if (water) mask[n] = a === WATER && !b && aIn ? MAT.water | 255 << 8 | 3 << 16 : b === WATER && !a && bIn ? -(MAT.water | 255 << 8 | 3 << 16) : 0;
-        else if (solid(a) && !solid(b) && aIn) {
+        else if (cube(a) && !cube(b) && aIn) {
           const ax = x[0] + q[0], ay = x[1] + q[1], az = x[2] + q[2];
           mask[n] = faceMaterial(a, posFace) | aoPack(ax, ay, az) << 8 | skyLevel(ax, ay, az) << 16;
-        } else if (solid(b) && !solid(a) && bIn) {
+        } else if (cube(b) && !cube(a) && bIn) {
           mask[n] = -(faceMaterial(b, posFace + 1) | aoPack(x[0], x[1], x[2]) << 8 | skyLevel(x[0], x[1], x[2]) << 16);
         }
         else mask[n] = 0;
@@ -1291,6 +1343,64 @@ function meshChunk(c, water = false) {
         else b.idx.push(i0, i2, i1, i0, i3, i2);
         for (let l = 0; l < h; l++) for (let k = 0; k < w; k++) mask[n + k + l * dims[u]] = 0;
         i += w; n += w;
+      }
+    }
+  }
+
+  // Shaped blocks: small meshes per block (not merged), faces against full blocks skipped
+  {
+    const quad = (mi, pts, n, sky, vOff) => {
+      const b = buf[mi - 1], base = b.pos.length / 3;
+      const ax = Math.abs(n[0]), ay = Math.abs(n[1]), az = Math.abs(n[2]);
+      for (const [x, y, z] of pts) {
+        b.pos.push(x, y, z); b.nrm.push(n[0], n[1], n[2]); b.col.push(1, 1, 1); b.sky.push(sky);
+        if (ay >= ax && ay >= az) b.uv.push(x, z); else if (ax >= az) b.uv.push(z, y + vOff); else b.uv.push(x, y + vOff);
+      }
+      // Wind each triangle to face along n
+      const [p0, p1, p2] = pts, e1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]], e2 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
+      const flip = (e1[1] * e2[2] - e1[2] * e2[1]) * n[0] + (e1[2] * e2[0] - e1[0] * e2[2]) * n[1] + (e1[0] * e2[1] - e1[1] * e2[0]) * n[2] < 0;
+      const tri = pts.length === 3 ? [[0, 1, 2]] : [[0, 1, 2], [0, 2, 3]];
+      for (const [a, c, d] of tri) flip ? b.idx.push(base + a, base + d, base + c) : b.idx.push(base + a, base + c, base + d);
+    };
+    // An axis-aligned box inside the cell; faces on the cell boundary are skipped when a full block covers them
+    const box = (s, lx, y, lz, wx, wz, x0, y0, z0, x1, y1, z1, sky) => {
+      const X0 = wx + x0, X1 = wx + x1, Y0 = y + y0, Y1 = y + y1, Z0 = wz + z0, Z1 = wz + z1, vOff = 1 - y1;
+      const hid = (dx, dy, dz) => cube(block(lx + dx, y + dy, lz + dz));
+      if (!(x1 === 1 && hid(1, 0, 0))) quad(faceMaterial(s.base, 0), [[X1, Y0, Z0], [X1, Y1, Z0], [X1, Y1, Z1], [X1, Y0, Z1]], [1, 0, 0], sky, vOff);
+      if (!(x0 === 0 && hid(-1, 0, 0))) quad(faceMaterial(s.base, 1), [[X0, Y0, Z0], [X0, Y1, Z0], [X0, Y1, Z1], [X0, Y0, Z1]], [-1, 0, 0], sky, vOff);
+      if (!(y1 === 1 && hid(0, 1, 0))) quad(faceMaterial(s.base, 2), [[X0, Y1, Z0], [X1, Y1, Z0], [X1, Y1, Z1], [X0, Y1, Z1]], [0, 1, 0], sky, 0);
+      if (!(y0 === 0 && hid(0, -1, 0))) quad(faceMaterial(s.base, 3), [[X0, Y0, Z0], [X1, Y0, Z0], [X1, Y0, Z1], [X0, Y0, Z1]], [0, -1, 0], sky, 0);
+      if (!(z1 === 1 && hid(0, 0, 1))) quad(faceMaterial(s.base, 4), [[X0, Y0, Z1], [X1, Y0, Z1], [X1, Y1, Z1], [X0, Y1, Z1]], [0, 0, 1], sky, vOff);
+      if (!(z0 === 0 && hid(0, 0, -1))) quad(faceMaterial(s.base, 5), [[X0, Y0, Z0], [X1, Y0, Z0], [X1, Y1, Z0], [X0, Y1, Z0]], [0, 0, -1], sky, vOff);
+    };
+    if (!water) for (let y = 0; y < ymax; y++) for (let lz = 0; lz < CHUNK; lz++) for (let lx = 0; lx < CHUNK; lx++) {
+      const v = data[lx + lz * CHUNK + y * 256];
+      if (v < 32) continue;
+      const s = SHAPED[v - 32], wx = ox + lx, wz = oz + lz, sky = SKY_SHADE[skyLevel(lx, y + 1, lz)];
+      if (s.shape === 'slab') { box(s, lx, y, lz, wx, wz, 0, 0, 0, 1, .5, 1, sky); continue; }
+      const [dx, dz] = DIR_VEC[s.dir];
+      if (s.shape === 'stair') {
+        box(s, lx, y, lz, wx, wz, 0, 0, 0, 1, .5, 1, sky);
+        const hx0 = dx > 0 ? .5 : 0, hx1 = dx < 0 ? .5 : 1, hz0 = dz > 0 ? .5 : 0, hz1 = dz < 0 ? .5 : 1;
+        box(s, lx, y, lz, wx, wz, hx0, .5, hz0, hx1, 1, hz1, sky);
+        continue;
+      }
+      // Wedge: rises from height 0 on the low edge to 1 on the high edge (dir)
+      const mi = faceMaterial(s.base, 2), X0 = wx, X1 = wx + 1, Y0 = y, Y1 = y + 1, Z0 = wz, Z1 = wz + 1;
+      const hgt = (x, z) => dx > 0 ? x - X0 : dx < 0 ? X1 - x : dz > 0 ? z - Z0 : Z1 - z;   // 0..1 across the cell
+      const cs = [[X0, Z0], [X1, Z0], [X1, Z1], [X0, Z1]];
+      const slope = [-dx, 1, -dz], len = Math.hypot(...slope);
+      quad(mi, cs.map(([x, z]) => [x, Y0 + hgt(x, z), z]), slope.map(c => c / len), sky, 0);
+      if (!cube(block(lx, y - 1, lz))) quad(mi, cs.map(([x, z]) => [x, Y0, z]), [0, -1, 0], sky, 0);
+      if (!cube(block(lx + dx, y, lz + dz))) {                       // the tall back face
+        const e = cs.filter(([x, z]) => hgt(x, z) === 1);
+        quad(mi, [[e[0][0], Y0, e[0][1]], [e[1][0], Y0, e[1][1]], [e[1][0], Y1, e[1][1]], [e[0][0], Y1, e[0][1]]], [dx, 0, dz], sky, 0);
+      }
+      for (const side of [-1, 1]) {                                   // the two triangular ends
+        const sx = dz ? side : 0, sz = dx ? side : 0;
+        const e = cs.filter(([x, z]) => (sx ? (sx > 0 ? x === X1 : x === X0) : (sz > 0 ? z === Z1 : z === Z0)));
+        const lowP = e.find(([x, z]) => hgt(x, z) === 0), highP = e.find(([x, z]) => hgt(x, z) === 1);
+        quad(mi, [[lowP[0], Y0, lowP[1]], [highP[0], Y0, highP[1]], [highP[0], Y1, highP[1]]], [sx, 0, sz], sky, 0);
       }
     }
   }
@@ -1563,13 +1673,33 @@ resize();
 const P = { pos: new THREE.Vector3(CX + .5, 0, F1 + 24.5), vy: 0, grounded: true, yaw: 0, pitch: 0.05, eye: 1.6, bob: 0, inWater: false, homeYaw: 0 };   // homeYaw: facing while on the start screen
 const RADIUS = .3, HEIGHT = 1.75;
 
+// Height of the solid part of a cell under the player's footprint (0 = none, 1 = full block)
+function cellTop(v, ix, iz, x, z) {
+  if (!solid(v)) return 0;
+  const s = shapeOf(v);
+  if (!s) return 1;
+  return shapeTop(s, Math.max(0, x - RADIUS - ix), Math.min(1, x + RADIUS - ix), Math.max(0, z - RADIUS - iz), Math.min(1, z + RADIUS - iz));
+}
 function collides(x, y, z) {
   const eps = 1e-4;
   for (let iy = Math.floor(y + eps); iy <= Math.floor(y + HEIGHT - eps); iy++)
     for (let iz = Math.floor(z - RADIUS); iz <= Math.floor(z + RADIUS - eps); iz++)
-      for (let ix = Math.floor(x - RADIUS); ix <= Math.floor(x + RADIUS - eps); ix++)
-        if (solid(get(ix, iy, iz))) return true;
+      for (let ix = Math.floor(x - RADIUS); ix <= Math.floor(x + RADIUS - eps); ix++) {
+        const top = cellTop(get(ix, iy, iz), ix, iz, x, z);
+        if (top && y < iy + top - eps) return true;
+      }
   return false;
+}
+// Where feet land when falling into the layer at y: the highest solid top under the footprint
+function landingY(x, y, z) {
+  const iy = Math.floor(y + 1e-4);
+  let best = -Infinity;
+  for (let iz = Math.floor(z - RADIUS); iz <= Math.floor(z + RADIUS - 1e-4); iz++)
+    for (let ix = Math.floor(x - RADIUS); ix <= Math.floor(x + RADIUS - 1e-4); ix++) {
+      const top = cellTop(get(ix, iy, iz), ix, iz, x, z);
+      if (top) best = Math.max(best, iy + top);
+    }
+  return best > -Infinity ? best : iy + 1;
 }
 
 function moveAxis(dx, dz) {
@@ -2198,7 +2328,7 @@ function update(dt, t) {
   jumpQueued = false;
   const ny = P.pos.y + P.vy * dt;
   if (P.vy <= 0) {
-    if (collides(P.pos.x, ny, P.pos.z)) { P.pos.y = Math.floor(ny) + 1; P.vy = 0; P.grounded = true; }
+    if (collides(P.pos.x, ny, P.pos.z)) { P.pos.y = landingY(P.pos.x, ny, P.pos.z); P.vy = 0; P.grounded = true; }
     else { P.pos.y = ny; P.grounded = false; }
   } else {
     if (collides(P.pos.x, ny, P.pos.z)) P.vy = 0; else P.pos.y = ny;
@@ -2338,7 +2468,7 @@ streamChunks(P.pos.x, P.pos.z, Infinity);
 // If the world changed under a saved position (e.g. a newer version of the generator), step out on top
 if (collides(P.pos.x, P.pos.y, P.pos.z)) { P.pos.y = surfaceY(Math.floor(P.pos.x), Math.floor(P.pos.z)); P.eye = P.pos.y + 1.6; }
 camera.position.set(P.pos.x, P.eye, P.pos.z);
-window.__fort = { roadsAtNode, linksOf, discovered, roadAt, roadBetween, rawHeight, dlg, describeArea, MAIN_TITLE, lantern, guards, talk, saveGame, store, env, planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
+window.__fort = { shapeOf, collides, roadsAtNode, linksOf, discovered, roadAt, roadBetween, rawHeight, dlg, describeArea, MAIN_TITLE, lantern, guards, talk, saveGame, store, env, planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
 frame();
 </script>
 </body>

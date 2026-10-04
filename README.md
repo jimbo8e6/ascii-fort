@@ -127,8 +127,14 @@ The world map (M) shows biomes, water depth and hill shading, with the fort and 
    - **Sky light:** each face also stores how much open sky the air in front of it can see. There are four levels: open, under an overhang, sheltered, and deep underground, with light leaking in sideways and leaves letting it through.
    - A small patch to the Lambert shader scales only the sun/moon and sky light by that value, leaving point lights (torches, lantern) untouched.
    - Faces only merge when their corner shading matches. Each quad is split along the diagonal that keeps a dark corner from smearing across it.
-7. **The starting fort** is built with the same `buildFort()` as the procedural forts, on flattened ground at the spawn, with a road leading to its gate.
-8. **Lighting.** Hemisphere sky light and a sun/moon directional light driven by the day/night cycle, exponential fog that hides the edge of the loaded area, and torchlight from the light pool described above.
-9. **ASCII pass.** The 3D scene is rendered into a low-resolution target, at 2× the character grid. A full-screen shader picks a character for each cell based on its brightness, then tints it with the scene colour. The glyph atlas is redrawn at the exact on-screen cell size, so small characters stay sharp.
+7. **Shaped blocks.** As well as full cubes, the grid holds slabs (half blocks), stairs and sloped roof wedges.
+   - Each one records its base block (for textures), its shape and the direction it rises.
+   - **Terrain:** a slab goes wherever the ground rises by exactly one block next door, turning hard terraces into half-steps.
+   - **Structures:** fort and watchtower stairs use stair blocks (rotated with the structure), and cottage roofs are built from wedges into proper sloped gables.
+   - **Drawing:** shaped blocks get small per-block meshes, with faces hidden against neighbouring cubes. Cubes still use the merged greedy mesh.
+   - **Collision:** it reads each shape's height under your feet, so you walk up slabs and stairs in smooth half-steps.
+8. **The starting fort** is built with the same `buildFort()` as the procedural forts, on flattened ground at the spawn, with a road leading to its gate.
+9. **Lighting.** Hemisphere sky light and a sun/moon directional light driven by the day/night cycle, exponential fog that hides the edge of the loaded area, and torchlight from the light pool described above.
+10. **ASCII pass.** The 3D scene is rendered into a low-resolution target, at 2× the character grid. A full-screen shader picks a character for each cell based on its brightness, then tints it with the scene colour. The glyph atlas is redrawn at the exact on-screen cell size, so small characters stay sharp.
    - **FINE** (default): about 40 characters, sorted at startup by how much ink each covers, with some of the scene colour blended behind them. This gives smooth shading.
    - **CLASSIC**: the short ramp ` .,:-=+*o#%@` on a dark background.
