@@ -61,6 +61,13 @@ Villages sit on the road network. The roads meet at a village square with a ston
 - **Fires follow the people:** a fire only burns while someone's home and awake. Chimney smoke and lit windows now mean someone's in.
 - **Getting around:** villagers walk a path network covering the streets, the square, each house's door, its rooms, stairs and bed, and a path round the outside to the plot behind. They go through doorways and up the stairs instead of through walls.
 - **Talking:** the panel shows their name, job and village. Ask *Who are you?*, *What are you doing?* (it depends on what they're actually doing) and, for millers and farmers, *Where do you get your wheat seed?* Seed is kept back from each harvest and stored in the house, with a count of sacks; when a harvest fails, it's bought from the merchant who comes from the nearest other village.
+- **Farming:** each farming household (and the miller's) has a wheat field on the plot behind the house, with tilled soil and furrows.
+  - **Sowing:** uses a sack of the household's seed, and the farmer walks up and down the rows.
+  - **Growing:** the wheat takes about 40 game hours (well under two days), rising from green shoots to tall golden ears.
+  - **Harvest:** a ripe field yields 4–6 sacks. One sack is kept back as seed and the rest are carried on the farmer's back to the windmill (in a village without a mill they're stored at home). The field is left as stubble until it's sown again.
+  - **No seed:** with nothing to sow, the field stays bare until a merchant brings seed.
+- **Milling:** the miller grinds one sack of wheat into one sack of flour every 1½ game hours. The sails turn only while there's wheat to grind and the miller is at work. Sacks of wheat and flour pile up by the mill door to show its stock. Between batches the miller works their own field.
+- **More to ask:** *How are the crops?* (stage and when they'll be ready) and the miller's *How's the mill?* (wheat waiting, flour ready).
 - **Groundwork for trade:** a goods catalogue (wheat seed, wheat, flour, bread, each with a value and source) and per-household stock. Farming, milling, baking and trading will build on this.
 - **Simulation scope:** only villages near you are fully simulated. When you arrive, everyone starts wherever their routine has them at that hour.
 - **On the map:** villages show as a little house marker once discovered.

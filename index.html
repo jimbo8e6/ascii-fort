@@ -852,7 +852,8 @@ function buildVillage(set, plan, rnd) {
     // Footprint (plus a margin) must be clear of roads and other buildings
     const cells = [];
     let ok = true;
-    for (let lx = -w / 2 - 1; lx <= w / 2 + 1.01 && ok; lx += .7) for (let lz = -d / 2 - 1; lz <= d / 2 + 1.01 && ok; lz += .7) {
+    // (including the plot behind it, for a field or garden)
+    for (let lx = -w / 2 - 1; lx <= w / 2 + 1.01 && ok; lx += .7) for (let lz = -d / 2 - 6.3; lz <= d / 2 + 1.01 && ok; lz += .7) {
       const wx = cx + lx * c + lz * s, wz = cz - lx * s + lz * c, ix = Math.floor(wx), iz = Math.floor(wz);
       if (ix < 2 || iz < 2 || ix > N - 3 || iz > N - 3 || used[ix + iz * N]) ok = false;
       else if (Math.abs(lx) <= w / 2 + .3 && Math.abs(lz) <= d / 2 + .3 && nearRoad(wx, wz, ROAD_HALF + .4)) ok = false;
@@ -1704,6 +1705,7 @@ const guards = [];
 const guardGeo = new Map(), guardMat = new Map();
 function makeGuard(kind = 'guard', color = 0x3c6e8a) {
   const g = new THREE.Group();
+  let sack = null;
   const box = (w, h, d, c, x, y, z) => {
     const gk = `${w},${h},${d}`;
     if (!guardGeo.has(gk)) guardGeo.set(gk, new THREE.BoxGeometry(w, h, d));
@@ -1719,6 +1721,7 @@ function makeGuard(kind = 'guard', color = 0x3c6e8a) {
     g.add(box(.5, .7, .3, color, 0, 1.15, 0));              // tunic
     g.add(box(.44, .06, .44, 0xc8b070, 0, 1.82, 0));        // straw hat
     g.add(box(.26, .12, .26, 0xc8b070, 0, 1.88, 0));
+    sack = box(.42, .5, .3, 0xc8a860, 0, 1.25, -.3); sack.visible = false; g.add(sack);   // a sack carried on the back
   } else {
     g.add(box(.5, .7, .3, 0x8a2020, 0, 1.15, 0));           // tabard
     g.add(box(.36, .14, .36, 0x777a80, 0, 1.84, 0));        // helmet
@@ -1726,7 +1729,7 @@ function makeGuard(kind = 'guard', color = 0x3c6e8a) {
     g.add(box(.1, .25, .1, 0xaaaaaa, .35, 2.5, .1));
   }
   scene.add(g);
-  return { g, legs };
+  return { g, legs, sack };
 }
 function addGuard(a, b, speed, face = 0, home = null) {
   const guard = makeGuard(home?.kind, home?.color);
@@ -1924,7 +1927,7 @@ function buildingMat(key) {
   const [base, mod] = key.split(':');
   const m = base[0] === '#' ? new THREE.MeshLambertMaterial({ color: parseInt(base.slice(1), 16) })
     : base === 'glass' ? new THREE.MeshLambertMaterial({ color: 0x2c3c4c })
-    : new THREE.MeshLambertMaterial({ map: TEX[BDEF[base]] });
+    : TEX[BDEF[base]] ? new THREE.MeshLambertMaterial({ map: TEX[BDEF[base]] }) : new THREE.MeshLambertMaterial();
   if (mod === 'in') m.color.multiplyScalar(.55);
   return BMAT[key] = m;
 }
@@ -2366,7 +2369,9 @@ function startVillage(plan) {
     const out = at(L.doorX, 0, L.D / 2 + 1.3, 'door'), inn = at(L.doorX, L.floorY, L.D / 2 - 1, 'in');
     const fire = at(L.fx0 - .6, L.floorY, 0, 'fire', Math.PI / 2), seat = at(L.tx, L.floorY, L.two ? 1 : .45, 'seat', Math.PI);
     const o = 1.4, fr = at(L.W / 2 + o, 0, L.D / 2 + o), fl = at(-L.W / 2 - o, 0, L.D / 2 + o), br = at(L.W / 2 + o, 0, -L.D / 2 - o), bl = at(-L.W / 2 - o, 0, -L.D / 2 - o);
-    const back = at(0, 0, -L.D / 2 - 2.6, 'plot', Math.PI);
+    const back = at(0, 0, -L.D / 2 - 1.4, 'plot', Math.PI);
+    const fieldA = at(-L.W / 2 + 1, 0, -L.D / 2 - 3.6, 'field', Math.PI / 2), fieldB = at(L.W / 2 - 1, 0, -L.D / 2 - 3.6, 'field', -Math.PI / 2);
+    link(back, fieldA); link(back, fieldB); link(fieldA, fieldB);
     [out, fr, br, back, bl, fl, out].reduce((a, b) => (link(a, b), b));
     link(out, inn); link(inn, fire); link(inn, seat); link(seat, fire);
     let bed;
@@ -2381,7 +2386,7 @@ function startVillage(plan) {
       link(inn, way); link(way, side); link(side, bed);
     }
     toStreet(out);
-    V.houses.push({ m, two: L.two, out, fire, seat, back, bed, people: [], stock: {} });
+    V.houses.push({ m, two: L.two, out, fire, seat, back, fieldA, fieldB, bed, people: [], stock: {}, field: null });
     activeHouses.add(m.seed);
   }
   if (info.mill) {
@@ -2406,13 +2411,22 @@ function startVillage(plan) {
     if (h) { h.people[0].job = 'miller'; h.stock.wheatSeed = 3 + (rnd() * 3 | 0); }
   }
   V.houses.forEach((h, i) => { if (h.people[0].job === 'homemaker' && i % 2 === 0) { h.people[0].job = 'farmer'; h.stock.wheatSeed = 2 + (rnd() * 4 | 0); } });
+  // Fields for the farming households, each at some point in its season; the mill's store
+  const T = gameHours();
+  V.fields = [];
+  for (const h of V.houses) if (h.people.some(p => p.job === 'farmer' || p.job === 'miller')) {
+    const r = rnd(), f = { stage: r < .45 ? 'growing' : r < .7 ? 'ripe' : 'empty', sownAt: T - rnd() * (GROW_HOURS - 2), work: 0, stubble: rnd() < .5 };
+    f.view = makeField(h.m); h.field = f; V.fields.push(f); showField(f);
+  }
+  V.millStock = { wheat: rnd() * 3 | 0, flour: 1 + (rnd() * 4 | 0) }; V.grind = 0;
+  if (info.mill) V.piles = makeMillPiles(V, info.mill);
   // Bring everyone in at wherever their routine has them right now
   for (const p of V.people) {
     p.act = activityFor(p, env.time);
     const n = targetNode(p, p.act);
     p.gd = addGuard([n.x, n.y, n.z], null, 0, n.face ?? 0, { title: plan.title, plan, kind: 'villager', color: p.color, person: p });
     p.gd.g.rotation.order = 'YXZ';
-    p.gd.agent = { node: n, goal: n, path: [] };
+    p.gd.agent = { node: n, goal: n, path: [], pause: 0 };
     pose(p.gd, n, p.act === 'sleep');
   }
   villages.add(V);
@@ -2422,6 +2436,8 @@ function stopVillage(V) {
   for (const p of V.people) removeGuard(p.gd);
   for (const h of V.houses) { activeHouses.delete(h.m.seed); houseAwake.delete(h.m.seed); }
   if (V.millKey) millBusy.delete(V.millKey);
+  for (const f of V.fields) { scene.remove(f.view.ground, f.view.plants); }
+  if (V.piles) for (const g of [...V.piles.wheat, ...V.piles.flour]) scene.remove(g);
   villages.delete(V);
 }
 
@@ -2433,14 +2449,14 @@ function activityFor(p, h) {
   if (h < 7.3) return 'seat';                                          // breakfast
   if (h >= 11.8 && h < 13.2) return 'square';                           // midday at the square
   if (h >= 17.6 + p.jitter * .5) return Math.floor((h - 17.6) * 2) % 3 === 0 ? 'fire' : 'seat';   // evening at home
-  if (p.job === 'miller') return p.village.mill ? 'mill' : 'plot';
-  if (p.job === 'farmer') return 'plot';
+  if (p.job === 'miller') return millerTask(p);
+  if (p.job === 'farmer') return farmTask(p);
   return Math.floor(h) % 2 ? 'chores' : 'well';
 }
 function targetNode(p, act) {
   const h = p.house, V = p.village;
   return { sleep: h.bed, fire: h.fire, chores: h.fire, seat: h.seat, square: V.ring[p.idx % 8], well: V.ring[(p.idx + 4) % 8],
-    mill: V.mill || h.back, plot: h.back }[act];
+    mill: V.mill || h.back, plot: h.back, sow: h.fieldA, harvest: h.fieldA, tend: h.fieldA, deliver: V.mill || h.out }[act];
 }
 // Shortest route over the path network (breadth-first; the graphs are small)
 function route(a, b) {
@@ -2473,18 +2489,127 @@ function stepAgent(gd, dt) {
       const swing = Math.sin(clock.elapsedTime * 7) * .5;
       gd.legs[0].rotation.x = swing; gd.legs[1].rotation.x = -swing;
     }
-    if (!A.path.length) { pose(gd, A.goal, p.act === 'sleep'); A.asleep = p.act === 'sleep'; }
+    if (!A.path.length) { pose(gd, A.goal, p.act === 'sleep'); A.asleep = p.act === 'sleep'; A.pause = 1.5 + Math.random() * 2; }
+  } else if (FIELD_TASKS.has(p.act) && (A.pause -= dt) <= 0) {      // work along the rows, end to end
+    const h = p.house; A.goal = A.node === h.fieldA ? h.fieldB : h.fieldA; A.path = route(A.node, A.goal);
   }
 }
+let lastHours = null;
 function updateVillages() {
+  const T = gameHours(), dh = lastHours === null ? 0 : Math.max(0, Math.min(1, T - lastHours));
+  lastHours = T;
   houseAwake.clear();
   for (const V of villages) {
+    workVillage(V, dh);
     for (const p of V.people) if (['fire', 'seat', 'chores'].includes(p.act)) houseAwake.set(p.house.m.seed, (houseAwake.get(p.house.m.seed) || 0) + 1);
     if (V.millKey) {
       const miller = V.people.find(p => p.job === 'miller');
-      millBusy.set(V.millKey, !!miller && miller.act === 'mill' && !miller.gd.agent.path.length);
+      millBusy.set(V.millKey, !!miller && miller.act === 'mill' && !miller.gd.agent.path.length && V.millStock.wheat > 0);
     }
   }
+}
+
+// ---- Farming and milling ----
+const GROW_HOURS = 40, SOW_HOURS = 1.5, HARVEST_HOURS = 2, GRIND_HOURS = 1.5;
+const FIELD_TASKS = new Set(['sow', 'harvest', 'tend']);
+const gameHours = () => env.day * 24 + env.time;
+const WHEAT_GREEN = new THREE.Color(0x4f8a2c), WHEAT_GOLD = new THREE.Color(0xd8b048), STUBBLE = new THREE.Color(0x9a8048);
+
+// A wheat field on the plot behind a cottage: tilled soil with furrows, and rows of wheat that grow
+function makeField(m) {
+  const L = cottagePlan(m), x0 = -L.W / 2 + .6, x1 = L.W / 2 - .6, z0 = -L.D / 2 - 5.6, z1 = -L.D / 2 - 1.6;
+  const soil = new Kit();
+  soil.aabb('#5a4030', x0, 0, z0, x1, .1, z1);
+  for (let z = z0 + .35; z < z1; z += .5) soil.aabb('#3e2c20', x0, .1, z - .07, x1, .12, z + .07);
+  const ground = soil.build(m.pos[0], m.pos[1], m.pos[2], m.angle).group;
+  const crop = new Kit(), r = mulberry32(m.seed ^ 0xf1e1d);
+  for (let z = z0 + .35; z < z1 - .1; z += .5) for (let x = x0 + .15; x < x1 - .05; x += .28) {
+    const jx = (r() - .5) * .1, jz = (r() - .5) * .1, h = .85 + r() * .25;
+    crop.box('wheat', .05, h, .05, x + jx, h / 2, z + jz);
+    crop.box('wheat', .1, .2, .1, x + jx, h - .05, z + jz);            // ear
+  }
+  const plants = crop.build(m.pos[0], m.pos[1] + .1, m.pos[2], m.angle).group;
+  const mat = new THREE.MeshLambertMaterial({ color: WHEAT_GREEN });
+  plants.children.forEach(c => { c.material = mat; });
+  scene.add(ground, plants);
+  return { ground, plants, mat };
+}
+function showField(f) {
+  const v = f.view;
+  if (!v) return;
+  if (f.stage === 'growing') {
+    const k = Math.min(1, (gameHours() - f.sownAt) / GROW_HOURS);
+    v.plants.visible = true; v.plants.scale.y = .08 + .92 * k;
+    v.mat.color.copy(WHEAT_GREEN).lerp(WHEAT_GOLD, Math.max(0, (k - .65) / .35));
+  } else if (f.stage === 'ripe') { v.plants.visible = true; v.plants.scale.y = 1; v.mat.color.copy(WHEAT_GOLD); }
+  else { v.plants.visible = f.stubble; v.plants.scale.y = .14; v.mat.color.copy(STUBBLE); }
+}
+
+// What a farmer (or the miller, between batches) should be doing at work
+function farmTask(p) {
+  const H = p.house, f = H.field;
+  if (p.carrying) return 'deliver';
+  if (!f) return 'tend';
+  if (f.stage === 'ripe') return 'harvest';
+  if (f.stage === 'empty' && (H.stock.wheatSeed || 0) > 0) return 'sow';
+  return 'tend';
+}
+function millerTask(p) {
+  const V = p.village;
+  if (!V.mill) return farmTask(p);
+  if (p.carrying) return 'deliver';
+  if (V.millStock.wheat > 0) return 'mill';
+  const f = p.house.field;
+  if (f && (f.stage === 'ripe' || f.stage === 'empty' && (p.house.stock.wheatSeed || 0) > 0)) return farmTask(p);
+  return 'mill';
+}
+
+// Progress the farm and mill work for one village by dh game hours
+function workVillage(V, dh) {
+  const T = gameHours();
+  for (const h of V.houses) {
+    const f = h.field;
+    if (f && f.stage === 'growing' && T - f.sownAt >= GROW_HOURS) f.stage = 'ripe';
+  }
+  for (const p of V.people) {
+    const A = p.gd.agent, f = p.house.field, H = p.house;
+    const atField = A.node.tag === 'field', atMill = !A.path.length && A.node === V.mill;
+    if (p.act === 'sow' && atField && f) {
+      f.work += dh;
+      if (f.work >= SOW_HOURS) { f.work = 0; H.stock.wheatSeed--; f.stage = 'growing'; f.sownAt = T; f.stubble = false; }
+    } else if (p.act === 'harvest' && atField && f) {
+      f.work += dh;
+      if (f.work >= HARVEST_HOURS) {
+        f.work = 0; f.stage = 'empty'; f.stubble = true;
+        const sacks = 4 + (Math.random() * 3 | 0);
+        H.stock.wheatSeed = (H.stock.wheatSeed || 0) + 1;                // a share kept back as seed
+        if (V.mill) p.carrying = sacks - 1; else H.stock.wheat = (H.stock.wheat || 0) + sacks - 1;
+      }
+    } else if (p.act === 'deliver' && atMill) {
+      V.millStock.wheat += p.carrying; p.carrying = 0;
+    } else if (p.act === 'mill' && atMill && V.millStock.wheat > 0) {
+      V.grind += dh;
+      if (V.grind >= GRIND_HOURS) { V.grind = 0; V.millStock.wheat--; V.millStock.flour++; }
+    }
+    if (p.gd.sack) p.gd.sack.visible = !!p.carrying;
+  }
+  // Sacks piled by the mill door show the stock
+  if (V.piles) {
+    V.piles.wheat.forEach((s, i) => { s.visible = i < V.millStock.wheat; });
+    V.piles.flour.forEach((s, i) => { s.visible = i < V.millStock.flour; });
+  }
+  for (const h of V.houses) if (h.field) showField(h.field);
+}
+function makeMillPiles(V, m) {
+  const c = Math.cos(m.angle), s = Math.sin(m.angle), piles = { wheat: [], flour: [] };
+  const at = (lx, lz) => [m.pos[0] + lx * c + lz * s, m.pos[2] - lx * s + lz * c];
+  for (const [kind, side, color] of [['wheat', 1, 0xc8a860], ['flour', -1, 0xe8e2d0]]) for (let i = 0; i < 8; i++) {
+    const g = new THREE.Group(), [x, z] = at(side * (1.4 + (i % 4) * .55), -3.1 - (i >> 2) * .1);
+    g.position.set(x, m.pos[1] + (i >> 2) * .5, z); g.rotation.y = m.angle + i;
+    part(g, .45, .5, .35, color, 0, .25, 0); part(g, .2, .1, .2, color, 0, .55, 0);
+    scene.add(g); piles[kind].push(g);
+  }
+  return piles;
 }
 
 // Conversation pieces for villagers
@@ -2504,9 +2629,30 @@ function villagerDoing(p) {
     seat: h < 10 ? 'Having a bit of breakfast.' : 'Resting after the day.',
     square: 'Catching up on the gossip, same as everyone at midday.',
     well: 'Fetching water from the well.',
-    mill: p.gd.agent.path.length ? 'Off to the mill. The sails won\'t turn themselves.' : 'Minding the millstones. The sails are turning nicely today.',
-    plot: p.job === 'miller' ? 'Seeing to the wheat behind the house.' : 'Tending our plot. The wheat is coming on.',
+    mill: p.gd.agent.path.length ? 'Off to the mill. The sails won\'t turn themselves.'
+      : p.village.millStock.wheat > 0 ? 'Grinding wheat. The sails are turning nicely today.' : 'Waiting for grain. Nothing to grind until the next harvest comes in.',
+    plot: 'Seeing to the plot behind the house.',
+    sow: 'Sowing the field. A sack of seed goes a long way if you\'re careful with it.',
+    harvest: 'Bringing in the harvest while the weather holds.',
+    tend: p.house.field?.stage === 'empty' ? 'Keeping the field clear until we can sow it again.' : 'Weeding between the rows.',
+    deliver: `Taking ${p.carrying} ${p.carrying === 1 ? 'sack' : 'sacks'} of wheat up to the mill.`,
   }[p.act] || 'Nothing much.';
+}
+function villagerCrops(p) {
+  const f = p.house.field, seed = p.house.stock.wheatSeed || 0;
+  if (f.stage === 'ripe') return 'Ripe and golden. It wants bringing in before the weather turns.';
+  if (f.stage === 'growing') {
+    const left = Math.max(0, GROW_HOURS - (gameHours() - f.sownAt)), k = 1 - left / GROW_HOURS;
+    const look = k < .25 ? 'Just green shoots so far' : k < .65 ? 'Coming on nicely, good and green' : 'Turning gold';
+    return `${look}. It should be ready ${left < 20 ? 'by tomorrow' : left < 32 ? 'in a day or so' : 'in a couple of days'}.`;
+  }
+  return seed > 0 ? `The field's bare at the moment. I'll sow it as soon as I can. We've ${seed} ${seed === 1 ? 'sack' : 'sacks'} of seed put by.`
+    : "The field's bare and we've no seed left to sow. We'll have to wait for the merchant.";
+}
+function villagerMill(p) {
+  const s = p.village.millStock;
+  return `${s.wheat ? `${s.wheat} ${s.wheat === 1 ? 'sack' : 'sacks'} of wheat waiting to be ground` : 'No wheat waiting to be ground'}, and ${s.flour} ${s.flour === 1 ? 'sack' : 'sacks'} of flour ready. ` +
+    'The farmers bring their wheat up after the harvest, and I grind it as the wind allows.';
 }
 function villagerSeed(p) {
   const stock = p.house.stock.wheatSeed || 0, V = p.village;
@@ -3145,6 +3291,8 @@ function showDialogue(text) {
   if (p) {
     opts.push(['Who are you?', () => showDialogue(villagerAbout(p))]);
     opts.push(['What are you doing?', () => showDialogue(villagerDoing(p))]);
+    if (p.house.field) opts.push(['How are the crops?', () => showDialogue(villagerCrops(p))]);
+    if (p.job === 'miller' && p.village.mill) opts.push(["How's the mill?", () => showDialogue(villagerMill(p))]);
     if (p.job === 'miller' || p.job === 'farmer') opts.push(['Where do you get your wheat seed?', () => showDialogue(villagerSeed(p))]);
   }
   opts.push(['What can you tell me about this area?', () => showDialogue(dlg.area ??= describeArea(dlg.gd))]);
@@ -3468,7 +3616,7 @@ function simulate(seconds) {
   for (let t = 0; t < seconds; t += .05) { updateSky(.05); updateVillages(); updateGuards(.05); updateCottages(.05); }
   env.speedIdx = keep;
 }
-window.__fort = { millBusy, simulate, villages, activityFor, cottages, colliderGrid, solids, activeBridges, roadInfo, boatSpot, carts, animated, shapeOf, collides, roadsAtNode, linksOf, discovered, roadAt, roadBetween, rawHeight, dlg, describeArea, MAIN_TITLE, lantern, guards, talk, saveGame, store, env, planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
+window.__fort = { gameHours, millBusy, simulate, villages, activityFor, cottages, colliderGrid, solids, activeBridges, roadInfo, boatSpot, carts, animated, shapeOf, collides, roadsAtNode, linksOf, discovered, roadAt, roadBetween, rawHeight, dlg, describeArea, MAIN_TITLE, lantern, guards, talk, saveGame, store, env, planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
 frame();
 </script>
 </body>
