@@ -872,6 +872,19 @@ function buildVillage(set, plan, rnd) {
     models.push({ kind: 'windmill', x: cx + .5, y: 0, z: cz + .5, angle: Math.atan2(-ix / l, -iz / l) });
     break;
   }
+  // The cottage nearest the square is the bakery, and a market stall stands on the square
+  const homes = models.filter(m => m.kind === 'cottage');
+  if (homes.length >= 2) {
+    homes.reduce((a, b) => Math.hypot(b.x - C, b.z - C) < Math.hypot(a.x - C, a.z - C) ? b : a).bakery = true;
+    let best = null;
+    for (let k = 0; k < 16; k++) {
+      const a = k / 16 * Math.PI * 2, x = C + Math.cos(a) * 5, z = C + Math.sin(a) * 5, tx = -Math.sin(a), tz = Math.cos(a);
+      let clear = 0;
+      for (const t of [-1.6, 0, 1.6]) for (const r of [-.8, .9]) if (!nearRoad(x + tx * t + Math.cos(a) * r, z + tz * t + Math.sin(a) * r, ROAD_HALF + .3)) clear++;
+      if (!best || clear > best.clear) best = { clear, x, z, a };
+    }
+    models.push({ kind: 'stall', x: best.x, y: 0, z: best.z, angle: Math.atan2(-Math.cos(best.a), -Math.sin(best.a)) });
+  }
   return { torches, guards, models, village: { streets, radius: C - 3 } };
 }
 
@@ -2183,13 +2196,37 @@ function makeCottage(m) {
     bed(ix0 + .15, iz0 + .05); chest(ix0 + .6, iz0 + 2.55); rugAt(ix0 + 1.6, iz0 + 2.5, 1, 1.4);
   }
 
+  // The bakery: a domed bread oven in the back corner, a shop counter by the door, a sign outside
+  const ovX = ix1 - .85, ovZ = iz0 + .65, cX0 = doorX + .75, cX1 = Math.min(ix1 - .1, doorX + 2.3), cZ = iz1 - .65;
+  if (m.bakery) {
+    K.aabb('stone:in', ovX - .75, floorY, iz0, ix1, floorY + .8, iz0 + 1.3, true);
+    const dome = new THREE.SphereGeometry(.68, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2); dome.translate(ovX, floorY + .8, ovZ); K.add('stone:in', dome);
+    K.solid(ovX - .7, floorY + .8, iz0, ix1, floorY + 1.5, iz0 + 1.3);
+    K.box('#140c06', .42, .3, .12, ovX, floorY + .98, ovZ + .62);                                     // oven mouth
+    K.aabb('stone:in', ovX - .2, floorY + 1.4, iz0, ovX + .2, groundTop - (two ? .2 : 0), iz0 + .4);  // flue
+    K.aabb('wood:in', cX0, floorY, cZ - .25, cX1, floorY + .9, cZ + .25, true);                     // counter
+    K.aabb('timber:in', cX0 - .03, floorY + .9, cZ - .28, cX1 + .03, floorY + .95, cZ + .28);
+    for (let i = 0; i < 3; i++) K.cyl('#e8e2d0:in', .2, .24, .55, ix0 + .4 + i * .5, floorY, iz0 + .35, 8);   // flour sacks
+    const sx = doorX - 1, sy = floorY + 2.45;                                                          // hanging sign
+    K.box('timber', .06, .06, .75, sx, sy, D / 2 + .37);
+    K.box('#6e4a2c', .05, .42, .58, sx, sy - .3, D / 2 + .5);
+    K.box('#d89a4a', .09, .15, .32, sx, sy - .3, D / 2 + .5);
+  }
+
   // Assemble, light and register
   const built = K.build(m.pos[0], m.pos[1], m.pos[2], m.angle);
   scene.add(built.group);
   addColliders(built.colliders);
   const fireAt = built.toWorld(ix1 - .4, hearthY + .25, 0), lampAt = built.toWorld(doorX + .85, floorY + 2.2, D / 2 + .2);
-  const fire = addFire(...fireAt), lamp = addLantern(...lampAt);
-  const obj = { g: built.group, spec: m, doorX, colliders: built.colliders, torches: [fire, lamp], fire, glass: built.meshes.glass,
+  const fire = addFire(...fireAt), lamp = addLantern(...lampAt), torchList = [fire, lamp];
+  let loaves = [], ovenFire = null;
+  if (m.bakery) {
+    const shelf = new THREE.Group(); built.group.add(shelf);
+    loaves = loafRow(shelf, cX0 + .25, cX1 - .25, floorY + .95, cZ);
+    ovenFire = addFire(...built.toWorld(ovX, floorY + .95, ovZ + .3)); ovenFire.big = false; ovenFire.off = true;
+    torchList.push(ovenFire);
+  }
+  const obj = { g: built.group, spec: m, doorX, colliders: built.colliders, torches: torchList, fire, loaves, ovenFire, ovenLit: false, glass: built.meshes.glass,
     seed: m.seed, chimney: built.toWorld(cx, chimTop + .45, 0), smokeT: 0, on: null };   // null: first update sets the fire
   cottages.add(obj);
   return obj;
@@ -2269,6 +2306,7 @@ function removeBuilding(obj) {
   removeColliders(obj.colliders);
   for (const t of obj.torches) removeTorch(t);
   animated.delete(obj); cottages.delete(obj);
+  if (obj.key) stalls.delete(obj.key);
   obj.g.traverse(o => o.geometry && o.geometry.dispose());
 }
 
@@ -2289,8 +2327,9 @@ function updateCottages(dt) {
       if (h.glass) h.glass.material = on && env.daylight < .5 ? WINDOW_GLOW : buildingMat('glass');
     }
     if (h.glass && on) h.glass.material = env.daylight < .5 ? WINDOW_GLOW : buildingMat('glass');
-    // Smoke rises from the chimney while the fire burns (only for houses nearby)
-    if (!on || Math.hypot(h.chimney[0] - P.pos.x, h.chimney[2] - P.pos.z) > 110) continue;
+    if (h.ovenFire) h.ovenFire.off = !h.ovenLit;
+    // Smoke rises from the chimney while the fire or oven burns (only for houses nearby)
+    if (!on && !h.ovenLit || Math.hypot(h.chimney[0] - P.pos.x, h.chimney[2] - P.pos.z) > 110) continue;
     h.smokeT -= dt;
     if (h.smokeT <= 0) {
       h.smokeT = .35 + Math.random() * .25;
@@ -2386,7 +2425,14 @@ function startVillage(plan) {
       link(inn, way); link(way, side); link(side, bed);
     }
     toStreet(out);
-    V.houses.push({ m, two: L.two, out, fire, seat, back, fieldA, fieldB, bed, people: [], stock: {}, field: null });
+    const H = { m, two: L.two, out, fire, seat, back, fieldA, fieldB, bed, people: [], stock: {}, field: null, coins: 15 + (rnd() * 25 | 0) };
+    if (m.bakery) {
+      const ovenNode = at(L.ix1 - .85, L.floorY, L.iz0 + 1.85, 'oven', Math.PI);
+      const counterNode = at(Math.min(L.ix1 - .1, L.doorX + 2.3) / 2 + (L.doorX + .75) / 2, L.floorY, L.iz1 - 1.45, 'counter', 0);
+      link(inn, ovenNode); link(inn, counterNode); link(ovenNode, fire);
+      H.bakery = { ovenNode, counterNode };
+    }
+    V.houses.push(H);
     activeHouses.add(m.seed);
   }
   if (info.mill) {
@@ -2394,6 +2440,12 @@ function startVillage(plan) {
     V.mill = node(m.pos[0] - 3.6 * s, m.pos[1], m.pos[2] - 3.6 * c, 'mill');
     V.mill.face = m.angle; V.millKey = millKey(m.pos);
     toStreet(V.mill);
+  }
+  if (info.stall) {
+    const m = info.stall, c = Math.cos(m.angle), s = Math.sin(m.angle), at = (lz, face) => { const n = node(m.pos[0] + lz * s, m.pos[1], m.pos[2] + lz * c, 'stall'); n.face = m.angle + face; return n; };
+    V.stallBack = at(-.95, 0); V.stallFront = at(1.25, Math.PI);
+    for (const n of [V.stallBack, V.stallFront]) link(n, nearest(n.x, n.z, q => q.tag === 'square'));
+    link(V.stallBack, V.stallFront);
   }
   // Households: a family name each, one to three people
   const tunics = [0x3c6e8a, 0x6a8a3c, 0x8a6a3c, 0x7a4a6a, 0x9a8a5a, 0x4a4a7a];
@@ -2405,12 +2457,19 @@ function startVillage(plan) {
       h.people.push(p); V.people.push(p);
     }
   });
-  // Jobs: the miller lives nearest the mill; the head of about half the other households farms
+  // Jobs: the baker runs the bakery; the miller lives nearest the mill; the head of about half the other households farms
+  const bh = V.houses.find(h => h.bakery);
+  if (bh && V.stallBack) {
+    const baker = bh.people[0];
+    baker.job = 'baker'; bh.coins += 25;
+    V.bakery = { house: bh, baker, ovenNode: bh.bakery.ovenNode, counterNode: bh.bakery.counterNode, stallBack: V.stallBack, stallKey: millKey(info.stall.pos),
+      flour: V.mill ? 2 + (rnd() * 3 | 0) : 6, bread: 4 + (rnd() * 6 | 0), batch: 0, soldToday: 0, soldDay: env.day };
+  }
   if (V.mill) {
-    const h = V.houses.reduce((a, b) => Math.hypot(b.out.x - V.mill.x, b.out.z - V.mill.z) < Math.hypot(a.out.x - V.mill.x, a.out.z - V.mill.z) ? b : a, V.houses[0]);
+    const h = V.houses.filter(h => h !== bh).reduce((a, b) => Math.hypot(b.out.x - V.mill.x, b.out.z - V.mill.z) < Math.hypot(a.out.x - V.mill.x, a.out.z - V.mill.z) ? b : a, V.houses[0]);
     if (h) { h.people[0].job = 'miller'; h.stock.wheatSeed = 3 + (rnd() * 3 | 0); }
   }
-  V.houses.forEach((h, i) => { if (h.people[0].job === 'homemaker' && i % 2 === 0) { h.people[0].job = 'farmer'; h.stock.wheatSeed = 2 + (rnd() * 4 | 0); } });
+  V.houses.forEach((h, i) => { if (h !== bh && h.people[0].job === 'homemaker' && i % 2 === 0) { h.people[0].job = 'farmer'; h.stock.wheatSeed = 2 + (rnd() * 4 | 0); } });
   // Fields for the farming households, each at some point in its season; the mill's store
   const T = gameHours();
   V.fields = [];
@@ -2443,6 +2502,7 @@ function stopVillage(V) {
 
 // The daily routine: what someone should be doing at hour h
 function activityFor(p, h) {
+  if (p.job === 'baker') return bakerActivity(p, h);
   const wake = 6 + p.jitter, bed = 21.6 + p.jitter;
   if (h < wake || h >= bed) return 'sleep';
   if (h < wake + .5) return p.firstUp ? 'fire' : 'seat';            // first up lights the fire
@@ -2456,7 +2516,9 @@ function activityFor(p, h) {
 function targetNode(p, act) {
   const h = p.house, V = p.village;
   return { sleep: h.bed, fire: h.fire, chores: h.fire, seat: h.seat, square: V.ring[p.idx % 8], well: V.ring[(p.idx + 4) % 8],
-    mill: V.mill || h.back, plot: h.back, sow: h.fieldA, harvest: h.fieldA, tend: h.fieldA, deliver: V.mill || h.out }[act];
+    mill: V.mill || h.back, plot: h.back, sow: h.fieldA, harvest: h.fieldA, tend: h.fieldA, deliver: V.mill || h.out,
+    bake: V.bakery?.ovenNode, counter: V.bakery?.counterNode, stall: V.stallBack,
+    sellFlour: p.carrying ? V.bakery?.counterNode : V.mill }[act] || h.fire;
 }
 // Shortest route over the path network (breadth-first; the graphs are small)
 function route(a, b) {
@@ -2475,8 +2537,8 @@ function pose(gd, n, lying) {
 // Walk towards the current goal; re-plan when the schedule moves on
 function stepAgent(gd, dt) {
   const A = gd.agent, p = gd.home.person, want = activityFor(p, env.time);
-  if (want !== p.act) {
-    p.act = want; A.goal = targetNode(p, want); A.path = route(A.node, A.goal);
+  if (want !== p.act || p.retarget) {
+    p.retarget = false; p.act = want; A.goal = targetNode(p, want); A.path = route(A.node, A.goal);
     gd.g.rotation.x = 0; A.asleep = false;
   }
   const pos = gd.g.position;
@@ -2557,6 +2619,7 @@ function farmTask(p) {
 function millerTask(p) {
   const V = p.village;
   if (!V.mill) return farmTask(p);
+  if (flourRun(p)) return 'sellFlour';
   if (p.carrying) return 'deliver';
   if (V.millStock.wheat > 0) return 'mill';
   const f = p.house.field;
@@ -2586,13 +2649,17 @@ function workVillage(V, dh) {
         if (V.mill) p.carrying = sacks - 1; else H.stock.wheat = (H.stock.wheat || 0) + sacks - 1;
       }
     } else if (p.act === 'deliver' && atMill) {
+      const millerHouse = V.people.find(q => q.job === 'miller')?.house, pay = millerHouse && millerHouse !== H ? Math.min(p.carrying * ITEMS.wheat.value, millerHouse.coins) : 0;
+      if (pay) { millerHouse.coins -= pay; H.coins += pay; }
       V.millStock.wheat += p.carrying; p.carrying = 0;
     } else if (p.act === 'mill' && atMill && V.millStock.wheat > 0) {
       V.grind += dh;
       if (V.grind >= GRIND_HOURS) { V.grind = 0; V.millStock.wheat--; V.millStock.flour++; }
     }
-    if (p.gd.sack) p.gd.sack.visible = !!p.carrying;
+    workFlour(V, p);
+    if (p.gd.sack) { p.gd.sack.visible = !!p.carrying; p.gd.sack.material = p.carryKind === 'flour' ? SACK_FLOUR : SACK_WHEAT; }
   }
+  if (V.bakery) workBakery(V, dh);
   // Sacks piled by the mill door show the stock
   if (V.piles) {
     V.piles.wheat.forEach((s, i) => { s.visible = i < V.millStock.wheat; });
@@ -2612,13 +2679,108 @@ function makeMillPiles(V, m) {
   return piles;
 }
 
+// ---- Bakery, market stall and the bread economy ----
+// Coins move along the grain chain: villagers buy bread from the baker, the baker buys flour from the
+// miller, and the miller pays the farmers for their wheat.
+const BAKE_HOURS = 1.5, LOAVES_PER_SACK = 8;
+const SACK_WHEAT = new THREE.MeshLambertMaterial({ color: 0xc8a860 }), SACK_FLOUR = new THREE.MeshLambertMaterial({ color: 0xe8e2d0 });
+const stalls = new Map();
+// Loaves for a counter or stall: a group in the building's frame; shown up to the stock on hand
+function loafRow(parent, x0, x1, y, z) {
+  const loaves = [];
+  for (let i = 0; i < 8; i++) {
+    const g = new THREE.Group(), t = (i % 4 + .5) / 4;
+    g.position.set(x0 + (x1 - x0) * t, y, z + (i >> 2) * .22 - .11); g.rotation.y = (i * 1.7) % .6 - .3;
+    part(g, .26, .12, .15, 0xc88a40, 0, .06, 0); part(g, .2, .05, .11, 0xa86a2c, 0, .13, 0);
+    parent.add(g); loaves.push(g);
+  }
+  return loaves;
+}
+function makeStall(m) {
+  const K = new Kit(), W = 2.6, D = .9;
+  K.aabb('wood', -W / 2, 0, -D / 2, W / 2, .85, D / 2, true);                       // counter
+  K.aabb('timber', -W / 2 - .05, .85, -D / 2 - .05, W / 2 + .05, .92, D / 2 + .05);
+  for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) K.aabb('timber', x * W / 2 - .06, 0, z * (D / 2 + .25) - .06, x * W / 2 + .06, 2.35, z * (D / 2 + .25) + .06);
+  for (let i = 0; i < 9; i++) {                                                          // striped awning, sloping to the front
+    const x = -W / 2 - .1 + (i + .5) * (W + .2) / 9;
+    K.box(i % 2 ? '#e8e0c8' : '#a83a2a', (W + .2) / 9, .05, 1.7, x, 2.32, .15, 0, -.28);
+  }
+  K.aabb('#6a4a2a', -W / 2 + .2, .92, -D / 2 - .2, -W / 2 + .7, 1.25, -D / 2 + .1);    // a crate behind the counter
+  const built = K.build(m.pos[0], m.pos[1], m.pos[2], m.angle);
+  scene.add(built.group); addColliders(built.colliders);
+  const shelf = new THREE.Group(); built.group.add(shelf);
+  const obj = { g: built.group, colliders: built.colliders, torches: [], loaves: loafRow(shelf, -W / 2 + .45, W / 2 - .3, .92, .1), key: millKey(m.pos) };
+  stalls.set(obj.key, obj);
+  return obj;
+}
+
+// The baker's day: up before dawn to bake, the stall at midday, the shop in the afternoon
+function bakerActivity(p, h) {
+  const B = p.village.bakery, bed = 21 + p.jitter;
+  if (h < 4.5 + p.jitter || h >= bed) return 'sleep';
+  if (h >= 11.8 && h < 13.2) return 'stall';
+  if (h >= 17.6 + p.jitter * .5) return Math.floor((h - 17.6) * 2) % 3 === 0 ? 'fire' : 'seat';
+  return (B.batch > 0 || B.flour > 0 && B.bread < 12) && h < 15.5 ? 'bake' : 'counter';   // bake only what will sell
+}
+
+function workBakery(V, dh) {
+  const B = V.bakery, T = gameHours(), baker = B.baker, BA = baker.gd.agent, there = n => !BA.path.length && BA.node === n;
+  if (B.soldDay !== env.day) { B.soldDay = env.day; B.soldToday = 0; }
+  // Baking: a sack of flour makes a batch of loaves
+  if (baker.act === 'bake' && there(B.ovenNode)) {
+    if (!B.batch && B.flour > 0) { B.flour--; B.batch = 1e-6; }
+    if (B.batch) { B.batch += dh; if (B.batch >= BAKE_HOURS) { B.batch = 0; B.bread += LOAVES_PER_SACK; } }
+  }
+  // Selling at the stall: each household buys a loaf a day if they can afford it
+  const atStall = baker.act === 'stall' && there(B.stallBack);
+  if (atStall && B.bread > 0 && T >= (B.nextSale || 0)) {
+    const buyer = V.people.find(q => q.act === 'square' && !q.gd.agent.path.length && q.house !== B.house &&
+      q.house.boughtDay !== env.day && q.house.coins >= ITEMS.bread.value);
+    if (buyer) {
+      const H = buyer.house;
+      H.boughtDay = env.day; H.coins -= ITEMS.bread.value; B.house.coins += ITEMS.bread.value;
+      H.stock.bread = (H.stock.bread || 0) + 1; B.bread--; B.soldToday++; B.nextSale = T + .08;
+      say(buyer.gd, pick(['A loaf, please.', 'One of your best, please.', "I'll take a loaf."]), 2.5);
+      setTimeout(() => say(baker.gd, pick(['There you go.', 'Fresh this morning.', 'Two coins, thank you.']), 2.5), 900);
+    }
+  }
+  // Breakfast: a household eats a loaf a day if it has one
+  for (const h of V.houses) if (h.ateDay !== env.day && (h.stock.bread || 0) > 0 && h.people.some(q => q.act === 'seat' && env.time < 10 && !q.gd.agent.path.length)) {
+    h.ateDay = env.day; h.stock.bread--;
+  }
+  // What shows: loaves on the stall while the baker's there, on the shop counter otherwise; the oven glows while baking
+  const stall = stalls.get(B.stallKey), shop = B.obj ||= [...cottages].find(c => c.seed === B.house.m.seed);
+  stall?.loaves.forEach((l, i) => { l.visible = atStall && i < B.bread; });
+  if (shop) { shop.loaves.forEach((l, i) => { l.visible = !atStall && i < B.bread; }); shop.ovenLit = B.batch > 0; }
+}
+
+// The miller takes flour to the bakery in the afternoon when the baker is running low
+function flourRun(p) {
+  const V = p.village, B = V.bakery;
+  if (p.carrying && p.carryKind === 'flour') return true;
+  return !!B && V.mill && B.flour < 3 && V.millStock.flour > 0 && env.time >= 14 && env.time < 17;
+}
+function workFlour(V, p) {
+  const B = V.bakery, A = p.gd.agent, arrived = n => !A.path.length && A.node === n;
+  if (p.act !== 'sellFlour') return;
+  if (!p.carrying && arrived(V.mill)) {
+    const n = Math.min(3, V.millStock.flour);
+    V.millStock.flour -= n; p.carrying = n; p.carryKind = 'flour'; p.retarget = true;
+  } else if (p.carrying && arrived(B.counterNode)) {
+    const pay = Math.min(p.carrying * ITEMS.flour.value, B.house.coins);
+    B.flour += p.carrying; B.house.coins -= pay; p.house.coins += pay;
+    say(p.gd, `${p.carrying} ${p.carrying === 1 ? 'sack' : 'sacks'} of flour for you.`, 3);
+    p.carrying = 0; p.carryKind = null; p.retarget = true;
+  }
+}
+
 // Conversation pieces for villagers
-const JOB_NAMES = { miller: 'miller', farmer: 'farmer', homemaker: 'villager' };
+const JOB_NAMES = { miller: 'miller', farmer: 'farmer', homemaker: 'villager', baker: 'baker' };
 function villagerAbout(p) {
   const h = p.house, V = p.village, [Cx, , Cz] = V.plan.decor.village.centre;
   const where = Math.hypot(h.out.x - Cx, h.out.z - Cz) < 8 ? 'by the square' : `on the ${compass(h.out.x - Cx, h.out.z - Cz)} side of the village`;
   const job = { miller: "I'm the miller. I grind the village's grain at the windmill.", farmer: 'I farm the plot behind our house.',
-    homemaker: 'I keep house for the family.' }[p.job];
+    homemaker: 'I keep house for the family.', baker: "I'm the baker. I bake the village's bread and sell it on the square at midday." }[p.job];
   const others = h.people.filter(q => q !== p).map(q => q.name.split(' ')[0]);
   return `I'm ${p.name}. ${job} We live in the ${h.two ? 'two-storey ' : ''}cottage ${where}` + (others.length ? `, with ${others.join(' and ')}.` : '.');
 }
@@ -2635,6 +2797,10 @@ function villagerDoing(p) {
     sow: 'Sowing the field. A sack of seed goes a long way if you\'re careful with it.',
     harvest: 'Bringing in the harvest while the weather holds.',
     tend: p.house.field?.stage === 'empty' ? 'Keeping the field clear until we can sow it again.' : 'Weeding between the rows.',
+    bake: p.village.bakery?.batch > 0 ? "Bread's in the oven. Can you smell it?" : 'Getting the next batch of dough ready.',
+    counter: 'Minding the shop.' + (p.village.bakery?.flour ? '' : " We're out of flour, so there's no baking until the miller comes by."),
+    stall: 'Selling bread on the square. Two coins a loaf.',
+    sellFlour: p.carrying ? `Taking ${p.carrying} ${p.carrying === 1 ? 'sack' : 'sacks'} of flour to the bakery.` : "Fetching flour from the mill. The baker's running low.",
     deliver: `Taking ${p.carrying} ${p.carrying === 1 ? 'sack' : 'sacks'} of wheat up to the mill.`,
   }[p.act] || 'Nothing much.';
 }
@@ -2653,6 +2819,36 @@ function villagerMill(p) {
   const s = p.village.millStock;
   return `${s.wheat ? `${s.wheat} ${s.wheat === 1 ? 'sack' : 'sacks'} of wheat waiting to be ground` : 'No wheat waiting to be ground'}, and ${s.flour} ${s.flour === 1 ? 'sack' : 'sacks'} of flour ready. ` +
     'The farmers bring their wheat up after the harvest, and I grind it as the wind allows.';
+}
+function nearestVillageWith(V, test) {
+  let best = null, bd = Infinity;
+  const rx0 = regionOf(V.plan.ox), rz0 = regionOf(V.plan.oz);
+  for (let rz = rz0 - 3; rz <= rz0 + 3; rz++) for (let rx = rx0 - 3; rx <= rx0 + 3; rx++) {
+    const q = planFor(rx, rz);
+    if (q && q.type === VILLAGE && q !== V.plan && test(q)) { const d = Math.hypot(q.cx - V.plan.cx, q.cz - V.plan.cz); if (d < bd) { bd = d; best = q; } }
+  }
+  return best;
+}
+const sacks = n => `${n} ${n === 1 ? 'sack' : 'sacks'}`, loavesTxt = n => `${n} ${n === 1 ? 'loaf' : 'loaves'}`;
+function bakerBusiness(p) {
+  const V = p.village, B = V.bakery, miller = V.people.find(q => q.job === 'miller');
+  let from;
+  if (miller) from = `I buy my flour from ${miller.name} at the mill, seven coins a sack, and each sack makes ${LOAVES_PER_SACK} loaves.`;
+  else {
+    const other = nearestVillageWith(V, q => { q.edits(); return q.decor.models.some(m => m.kind === 'windmill'); });
+    from = `There's no mill here, so a merchant brings flour over${other ? ` from ${other.title}` : ''}.`;
+  }
+  return `${loavesTxt(B.bread)} ready and ${sacks(B.flour)} of flour in the store. I've sold ${loavesTxt(B.soldToday)} today. ${from}`;
+}
+function millerBuyers(p) {
+  const V = p.village, B = V.bakery;
+  const buyer = B ? `${B.baker.name} at the bakery buys it, seven coins a sack, whenever the store's running low.` : "There's no baker here, so it waits for a merchant to come and buy it.";
+  return `${buyer} I pay the farmers three coins for every sack of wheat they bring me.`;
+}
+function villagerBread(p) {
+  const V = p.village, B = V.bakery, n = p.house.stock.bread || 0;
+  if (!B) return `We bake our own at the hearth. There's no baker in ${V.plan.title}.`;
+  return `From ${B.baker.name}'s bakery. ${B.baker.name.split(' ')[0]} sells it on the square at midday, two coins a loaf. We've ${loavesTxt(n)} in the house.`;
 }
 function villagerSeed(p) {
   const stock = p.house.stock.wheatSeed || 0, V = p.village;
@@ -2676,10 +2872,11 @@ function addChunkDecor(c) {
   plan.edits();
   const mine = (x, z) => Math.floor(x / CHUNK) === c.cx && Math.floor(z / CHUNK) === c.cz;
   for (const [x, y, z] of plan.decor.torches) if (mine(x, z)) c.decor.push(['torch', addTorch(x, y, z)]);
-  for (const m of plan.decor.models) if (mine(m.pos[0], m.pos[2])) c.decor.push(['building', m.kind === 'cottage' ? makeCottage(m) : makeTowerMill(m)]);
+  for (const m of plan.decor.models) if (mine(m.pos[0], m.pos[2])) c.decor.push(['building', m.kind === 'cottage' ? makeCottage(m) : m.kind === 'stall' ? makeStall(m) : makeTowerMill(m)]);
   if (plan.decor.village && mine(plan.cx, plan.cz)) {               // the village's people live with its central chunk
     plan.decor.village.cottages = plan.decor.models.filter(m => m.kind === 'cottage');
     plan.decor.village.mill = plan.decor.models.find(m => m.kind === 'windmill');
+    plan.decor.village.stall = plan.decor.models.find(m => m.kind === 'stall');
     c.decor.push(['village', startVillage(plan)]);
   }
   for (const gd of plan.decor.guards) if (mine(gd.a[0], gd.a[2])) c.decor.push(['guard', addGuard(gd.a, gd.b, gd.speed, gd.face ?? 0, { title: plan.title, plan, kind: gd.kind, color: gd.color })]);
@@ -3293,6 +3490,9 @@ function showDialogue(text) {
     opts.push(['What are you doing?', () => showDialogue(villagerDoing(p))]);
     if (p.house.field) opts.push(['How are the crops?', () => showDialogue(villagerCrops(p))]);
     if (p.job === 'miller' && p.village.mill) opts.push(["How's the mill?", () => showDialogue(villagerMill(p))]);
+    if (p.job === 'baker') opts.push(["How's business?", () => showDialogue(bakerBusiness(p))]);
+    if (p.job === 'miller' && p.village.mill) opts.push(['Who buys your flour?', () => showDialogue(millerBuyers(p))]);
+    if (p.job !== 'baker') opts.push(['Where do you get your bread?', () => showDialogue(villagerBread(p))]);
     if (p.job === 'miller' || p.job === 'farmer') opts.push(['Where do you get your wheat seed?', () => showDialogue(villagerSeed(p))]);
   }
   opts.push(['What can you tell me about this area?', () => showDialogue(dlg.area ??= describeArea(dlg.gd))]);

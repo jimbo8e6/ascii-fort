@@ -68,6 +68,16 @@ Villages sit on the road network. The roads meet at a village square with a ston
   - **No seed:** with nothing to sow, the field stays bare until a merchant brings seed.
 - **Milling:** the miller grinds one sack of wheat into one sack of flour every 1½ game hours. The sails turn only while there's wheat to grind and the miller is at work. Sacks of wheat and flour pile up by the mill door to show its stock. Between batches the miller works their own field.
 - **More to ask:** *How are the crops?* (stage and when they'll be ready) and the miller's *How's the mill?* (wheat waiting, flour ready).
+- **Bakery:** in villages with two or more cottages, the cottage nearest the square is the bakery, run by the baker's household. It has a domed stone bread oven that glows and sends smoke up the chimney while baking, a shop counter by the door showing the loaves in stock, sacks of flour and a hanging sign with a loaf.
+- **Market stall:** a striped-awning stall stands on the square.
+- **The baker's day:** up before dawn to bake (one sack of flour makes 8 loaves, and they only bake what will sell), at the stall at midday, minding the shop in the afternoon.
+- **Coins and the bread chain:** every household has a purse of coins, and coins flow back along the chain.
+  - At midday each household buys a loaf at the stall if they can afford it (2 coins). "A loaf, please." "Two coins, thank you."
+  - They eat a loaf a day at breakfast.
+  - In the afternoon, when the bakery's flour runs low, the miller carries up to 3 sacks over (white sacks on their back) and is paid 7 coins a sack.
+  - The miller pays farmers 3 coins for each sack of wheat they deliver.
+  - A village with no mill starts its bakery with flour, and the baker says a merchant brings it from the nearest village with a mill.
+- **More to ask:** the baker's *How's business?* (stock, sales today, where the flour comes from), the miller's *Who buys your flour?*, and everyone else's *Where do you get your bread?*
 - **Groundwork for trade:** a goods catalogue (wheat seed, wheat, flour, bread, each with a value and source) and per-household stock. Farming, milling, baking and trading will build on this.
 - **Simulation scope:** only villages near you are fully simulated. When you arrive, everyone starts wherever their routine has them at that hour.
 - **On the map:** villages show as a little house marker once discovered.
