@@ -168,31 +168,89 @@ const TEX = {
     for (let i = 0; i < 40; i++) g.fillRect(rand() * s | 0, rand() * s | 0, 2, 2);
   }),
 };
+// Textures for biome blocks and water
+Object.assign(TEX, {
+  sand: canvasTexture(32, (g, s) => noiseFill(g, s, [150, 134, 98], 24)),
+  sandstone: canvasTexture(32, (g, s) => {
+    noiseFill(g, s, [140, 120, 84], 20);
+    g.fillStyle = 'rgba(120,95,60,.6)';
+    for (let y = 5; y < s; y += 9) g.fillRect(0, y, s, 1);
+  }),
+  snowTop: canvasTexture(32, (g, s) => noiseFill(g, s, [170, 178, 194], 16)),
+  snowSide: canvasTexture(32, (g, s) => {
+    noiseFill(g, s, [110, 85, 60], 28);
+    noiseFill(g, s, [170, 178, 194], 16, 0, 7);
+    for (let x = 0; x < s; x++) if (rand() < .5) { g.fillStyle = 'rgb(170,178,194)'; g.fillRect(x, 7, 1, 1 + rand() * 4 | 0); }
+  }),
+  ice: canvasTexture(32, (g, s) => {
+    noiseFill(g, s, [96, 124, 158], 16);
+    g.strokeStyle = 'rgba(170,195,225,.6)';
+    for (let i = 0; i < 5; i++) { g.beginPath(); const x = rand() * s, y = rand() * s; g.moveTo(x, y); g.lineTo(x + 8, y - 6); g.stroke(); }
+  }),
+  cactus: canvasTexture(32, (g, s) => {
+    noiseFill(g, s, [62, 122, 52], 18);
+    g.fillStyle = 'rgba(25,60,20,.8)';
+    for (let x = 3; x < s; x += 7) g.fillRect(x, 0, 2, s);
+    g.fillStyle = 'rgba(230,230,180,.9)';
+    for (let i = 0; i < 12; i++) g.fillRect(rand() * s | 0, rand() * s | 0, 1, 1);
+  }),
+  cactusTop: canvasTexture(32, (g, s) => noiseFill(g, s, [86, 142, 64], 18)),
+  oakLeaves: canvasTexture(32, (g, s) => {
+    noiseFill(g, s, [70, 112, 46], 42);
+    g.fillStyle = 'rgba(15,35,10,.7)';
+    for (let i = 0; i < 40; i++) g.fillRect(rand() * s | 0, rand() * s | 0, 2, 2);
+  }),
+  snowLeaves: canvasTexture(32, (g, s) => {
+    noiseFill(g, s, [40, 78, 42], 40);
+    g.fillStyle = 'rgba(175,182,196,.9)';
+    for (let i = 0; i < 70; i++) g.fillRect(rand() * s | 0, rand() * s | 0, 3, 2);
+  }),
+  water: canvasTexture(32, (g, s) => {
+    noiseFill(g, s, [44, 86, 150], 26);
+    g.strokeStyle = 'rgba(150,190,240,.55)';
+    for (let i = 0; i < 8; i++) { const x = rand() * s, y = rand() * s; g.beginPath(); g.moveTo(x, y); g.quadraticCurveTo(x + 4, y - 2, x + 8, y); g.stroke(); }
+  }),
+});
+
 // Material ids (1-based, used by the mesher); index = id - 1
-const MAT_NAMES = ['brick', 'wood', 'grassTop', 'grassSide', 'dirt', 'path', 'rock', 'log', 'logTop', 'leaves'];
+const MAT_NAMES = ['brick', 'wood', 'grassTop', 'grassSide', 'dirt', 'path', 'rock', 'log', 'logTop', 'leaves',
+  'sand', 'sandstone', 'snowTop', 'snowSide', 'ice', 'cactus', 'cactusTop', 'oakLeaves', 'snowLeaves', 'water'];
 const MAT = Object.fromEntries(MAT_NAMES.map((n, i) => [n, i + 1]));
-const materials = MAT_NAMES.map(n => new THREE.MeshLambertMaterial({ map: TEX[n] }));
+const materials = MAT_NAMES.map(n => n === 'water'
+  ? new THREE.MeshLambertMaterial({ map: TEX.water, transparent: true, opacity: .78, depthWrite: false, emissive: 0x0a1a34 })
+  : new THREE.MeshLambertMaterial({ map: TEX[n] }));
 
 // ---------------------------------------------------------------------------
-// Blocks and terrain
+// Blocks, climate and terrain
 // ---------------------------------------------------------------------------
-const AIR = 0, BRICK = 1, WOOD = 2, GRASS = 3, DIRT = 4, PATH = 5, ROCK = 6, LOG = 7, LEAVES = 8;
+const AIR = 0, BRICK = 1, WOOD = 2, GRASS = 3, DIRT = 4, PATH = 5, ROCK = 6, LOG = 7, LEAVES = 8,
+      WATER = 9, SAND = 10, SANDSTONE = 11, SNOW = 12, ICE = 13, CACTUS = 14, OAK_LEAVES = 15, SNOW_LEAVES = 16;
+const solid = v => v !== AIR && v !== WATER;
 const CHUNK = 16, H = 64;                 // chunk footprint and world height
 const G = 16;                             // ground level the fort is built on
+const SEA = G - 3;                        // water fills empty space below this height
 const CX = 32;                            // fort centre line (x); the fort spans roughly 6..58 in x and z
 const F0 = 8, F1 = 56, WALL = 7;          // fort footprint and wall height
 
 // Faces: 0 +x, 1 -x, 2 +y, 3 -y, 4 +z, 5 -z
 function faceMaterial(type, face) {
+  const top = face === 2, bottom = face === 3;
   switch (type) {
     case BRICK: return MAT.brick;
     case WOOD: return MAT.wood;
-    case GRASS: return face === 2 ? MAT.grassTop : face === 3 ? MAT.dirt : MAT.grassSide;
+    case GRASS: return top ? MAT.grassTop : bottom ? MAT.dirt : MAT.grassSide;
     case DIRT: return MAT.dirt;
-    case PATH: return face === 2 ? MAT.path : MAT.dirt;
+    case PATH: return top ? MAT.path : MAT.dirt;
     case ROCK: return MAT.rock;
-    case LOG: return face === 2 || face === 3 ? MAT.logTop : MAT.log;
+    case LOG: return top || bottom ? MAT.logTop : MAT.log;
     case LEAVES: return MAT.leaves;
+    case SAND: return MAT.sand;
+    case SANDSTONE: return MAT.sandstone;
+    case SNOW: return top ? MAT.snowTop : bottom ? MAT.dirt : MAT.snowSide;
+    case ICE: return MAT.ice;
+    case CACTUS: return top || bottom ? MAT.cactusTop : MAT.cactus;
+    case OAK_LEAVES: return MAT.oakLeaves;
+    case SNOW_LEAVES: return MAT.snowLeaves;
   }
   return 0;
 }
@@ -208,16 +266,41 @@ function flatness(x, z) {
 const isRoad = (x, z) => z >= F1 && Math.abs(x + .5 - CX) < 2.2 + noiseC(x * .2, z * .2) * .6;
 const inCourtyard = (x, z) => x >= F0 && x < F1 && z >= F0 && z < F1;
 
+// Climate: slow temperature, moisture and continent noise. All weights blend smoothly so
+// terrain has no seams at biome borders. The fort's surroundings are kept temperate dry land.
+const noiseT = makeNoise2D(SEED + 3), noiseM = makeNoise2D(SEED + 4), noiseK = makeNoise2D(SEED + 5);
+function climate(x, z) {
+  const near = 1 - smoothstep(120, 340, Math.hypot(x - CX, z - CX));
+  const t = (noiseT(x * .0022, z * .0022) + .08 * noiseT(x * .03, z * .03)) * (1 - near * .9);
+  const m = noiseM(x * .0022 + 200, z * .0022 - 100) * (1 - near * .6) + near * .3 + .08 * noiseM(x * .03, z * .03);
+  const c = .75 * noiseK(x * .0016, z * .0016) + .25 * noiseK(x * .007 + 9, z * .007) + near * .9;
+  const hot = smoothstep(.12, .36, t), cold = 1 - smoothstep(-.4, -.16, t);
+  const dry = 1 - smoothstep(-.12, .1, m), wet = smoothstep(-.05, .22, m);
+  return { desert: hot * dry, cold, wet: wet * (1 - hot), ocean: 1 - smoothstep(-.45, -.15, c) };
+}
+
 // Surface height: number of solid blocks in the column (player stands at this y)
-function terrainHeight(x, z) {
+function terrainHeight(x, z, cl = climate(x, z)) {
   const n = .65 * noiseA(x * .006, z * .006) + .25 * noiseA(x * .02 + 31, z * .02 - 17) + .1 * noiseA(x * .07, z * .07);
-  const mountains = Math.max(0, noiseB(x * .004 + 50, z * .004)) ** 2 * 26;
-  let h = G + n * 13 + mountains;
+  const mountains = Math.max(0, noiseB(x * .004 + 50, z * .004)) ** 2 * 28 * (1 - cl.desert * .8) * (1 - cl.ocean);
+  const rough = 1 - .55 * cl.desert - .3 * (1 - cl.wet) * (1 - cl.cold);       // deserts and plains are flatter
+  let h = G + 1 + n * 13 * rough + mountains;
+  h -= smoothstep(.45, .7, noiseC(x * .012 + 300, z * .012)) * cl.wet * 9;      // lakes in wet country
+  h += (SEA - 8 - h) * cl.ocean;                                                   // sea floor
   h += (G - h) * flatness(x, z);
   return Math.max(2, Math.min(H - 12, Math.round(h)));
 }
 
-// Forest density in [0, 1]
+const OCEAN = 0, DESERT = 1, PLAINS = 2, FOREST = 3, SNOWY = 4;
+const BIOME_NAMES = ['ocean', 'desert', 'plains', 'forest', 'snowy'];
+function biomeOf(cl, h) {
+  if (h <= SEA) return OCEAN;
+  if (cl.desert > .5) return DESERT;
+  if (cl.cold > .5 || h > G + 25) return SNOWY;
+  return cl.wet > .5 ? FOREST : PLAINS;
+}
+
+// Forest patchiness in [0, 1]
 const forest = (x, z) => smoothstep(-.15, .35, noiseB(x * .012 - 80, z * .012 + 40));
 
 // Structure edits (the fort) applied on top of the terrain, stored per chunk
@@ -229,13 +312,18 @@ function setEdit(x, y, z, v) {
   edits.get(k).push((x & 15) | (z & 15) << 4 | y << 8, v);
 }
 
-// Generate one chunk's blocks: terrain, then trees, then structure edits
+// Generate one chunk's blocks: terrain and water, then trees, then structure edits
 function generateChunk(cx, cz) {
   const data = new Uint8Array(CHUNK * CHUNK * H);
-  const ox = cx * CHUNK, oz = cz * CHUNK, M = 3, S = CHUNK + 2 * M;   // margin for trees overhanging the chunk
-  const hm = new Int16Array(S * S);
-  for (let z = 0; z < S; z++) for (let x = 0; x < S; x++) hm[x + z * S] = terrainHeight(ox + x - M, oz + z - M);
-  const hAt = (lx, lz) => hm[(lx + M) + (lz + M) * S];
+  const ox = cx * CHUNK, oz = cz * CHUNK;
+  const M = 3, HM = M + 1, S = CHUNK + 2 * HM;    // trees can overhang by M; heights need one more for slopes
+  const hm = new Int16Array(S * S), bm = new Uint8Array(S * S), cold = new Float32Array(S * S);
+  for (let z = 0; z < S; z++) for (let x = 0; x < S; x++) {
+    const wx = ox + x - HM, wz = oz + z - HM, cl = climate(wx, wz), h = terrainHeight(wx, wz, cl), i = x + z * S;
+    hm[i] = h; bm[i] = biomeOf(cl, h); cold[i] = cl.cold;
+  }
+  const at = (lx, lz) => (lx + HM) + (lz + HM) * S;
+  const hAt = (lx, lz) => hm[at(lx, lz)];
   const put = (lx, y, lz, v, onlyAir) => {
     if (lx < 0 || lz < 0 || lx >= CHUNK || lz >= CHUNK || y < 0 || y >= H) return;
     const i = lx + lz * CHUNK + y * 256;
@@ -243,28 +331,48 @@ function generateChunk(cx, cz) {
   };
 
   for (let lz = 0; lz < CHUNK; lz++) for (let lx = 0; lx < CHUNK; lx++) {
-    const x = ox + lx, z = oz + lz, h = hAt(lx, lz);
+    const x = ox + lx, z = oz + lz, i = at(lx, lz), h = hm[i], biome = bm[i];
     const slope = Math.max(Math.abs(h - hAt(lx + 1, lz)), Math.abs(h - hAt(lx - 1, lz)), Math.abs(h - hAt(lx, lz + 1)), Math.abs(h - hAt(lx, lz - 1)));
-    let top = GRASS;
+    let top = GRASS, sub = DIRT;
     if (inCourtyard(x, z) || isRoad(x, z)) top = PATH;
-    else if (slope >= 3 || h > G + 22) top = ROCK;
-    for (let y = 0; y < h; y++) put(lx, y, lz, y === h - 1 ? top : y >= h - 4 && top !== ROCK ? DIRT : ROCK);
+    else if (biome === OCEAN) { top = h < SEA - 4 ? DIRT : SAND; sub = SAND; }
+    else if (biome === DESERT) { top = slope >= 4 ? SANDSTONE : SAND; sub = SANDSTONE; }
+    else if (slope >= 3) top = sub = ROCK;
+    else if (h <= SEA + 1) { top = SAND; sub = SAND; }                       // beaches
+    else if (biome === SNOWY) top = SNOW;
+    else if (h > G + 22) top = sub = ROCK;
+    for (let y = 0; y < h; y++) put(lx, y, lz, y === h - 1 ? top : y >= h - 4 ? sub : ROCK);
+    for (let y = h; y < SEA; y++) put(lx, y, lz, y === SEA - 1 && cold[i] > .6 ? ICE : WATER);
   }
 
-  // Pine trees, including ones rooted just outside this chunk whose leaves reach in
+  // Trees and cacti, including ones rooted just outside this chunk whose leaves reach in
   for (let tz = -M; tz < CHUNK + M; tz++) for (let tx = -M; tx < CHUNK + M; tx++) {
-    const x = ox + tx, z = oz + tz;
-    if (hash2(x, z) > .045 * forest(x, z) || flatness(x, z) > .05) continue;
-    const h = hAt(tx, tz);
-    if (h > G + 20 || Math.abs(h - hAt(tx + 1, tz)) + Math.abs(h - hAt(tx, tz + 1)) > 2) continue;
-    const r = hash2(z, x), th = 5 + (r * 4 | 0), topY = h + th + 1;
-    for (let y = h; y < topY; y++) put(tx, y, tz, LOG);
-    for (let y = h + 2; y <= topY; y++) {
-      const rad = Math.min(3, (topY - y + 1) >> 1);
-      for (let dz = -rad; dz <= rad; dz++) for (let dx = -rad; dx <= rad; dx++) {
-        if (dx * dx + dz * dz > rad * rad + rad * .6) continue;
-        put(tx + dx, y, tz + dz, LEAVES, true);
+    const x = ox + tx, z = oz + tz, r0 = hash2(x, z);
+    if (r0 > .05) continue;                                                     // cheap early out
+    const i = at(tx, tz), h = hm[i], biome = bm[i];
+    if (biome === OCEAN || h <= SEA + 1 || h > G + 24 || flatness(x, z) > .05) continue;
+    if (Math.abs(h - hAt(tx + 1, tz)) + Math.abs(h - hAt(tx, tz + 1)) > 2) continue;
+    const r = hash2(z, x);
+    if (biome === FOREST || biome === SNOWY) {
+      if (r0 > (biome === FOREST ? .05 * (.25 + .75 * forest(x, z)) : .022)) continue;
+      const leaves = biome === SNOWY ? SNOW_LEAVES : LEAVES, th = 5 + (r * 4 | 0), topY = h + th + 1;
+      for (let y = h; y < topY; y++) put(tx, y, tz, LOG);
+      for (let y = h + 2; y <= topY; y++) {
+        const rad = Math.min(3, (topY - y + 1) >> 1);
+        for (let dz = -rad; dz <= rad; dz++) for (let dx = -rad; dx <= rad; dx++)
+          if (dx * dx + dz * dz <= rad * rad + rad * .6) put(tx + dx, y, tz + dz, leaves, true);
       }
+    } else if (biome === PLAINS) {
+      if (r0 > .006) continue;
+      const th = 4 + (r * 2 | 0), cy = h + th;                                  // round oak
+      for (let y = h; y < cy; y++) put(tx, y, tz, LOG);
+      for (let dy = -2; dy <= 1; dy++) for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) {
+        if (dx * dx + dz * dz + dy * dy * 1.5 > 5.2 || hash2(x + dx * 7, z + dz * 13 + dy * 31) < .12) continue;
+        put(tx + dx, cy + dy, tz + dz, OAK_LEAVES, true);
+      }
+    } else if (biome === DESERT) {
+      if (r0 > .005) continue;
+      for (let y = h; y < h + 2 + (r * 3 | 0); y++) put(tx, y, tz, CACTUS);
     }
   }
 
@@ -345,7 +453,7 @@ function generateChunk(cx, cz) {
 // ---------------------------------------------------------------------------
 // Chunk store and block lookup
 // ---------------------------------------------------------------------------
-const chunks = new Map();   // key -> { cx, cz, data, mesh }
+const chunks = new Map();   // key -> { cx, cz, data, mesh, water }
 function chunkAt(cx, cz) {
   const k = chunkKey(cx, cz);
   let c = chunks.get(k);
@@ -360,7 +468,7 @@ function get(x, y, z) {
 }
 // Top of the highest solid block in a column
 function surfaceY(x, z) {
-  for (let y = H - 1; y >= 0; y--) if (get(x, y, z)) return y + 1;
+  for (let y = H - 1; y >= 0; y--) if (solid(get(x, y, z))) return y + 1;
   return 0;
 }
 
@@ -404,7 +512,8 @@ scene.add(sky);
 // Chunk meshing: greedy merge of visible faces into one mesh per chunk,
 // with one geometry group per material
 // ---------------------------------------------------------------------------
-function meshChunk(c) {
+// water = false meshes opaque blocks; water = true meshes only water surfaces (drawn as a separate transparent mesh)
+function meshChunk(c, water = false) {
   const ox = c.cx * CHUNK, oz = c.cz * CHUNK, data = c.data;
   let ymax = 0;
   for (let i = data.length - 1; i >= 0; i--) if (data[i]) { ymax = Math.floor(i / 256) + 2; break; }
@@ -425,8 +534,9 @@ function meshChunk(c) {
       for (x[v] = 0; x[v] < dims[v]; x[v]++) for (x[u] = 0; x[u] < dims[u]; x[u]++, n++) {
         const a = block(x[0], x[1], x[2]), b = block(x[0] + q[0], x[1] + q[1], x[2] + q[2]);
         const aIn = x[d] >= 0, bIn = x[d] < dims[d] - 1 || d === 1;
-        if (a && !b && aIn) mask[n] = faceMaterial(a, posFace);
-        else if (b && !a && bIn) mask[n] = -faceMaterial(b, posFace + 1);
+        if (water) mask[n] = a === WATER && !b && aIn ? MAT.water : b === WATER && !a && bIn ? -MAT.water : 0;
+        else if (solid(a) && !solid(b) && aIn) mask[n] = faceMaterial(a, posFace);
+        else if (solid(b) && !solid(a) && bIn) mask[n] = -faceMaterial(b, posFace + 1);
         else mask[n] = 0;
       }
       x[d]++;
@@ -445,7 +555,7 @@ function meshChunk(c) {
         const b = buf[Math.abs(m) - 1], base = b.pos.length / 3;
         const corners = [[0, 0, 0], du, [du[0] + dv[0], du[1] + dv[1], du[2] + dv[2]], dv];
         for (const cnr of corners) {
-          const px = ox + x[0] + cnr[0], py = x[1] + cnr[1], pz = oz + x[2] + cnr[2];
+          const px = ox + x[0] + cnr[0], py = x[1] + cnr[1] - (water ? .15 : 0), pz = oz + x[2] + cnr[2];  // water sits a little low
           b.pos.push(px, py, pz);
           b.nrm.push(d === 0 ? Math.sign(m) : 0, d === 1 ? Math.sign(m) : 0, d === 2 ? Math.sign(m) : 0);
           // World-space UVs: one texture tile per block, with v running up the sides
@@ -472,6 +582,7 @@ function meshChunk(c) {
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   geo.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
   geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  if (!idx.length) return null;
   geo.setIndex(idx);
   geo.computeBoundingSphere();
   const mesh = new THREE.Mesh(geo, materials);
@@ -491,12 +602,15 @@ function streamChunks(px, pz, budgetMs) {
     for (let dz = -VIEW; dz <= VIEW; dz++) for (let dx = -VIEW; dx <= VIEW; dx++) {
       if (dx * dx + dz * dz > VIEW * VIEW + 1) continue;
       const c = chunks.get(chunkKey(pcx + dx, pcz + dz));
-      if (!c || !c.mesh) buildQueue.push([pcx + dx, pcz + dz, dx * dx + dz * dz]);
+      if (!c || !c.built) buildQueue.push([pcx + dx, pcz + dz, dx * dx + dz * dz]);
     }
     buildQueue.sort((a, b) => b[2] - a[2]);    // nearest last, popped first
     for (const [k, c] of chunks) {
       const ddx = c.cx - pcx, ddz = c.cz - pcz, d2 = ddx * ddx + ddz * ddz;
-      if (c.mesh && d2 > (VIEW + 2) ** 2) { scene.remove(c.mesh); c.mesh.geometry.dispose(); c.mesh = null; }
+      if (c.built && d2 > (VIEW + 2) ** 2) {
+        for (const m of [c.mesh, c.water]) if (m) { scene.remove(m); m.geometry.dispose(); }
+        c.mesh = c.water = null; c.built = false;
+      }
       if (d2 > (VIEW + 4) ** 2) chunks.delete(k);
     }
   }
@@ -504,9 +618,10 @@ function streamChunks(px, pz, budgetMs) {
   while (buildQueue.length && performance.now() - t0 < budgetMs) {
     const [cx, cz] = buildQueue.pop();
     const c = chunkAt(cx, cz);
-    if (c.mesh) continue;
-    c.mesh = meshChunk(c);
-    scene.add(c.mesh);
+    if (c.built) continue;
+    c.mesh = meshChunk(c); c.water = meshChunk(c, true); c.built = true;
+    if (c.mesh) scene.add(c.mesh);
+    if (c.water) scene.add(c.water);
   }
 }
 
@@ -675,7 +790,7 @@ resize();
 // ---------------------------------------------------------------------------
 // Player and collision
 // ---------------------------------------------------------------------------
-const P = { pos: new THREE.Vector3(CX + .5, 0, F1 + 24.5), vy: 0, grounded: true, yaw: 0, pitch: 0.05, eye: 1.6, bob: 0 };
+const P = { pos: new THREE.Vector3(CX + .5, 0, F1 + 24.5), vy: 0, grounded: true, yaw: 0, pitch: 0.05, eye: 1.6, bob: 0, inWater: false };
 const RADIUS = .3, HEIGHT = 1.75;
 
 function collides(x, y, z) {
@@ -683,14 +798,14 @@ function collides(x, y, z) {
   for (let iy = Math.floor(y + eps); iy <= Math.floor(y + HEIGHT - eps); iy++)
     for (let iz = Math.floor(z - RADIUS); iz <= Math.floor(z + RADIUS - eps); iz++)
       for (let ix = Math.floor(x - RADIUS); ix <= Math.floor(x + RADIUS - eps); ix++)
-        if (get(ix, iy, iz)) return true;
+        if (solid(get(ix, iy, iz))) return true;
   return false;
 }
 
 function moveAxis(dx, dz) {
   const nx = P.pos.x + dx, nz = P.pos.z + dz;
   if (!collides(nx, P.pos.y, nz)) { P.pos.x = nx; P.pos.z = nz; return; }
-  if (!P.grounded) return;
+  if (!P.grounded && !P.inWater) return;                 // swimmers can climb out onto the bank
   for (const up of [.55, 1.05]) {              // auto step onto stairs / crates
     if (!collides(P.pos.x, P.pos.y + up, P.pos.z) && !collides(nx, P.pos.y + up, nz)) {
       P.pos.set(nx, P.pos.y + up, nz); return;
@@ -703,7 +818,7 @@ function moveAxis(dx, dz) {
 // ---------------------------------------------------------------------------
 const keys = {};
 const touchMove = { x: 0, y: 0 };
-let started = false, jumpQueued = false;
+let started = false, jumpQueued = false, jumpHeld = false;
 const isTouch = matchMedia('(pointer: coarse)').matches;
 if (isTouch) document.body.classList.add('touch');
 
@@ -755,7 +870,9 @@ addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 const stick = document.getElementById('stick'), knob = document.getElementById('knob');
 let stickId = null, lookId = null, stickOrigin = null, lookLast = null;
 const jumpBtn = document.getElementById('jump');
-jumpBtn.addEventListener('touchstart', e => { e.preventDefault(); e.stopPropagation(); jumpQueued = true; }, { passive: false });
+jumpBtn.addEventListener('touchstart', e => { e.preventDefault(); e.stopPropagation(); jumpQueued = jumpHeld = true; }, { passive: false });
+jumpBtn.addEventListener('touchend', () => { jumpHeld = false; });
+jumpBtn.addEventListener('touchcancel', () => { jumpHeld = false; });
 renderer.domElement.addEventListener('touchstart', e => {
   e.preventDefault();
   for (const t of e.changedTouches) {
@@ -806,7 +923,9 @@ function update(dt, t) {
   if (keys.KeyD || keys.ArrowRight) mx += 1;
   const len = Math.hypot(mx, mz);
   if (len > 1) { mx /= len; mz /= len; }
-  const speed = (keys.ShiftLeft || keys.ShiftRight) ? 9 : 5;
+  const fx = Math.floor(P.pos.x), fz = Math.floor(P.pos.z);
+  P.inWater = get(fx, Math.floor(P.pos.y + .5), fz) === WATER;
+  const speed = ((keys.ShiftLeft || keys.ShiftRight) ? 9 : 5) * (P.inWater ? .55 : 1);
   fwd.set(-Math.sin(P.yaw), 0, -Math.cos(P.yaw));
   right.set(Math.cos(P.yaw), 0, -Math.sin(P.yaw));
   const vx = (right.x * mx - fwd.x * mz) * speed * dt;
@@ -814,10 +933,15 @@ function update(dt, t) {
   const steps = Math.ceil(Math.max(Math.abs(vx), Math.abs(vz)) / .2) || 1;
   for (let i = 0; i < steps; i++) { moveAxis(vx / steps, 0); moveAxis(0, vz / steps); }
 
-  // Gravity and jumping
-  if (jumpQueued && P.grounded) { P.vy = 7.5; P.grounded = false; }
+  // Gravity, jumping and swimming (hold jump to rise in water)
+  if (P.inWater) {
+    P.vy = Math.max(-2.5, P.vy - 6 * dt);
+    if (keys.Space || jumpHeld) P.vy = Math.min(3.2, P.vy + 20 * dt);
+  } else {
+    if (jumpQueued && P.grounded) { P.vy = 7.5; P.grounded = false; }
+    P.vy -= 22 * dt;
+  }
   jumpQueued = false;
-  P.vy -= 22 * dt;
   const ny = P.pos.y + P.vy * dt;
   if (P.vy <= 0) {
     if (collides(P.pos.x, ny, P.pos.z)) { P.pos.y = Math.floor(ny) + 1; P.vy = 0; P.grounded = true; }
@@ -862,6 +986,12 @@ function frame() {
   update(started ? dt : 0, clock.elapsedTime);
   if (!started) { P.yaw = Math.sin(clock.elapsedTime * .15) * .25; camera.rotation.set(P.pitch, P.yaw, 0); }
   sky.position.copy(camera.position);
+  // Water: drifting ripples, and murky blue fog with the camera under the surface
+  TEX.water.offset.set(clock.elapsedTime * .05, Math.sin(clock.elapsedTime * .4) * .1);
+  const under = get(Math.floor(camera.position.x), Math.floor(camera.position.y + .15), Math.floor(camera.position.z)) === WATER;
+  scene.fog.color.setHex(under ? 0x0d2e52 : SKY);
+  scene.fog.density = under ? .09 : .018;
+  scene.background.setHex(under ? 0x0d2e52 : SKY);
   if (asciiOn) {
     renderer.setRenderTarget(sceneRT);
     renderer.render(scene, camera);
@@ -877,7 +1007,7 @@ P.pos.y = surfaceY(Math.floor(P.pos.x), Math.floor(P.pos.z));
 P.eye = P.pos.y + 1.6;
 streamChunks(P.pos.x, P.pos.z, Infinity);
 camera.position.set(P.pos.x, P.eye, P.pos.z);
-window.__fort = { P, camera, scene, chunks, get, surfaceY, SEED };
+window.__fort = { P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
 frame();
 </script>
 </body>
