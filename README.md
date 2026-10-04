@@ -78,6 +78,17 @@ Villages sit on the road network. The roads meet at a village square with a ston
   - The miller pays farmers 3 coins for each sack of wheat they deliver.
   - A village with no mill starts its bakery with flour, and the baker says a merchant brings it from the nearest village with a mill.
 - **More to ask:** the baker's *How's business?* (stock, sales today, where the flour comes from), the miller's *Who buys your flour?*, and everyone else's *Where do you get your bread?*
+- **Your purse and pack:** you start with 30 coins. What you carry shows in the bottom-right corner, and it's saved with your world.
+- **Trading:** *Let's trade.* is now a conversation option with every villager. Prices rise when stock runs short, and people pay a little under value for what they buy.
+  - **Bakers:** sell bread; buy flour.
+  - **Millers:** sell flour and spare seed; buy wheat.
+  - **Farmers:** sell spare seed, buy seed when they're short, and buy bread.
+  - **Everyone else:** buys bread when their household is low.
+  - They only pay what their household can afford.
+- **Travelling merchants:** on market days (a bit over half of all days) a merchant from a neighbouring village drives a cart in along the longest street at about 9:00, parks near the square, and leaves at 16:00.
+  - **Look:** a plum coat and broad feathered hat.
+  - **With the village:** when they arrive they sell seed to households that have run out, sell flour to a bakery with no mill, and buy up surplus flour from the mill and surplus bread from the bakery. That's money coming in from outside.
+  - **With you:** they trade every kind of goods, at a mark-up. Ask *What's the news?* to hear what they did that morning.
 - **Groundwork for trade:** a goods catalogue (wheat seed, wheat, flour, bread, each with a value and source) and per-household stock. Farming, milling, baking and trading will build on this.
 - **Job outfits:** each job has its own look, so you can tell who's who at a glance:
   - **Baker:** white apron and cap.

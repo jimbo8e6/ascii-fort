@@ -54,6 +54,8 @@
     font-size: 11px; color: #e8d9b0; text-shadow: 0 1px 2px #000; }
   #miniCanvas { display: block; width: 132px; height: 132px; border: 1px solid rgba(255, 179, 71, .6); image-rendering: pixelated; }
   #miniWhere { margin-top: 4px; opacity: .85; }
+  body.touch #purse { bottom: 110px; }
+  #purse { position: fixed; right: 12px; bottom: 12px; z-index: 2; font-size: 12px; color: #ffd9a0; text-shadow: 0 1px 2px #000; pointer-events: none; }
   #map { position: fixed; inset: 0; z-index: 7; background: rgba(5, 6, 13, .88); display: flex; align-items: center;
     justify-content: center; padding: 16px; }
   #map[hidden], #mini[hidden] { display: none; }
@@ -82,6 +84,7 @@
   <div class="go" id="go">click / tap to enter</div>
 </div>
 <div id="hud"><span class="keys">T ascii &middot; G style &middot; [ ] size &middot; M map &middot; N minimap &middot; K time</span></div>
+<div id="purse"></div>
 <div id="mini"><canvas id="miniCanvas" width="192" height="192"></canvas><div id="miniWhere"></div></div>
 <div id="map" hidden>
   <div class="panel">
@@ -1733,7 +1736,12 @@ function makeGuard(kind = 'guard', color = 0x3c6e8a, job = null) {
   if (kind === 'villager') {
     // Each job has its own look, so you can tell who does what at a glance
     g.add(box(.5, .7, .3, job === 'miller' ? 0xd2c8b4 : color, 0, 1.15, 0));      // tunic (a miller's is dusted with flour)
-    if (job === 'baker') {
+    if (job === 'merchant') {
+      g.add(box(.56, .55, .34, 0x4a2a3a, 0, 1.05, 0));                           // travelling coat
+      g.add(box(.5, .05, .5, 0x2a2018, 0, 1.82, 0)); g.add(box(.3, .18, .3, 0x2a2018, 0, 1.92, 0));   // broad hat
+      g.add(box(.03, .22, .06, 0xc84a3a, .14, 2, .05));                          // feather
+      g.add(box(.16, .2, .08, 0x6a4a2a, .3, 1.0, .1));                           // purse at the belt
+    } else if (job === 'baker') {
       g.add(box(.42, .58, .04, 0xf2efe6, 0, 1.08, .16));                          // apron
       g.add(box(.32, .14, .32, 0xf2efe6, 0, 1.86, 0)); g.add(box(.38, .12, .38, 0xf2efe6, 0, 1.97, 0));   // baker's cap
     } else if (job === 'miller') {
@@ -1884,9 +1892,9 @@ function makeCart(color) {
     const p = new THREE.Group(); p.position.set(x, .85, z); part(p, .14, .85, .14, 0x4a2a18, 0, -.42, 0); g.add(p); legs.push(p);
   }
   // Driver
-  part(g, .4, .5, .3, color, 0, 1.45, .6); part(g, .26, .26, .26, 0xc89a70, 0, 1.85, .6); part(g, .36, .05, .36, 0xc8b070, 0, 2, .6);
+  const driver = [part(g, .4, .5, .3, color, 0, 1.45, .6), part(g, .26, .26, .26, 0xc89a70, 0, 1.85, .6), part(g, .36, .05, .36, 0xc8b070, 0, 2, .6)];
   scene.add(g);
-  return { g, wheels, legs, y: null, s: 0 };
+  return { g, wheels, legs, driver, y: null, s: 0 };
 }
 function groundAt(x, z) {
   const fx = Math.floor(x), fz = Math.floor(z);
@@ -2411,8 +2419,11 @@ function startVillage(plan) {
   for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; V.ring.push(node(Cx + Math.cos(a) * 3.2, base, Cz + Math.sin(a) * 3.2, 'square')); }
   V.ring.forEach((n, i) => link(n, V.ring[(i + 1) % 8]));
   // Streets: a point every ~4 blocks out to the village edge, joined to the square
+  const chains = [];
   for (const p of info.streets) {
     let prev = null;
+    const chain = [];
+    chains.push(chain);
     outer: for (let i = 0; i + 1 < p.length; i++) {
       const [ax, az] = p[i], [bx, bz] = p[i + 1], steps = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / 4));
       for (let k = 0; k < steps; k++) {
@@ -2420,10 +2431,12 @@ function startVillage(plan) {
         if (r < 5) continue;
         if (r > info.radius) break outer;
         const n = node(x, base, z, 'street');
-        link(prev || nearest(x, z, m => m.tag === 'square'), n); prev = n;
+        if (!prev) chain.push(nearest(x, z, m => m.tag === 'square'));
+        link(prev || chain[0], n); prev = n; chain.push(n);
       }
     }
   }
+  startMerchantRoute(V, chains);
   const toStreet = n => link(n, nearest(n.x, n.z, m => m.tag === 'street' || m.tag === 'square'));
   // Houses: door, rooms, stairs and bed, plus a path round the outside to the plot behind
   for (const m of info.cottages) {
@@ -2539,6 +2552,7 @@ function startVillage(plan) {
   return V;
 }
 function stopVillage(V) {
+  if (V.merchant) removeMerchant(V);
   villageMemory.set(placeKey(V.plan), snapshotVillage(V));
   for (const p of V.people) removeGuard(p.gd);
   for (const h of V.houses) { activeHouses.delete(h.m.seed); houseAwake.delete(h.m.seed); }
@@ -2611,6 +2625,7 @@ function updateVillages() {
   houseAwake.clear();
   for (const V of villages) {
     workVillage(V, dh);
+    updateMerchant(V);
     for (const p of V.people) if (['fire', 'seat', 'chores'].includes(p.act)) houseAwake.set(p.house.m.seed, (houseAwake.get(p.house.m.seed) || 0) + 1);
     if (V.millKey) {
       const miller = V.people.find(p => p.job === 'miller');
@@ -2820,6 +2835,153 @@ function workFlour(V, p) {
     say(p.gd, `${p.carrying} ${p.carrying === 1 ? 'sack' : 'sacks'} of flour for you.`, 3);
     p.carrying = 0; p.carryKind = null; p.retarget = true;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Trade: the player's purse and pack, trading with villagers, and travelling merchants who bring
+// their carts to a village's square on market days.
+// ---------------------------------------------------------------------------
+const player = { coins: 30, inv: {} };
+const have = item => player.inv[item] || 0;
+const unitOf = (item, n = 1) => n === 1 ? ITEMS[item].unit : ITEMS[item].unit === 'loaf' ? 'loaves' : ITEMS[item].unit + 's';
+const goodsText = (item, n) => `${n} ${unitOf(item, n)} of ${ITEMS[item].name}`;
+function updatePurse() {
+  const goods = Object.keys(ITEMS).filter(k => have(k)).map(k => `${have(k)} ${ITEMS[k].unit === 'loaf' ? (have(k) === 1 ? 'loaf' : 'loaves') : ITEMS[k].name}`);
+  document.getElementById('purse').textContent = `◉ ${player.coins} coins` + (goods.length ? ' · ' + goods.join(' · ') : '');
+}
+
+// What someone will trade. sells: goods they'll sell you; buys: goods they'll buy from you.
+// Prices rise when stock runs short, and they pay a little under value.
+function tradeTerms(p) {
+  const V = p.village, H = p.house, B = V?.bakery, sells = [], buys = [];
+  const purse = H ? { get: () => H.coins, add: n => { H.coins += n; } } : { get: () => p.coins, add: n => { p.coins += n; } };
+  const sell = (item, stock, take, markup = 0) => sells.push({ item, stock, take, price: () => ITEMS[item].value + markup + (stock() < 3 ? 1 : 0) });
+  const buy = (item, want, give, under = 1) => buys.push({ item, want, give, price: () => Math.max(1, ITEMS[item].value - under) });
+  if (p.job === 'merchant') {
+    for (const item of Object.keys(ITEMS)) {
+      sell(item, () => p.goods[item] || 0, () => { p.goods[item]--; }, 2);
+      buy(item, () => true, () => { p.goods[item] = (p.goods[item] || 0) + 1; }, 1);
+    }
+  } else if (p.job === 'baker') {
+    sell('bread', () => B.bread, () => { B.bread--; });
+    buy('flour', () => B.flour < 10, () => { B.flour++; });
+  } else if (p.job === 'miller') {
+    sell('flour', () => V.millStock.flour, () => { V.millStock.flour--; });
+    sell('wheatSeed', () => Math.max(0, (H.stock.wheatSeed || 0) - 2), () => { H.stock.wheatSeed--; });
+    buy('wheat', () => true, () => { V.millStock.wheat++; });
+  } else {
+    if (p.job === 'farmer') {
+      sell('wheatSeed', () => Math.max(0, (H.stock.wheatSeed || 0) - 2), () => { H.stock.wheatSeed--; });
+      buy('wheatSeed', () => (H.stock.wheatSeed || 0) < 2, () => { H.stock.wheatSeed = (H.stock.wheatSeed || 0) + 1; }, 0);
+    }
+    buy('bread', () => (H.stock.bread || 0) < 3, () => { H.stock.bread = (H.stock.bread || 0) + 1; });
+  }
+  return { sells, buys, purse };
+}
+
+function showTrade(p, note) {
+  const { sells, buys, purse } = tradeTerms(p), opts = [];
+  for (const s of sells) if (s.stock() > 0) opts.push([`Buy ${unitOf(s.item)} of ${ITEMS[s.item].name} — ${s.price()} coins (${s.stock()} left)`, () => {
+    const price = s.price();
+    if (player.coins < price) return showTrade(p, "You can't afford that.");
+    player.coins -= price; purse.add(price); s.take(); player.inv[s.item] = have(s.item) + 1; updatePurse();
+    showTrade(p, pick(['Here you are.', 'A pleasure.', 'Mind how you carry it.']));
+  }]);
+  for (const b of buys) if (have(b.item) > 0) opts.push([`Sell ${unitOf(b.item)} of ${ITEMS[b.item].name} — ${b.price()} coins (you have ${have(b.item)})`, () => {
+    const price = b.price();
+    if (!b.want()) return showTrade(p, `I've enough ${ITEMS[b.item].name} for now, thanks.`);
+    if (purse.get() < price) return showTrade(p, "I'd like to, but I can't afford it.");
+    purse.add(-price); player.coins += price; b.give(); player.inv[b.item]--; updatePurse();
+    showTrade(p, pick(['Done.', 'That will come in handy.', 'A fair price.']));
+  }]);
+  opts.push(['Done trading.', () => showDialogue('Anything else?')]);
+  const wants = buys.map(b => ITEMS[b.item].name).filter((n, i, a) => a.indexOf(n) === i);
+  const intro = note || (opts.length > 1 ? 'Have a look.' : "I've nothing to sell you just now.");
+  renderDialogue(`${intro} You have ${player.coins} coins.` + (wants.length ? ` (They'll buy: ${wants.join(', ')}.)` : ''), opts);
+}
+
+// ---- Travelling merchants ----
+// A merchant comes from a neighbouring village on market days: the cart drives in along a street in
+// the morning, parks near the square, trades with the village and with you, and leaves in the afternoon.
+const MARKET = { arrive: 9, parked: 9.6, leave: 16, gone: 16.6 };
+const isMarketDay = (V, day) => hash2(regionOf(V.plan.ox) * 31 + day, regionOf(V.plan.oz) * 17 - day) < .55;
+function startMerchantRoute(V, chains) {
+  const chain = chains.reduce((a, b) => (b.length > a.length ? b : a), []);
+  if (chain.length < 3) return;
+  V.merchantRoute = chain.slice().reverse();                  // from the village edge in towards the square
+}
+function updateMerchant(V, dt) {
+  const h = env.time, here = V.merchantRoute && isMarketDay(V, env.day) && h >= MARKET.arrive && h < MARKET.gone;
+  if (!here) { if (V.merchant) removeMerchant(V); return; }
+  if (!V.merchant || V.merchant.day !== env.day) { if (V.merchant) removeMerchant(V); V.merchant = makeMerchant(V); }
+  const M = V.merchant, route = V.merchantRoute, park = Math.max(1, route.length - 3);   // park a little way back from the square
+  // Position along the route: driving in, parked, or driving out
+  const k = h < MARKET.parked ? (h - MARKET.arrive) / (MARKET.parked - MARKET.arrive) : h < MARKET.leave ? 1 : 1 - (h - MARKET.leave) / (MARKET.gone - MARKET.leave);
+  const s = Math.max(0, Math.min(1, k)) * park, i = Math.min(park - 1, Math.floor(s)), t = s - i, a = route[i], b = route[i + 1];
+  const g = M.cart.g, x = a.x + (b.x - a.x) * t, z = a.z + (b.z - a.z) * t;
+  const leaving = h >= MARKET.leave, yaw = Math.atan2(b.x - a.x, b.z - a.z) + (leaving ? Math.PI : 0);
+  const moved = Math.hypot(x - g.position.x, z - g.position.z);
+  g.position.set(x, a.y, z); g.rotation.y = yaw;
+  for (const w of M.cart.wheels) w.rotation.x += moved / .45;
+  const driving = h < MARKET.parked || h >= MARKET.leave;
+  M.cart.legs.forEach((l, j) => { l.rotation.x = driving ? Math.sin(clock.elapsedTime * 6 + j) * .45 : 0; });
+  M.cart.driver.forEach(d => { d.visible = driving; });
+  M.gd.g.visible = !driving;
+  if (!driving) {
+    // Stand beside the cart, facing the square
+    const sx = x + Math.cos(yaw) * 1.3, sz = z - Math.sin(yaw) * 1.3;
+    if (!M.placed) { M.gd.g.position.set(sx, a.y, sz); M.gd.face = yaw; M.placed = true; }
+    if (!M.dealt) { M.dealt = true; marketDeals(V, M); }
+  } else { M.placed = false; M.gd.g.position.set(x, -100, z); }
+}
+function makeMerchant(V) {
+  const r = mulberry32((V.plan.seed ^ env.day * 7919) >>> 0), from = nearestVillageWith(V, () => true);
+  const fromMill = from && (from.edits(), from.decor.models.some(m => m.kind === 'windmill'));
+  const person = { name: `${FIRST_NAMES[r() * FIRST_NAMES.length | 0]} ${FAMILY_NAMES[r() * FAMILY_NAMES.length | 0]}`, job: 'merchant', village: V,
+    from: from ? from.title : 'the next valley', coins: 150 + (r() * 100 | 0),
+    goods: { wheatSeed: 6 + (r() * 6 | 0), flour: fromMill ? 4 + (r() * 6 | 0) : 2, bread: 3 + (r() * 5 | 0), wheat: 2 + (r() * 4 | 0) } };
+  const cart = makeCart(0x6a3a5a);
+  const gd = addGuard([0, -100, 0], null, 0, 0, { title: V.plan.title, plan: V.plan, kind: 'villager', color: 0x6a3a5a, person });
+  return { day: env.day, person, cart, gd, placed: false, dealt: false };
+}
+function removeMerchant(V) {
+  const M = V.merchant;
+  scene.remove(M.cart.g); removeGuard(M.gd);
+  V.merchant = null;
+}
+// When the merchant parks up, the village does its business: seed for those who've run out,
+// flour for a bakery with no mill, and the merchant buys up any surplus to sell elsewhere
+function marketDeals(V, M) {
+  const m = M.person, B = V.bakery, said = [];
+  const deal = (seller, buyer, item, n, price) => { n = Math.min(n, Math.floor(buyer.get() / price)); if (n <= 0) return 0; buyer.add(-n * price); seller.add(n * price); return n; };
+  const merchantPurse = { get: () => m.coins, add: n => { m.coins += n; } };
+  for (const H of V.houses) if (H.field && (H.stock.wheatSeed || 0) === 0 && m.goods.wheatSeed > 0) {
+    const n = deal(merchantPurse, { get: () => H.coins, add: x => { H.coins += x; } }, 'wheatSeed', Math.min(2, m.goods.wheatSeed), ITEMS.wheatSeed.value + 1);
+    if (n) { m.goods.wheatSeed -= n; H.stock.wheatSeed = (H.stock.wheatSeed || 0) + n; said.push(`${n} seed to the ${H.people[0].name.split(' ')[1]}s`); }
+  }
+  if (B && !V.mill && B.flour < 4 && m.goods.flour > 0) {
+    const n = deal(merchantPurse, { get: () => B.house.coins, add: x => { B.house.coins += x; } }, 'flour', Math.min(6, m.goods.flour), ITEMS.flour.value + 1);
+    if (n) { m.goods.flour -= n; B.flour += n; said.push(`${n} flour to the bakery`); }
+  }
+  const millHouse = V.people.find(q => q.job === 'miller')?.house;
+  if (millHouse && V.millStock.flour > 4) {
+    const n = deal({ get: () => millHouse.coins, add: x => { millHouse.coins += x; } }, merchantPurse, 'flour', V.millStock.flour - 4, ITEMS.flour.value - 1);
+    if (n) { V.millStock.flour -= n; m.goods.flour += n; said.push(`bought ${n} flour from the mill`); }
+  }
+  if (B && B.bread > 12) {
+    const n = deal({ get: () => B.house.coins, add: x => { B.house.coins += x; } }, merchantPurse, 'bread', B.bread - 12, ITEMS.bread.value - 1);
+    if (n) { B.bread -= n; m.goods.bread += n; said.push(`bought ${n} loaves`); }
+  }
+  M.report = said;
+  say(M.gd, pick(['Market day! Fresh goods from ' + m.from + '!', 'Seed, flour and bread, fair prices!', 'Come and see what I have!']), 4);
+}
+function merchantAbout(p) {
+  return `${p.name}, merchant. I drive my cart between ${p.from} and ${p.village.title} and the villages round about, buying what's spare and selling what's short. ` +
+    `Today I've ${Object.entries(p.goods).filter(([, n]) => n > 0).map(([k, n]) => goodsText(k, n)).join(', ') || 'nothing left to sell'}.`;
+}
+function merchantNews(p) {
+  const M = p.village.merchant, done = M?.report?.length ? `This morning I ${M.report.join(', ')}.` : 'Quiet morning so far.';
+  return `${done} I'll be here until about four, then it's back on the road.`;
 }
 
 // Conversation pieces for villagers
@@ -3523,17 +3685,20 @@ function talk() {
 function openDialogue(gd) {
   dlg.open = true; dlg.gd = gd; dlg.area = null;
   if (document.pointerLockElement) document.exitPointerLock();
-  const p = gd.home?.person, role = p ? `${p.name} \u00b7 ${JOB_NAMES[p.job]}` : gd.home?.kind === 'villager' ? 'Villager' : 'Guard';
+  const p = gd.home?.person, role = p ? `${p.name} \u00b7 ${p.job === 'merchant' ? 'merchant from ' + p.from : JOB_NAMES[p.job]}` : gd.home?.kind === 'villager' ? 'Villager' : 'Guard';
   dlgEl.querySelector('.who').textContent = gd.home ? `${role} \u00b7 ${gd.home.title}` : role;
   const night = env.daylight < .35;
   showDialogue(night ? 'Evening, traveller. Something you need?' : 'Good day. What can I do for you?');
 }
 
 function showDialogue(text) {
-  dlgEl.hidden = false;
-  dlgEl.querySelector('.text').textContent = text;
   const p = dlg.gd.home?.person, opts = [];
-  if (p) {
+  if (p?.job === 'merchant') {
+    opts.push(['Who are you?', () => showDialogue(merchantAbout(p))]);
+    opts.push(["Let's trade.", () => showTrade(p)]);
+    opts.push(["What's the news?", () => showDialogue(merchantNews(p))]);
+  } else if (p) {
+    opts.push(["Let's trade.", () => showTrade(p)]);
     opts.push(['Who are you?', () => showDialogue(villagerAbout(p))]);
     opts.push(['What are you doing?', () => showDialogue(villagerDoing(p))]);
     if (p.house.field) opts.push(['How are the crops?', () => showDialogue(villagerCrops(p))]);
@@ -3545,6 +3710,11 @@ function showDialogue(text) {
   }
   opts.push(['What can you tell me about this area?', () => showDialogue(dlg.area ??= describeArea(dlg.gd))]);
   opts.push(['Goodbye.', () => closeDialogue()]);
+  renderDialogue(text, opts);
+}
+function renderDialogue(text, opts) {
+  dlgEl.hidden = false;
+  dlgEl.querySelector('.text').textContent = text;
   const list = dlgEl.querySelector('.opts');
   list.innerHTML = '';
   opts.forEach(([label, fn], i) => {
@@ -3791,7 +3961,7 @@ function saveGame() {
   if (savingOff) return;
   for (const V of villages) villageMemory.set(placeKey(V.plan), snapshotVillage(V));
   const save = { v: 1, seed: SEED, x: P.pos.x, y: P.pos.y, z: P.pos.z, yaw: P.yaw, pitch: P.pitch, discovered: [...discovered],
-    villages: Object.fromEntries(villageMemory),
+    villages: Object.fromEntries(villageMemory), player: { coins: player.coins, inv: { ...player.inv } },
     time: env.time, day: env.day, savedAt: Date.now() };
   if (!store.set('world:' + SEED, save)) return;
   store.set('lastSeed', SEED);
@@ -3829,6 +3999,7 @@ if (saved?.v === 1 && [saved.x, saved.y, saved.z].every(Number.isFinite)) {
   P.pos.set(saved.x, saved.y, saved.z);
   P.yaw = P.homeYaw = saved.yaw || 0; P.pitch = saved.pitch || 0;
   if (!params.has('time')) { env.time = saved.time; env.day = saved.day || 1; }
+  if (Number.isFinite(saved.player?.coins)) { player.coins = saved.player.coins; Object.assign(player.inv, saved.player.inv || {}); }
   document.getElementById('saveInfo').textContent = `seed ${SEED} \u00b7 ${clockText().replace(/ [\u00bb|]+$/, '')}`;
   document.getElementById('go').textContent = 'click / tap to continue';
 } else {
@@ -3867,7 +4038,8 @@ function simulate(seconds) {
   for (let t = 0; t < seconds; t += .05) { updateSky(.05); updateVillages(); updateGuards(.05); updateCottages(.05); }
   env.speedIdx = keep;
 }
-window.__fort = { villageMemory, gameHours, millBusy, simulate, villages, activityFor, cottages, colliderGrid, solids, activeBridges, roadInfo, boatSpot, carts, animated, shapeOf, collides, roadsAtNode, linksOf, discovered, roadAt, roadBetween, rawHeight, dlg, describeArea, MAIN_TITLE, lantern, guards, talk, saveGame, store, env, planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
+updatePurse();
+window.__fort = { isMarketDay, player, villageMemory, gameHours, millBusy, simulate, villages, activityFor, cottages, colliderGrid, solids, activeBridges, roadInfo, boatSpot, carts, animated, shapeOf, collides, roadsAtNode, linksOf, discovered, roadAt, roadBetween, rawHeight, dlg, describeArea, MAIN_TITLE, lantern, guards, talk, saveGame, store, env, planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
 frame();
 </script>
 </body>
