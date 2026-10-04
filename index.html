@@ -1502,8 +1502,9 @@ class MapView {
     }
     marker(FORT, CX, CX, 52);
     // Player arrow (north / -z is up)
-    const [ppx, ppz] = toScreen(P.pos.x, P.pos.z), a = Math.atan2(-Math.sin(P.yaw), -Math.cos(P.yaw)), r = 4 * k + 3;
-    ctx.save(); ctx.translate(ppx, ppz); ctx.rotate(a + Math.PI / 2);
+    // Facing direction on screen: world forward is (-sin yaw, -cos yaw) in (x, z), and the map draws x right, z down
+    const [ppx, ppz] = toScreen(P.pos.x, P.pos.z), a = Math.atan2(-Math.cos(P.yaw), -Math.sin(P.yaw)), r = 4 * k + 3;
+    ctx.save(); ctx.translate(ppx, ppz); ctx.rotate(a);
     ctx.beginPath(); ctx.moveTo(r, 0); ctx.lineTo(-r * .7, r * .6); ctx.lineTo(-r * .35, 0); ctx.lineTo(-r * .7, -r * .6); ctx.closePath();
     ctx.fillStyle = '#ffb347'; ctx.strokeStyle = '#05060d'; ctx.lineWidth = 1.5; ctx.fill(); ctx.stroke();
     ctx.restore();
