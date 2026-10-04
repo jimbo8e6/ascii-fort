@@ -23,7 +23,16 @@
   .bubble { position: absolute; left: 0; top: 0; padding: 4px 8px; background: rgba(8, 9, 18, .82); color: #ffd9a0;
     border: 1px solid rgba(255, 179, 71, .55); font-size: 13px; white-space: nowrap; opacity: 0; transition: opacity .2s; }
   #talk { position: fixed; left: 50%; bottom: 40px; transform: translateX(-50%); z-index: 3; padding: 10px 18px; }
-  #talk[hidden], #talkHint[hidden] { display: none; }
+  #talk[hidden], #talkHint[hidden], #dialogue[hidden] { display: none; }
+  #dialogue { position: fixed; left: 50%; bottom: max(24px, env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 6;
+    width: min(640px, calc(100vw - 32px)); background: rgba(8, 9, 18, .93); border: 1px solid rgba(255, 179, 71, .6);
+    padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+  #dialogue .who { color: #ffb347; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; }
+  #dialogue .text { color: #f0e2bf; font-size: 14px; line-height: 1.55; }
+  #dialogue .opts { display: flex; flex-direction: column; gap: 6px; }
+  #dialogue .opt { text-align: left; background: none; border: 1px solid rgba(255, 179, 71, .35); color: #ffd9a0;
+    font: inherit; font-size: 13px; padding: 8px 10px; cursor: pointer; }
+  #dialogue .opt:hover, #dialogue .opt:focus { background: rgba(255, 179, 71, .12); outline: none; }
   #talkHint { position: fixed; left: 50%; bottom: 44px; transform: translateX(-50%); z-index: 3; font-size: 13px;
     color: #ffd9a0; background: rgba(8, 9, 18, .7); padding: 6px 12px; pointer-events: none; }
   body:not(.touch) #talk { display: none; }
@@ -98,7 +107,8 @@
 <button class="btn" id="jump">JUMP</button>
 <div id="bubbles"></div>
 <button class="btn" id="talk" hidden>TALK</button>
-<div id="talkHint" hidden>E &middot; answer the guard</div>
+<div id="talkHint" hidden>E &middot; talk</div>
+<div id="dialogue" hidden><div class="who"></div><div class="text"></div><div class="opts"></div></div>
 <div id="stick"><div id="knob"></div></div>
 
 <script type="module">
@@ -662,6 +672,15 @@ function buildRuins(set, { N, mat, rnd }) {
 }
 
 // The main fort at the start, on ground level G
+// Generated place names: 'Fort Ashwick', 'Greywatch Tower', 'the ruins of Old Merrow'
+const NAME_A = ['Ash', 'Grey', 'Hal', 'Iron', 'Raven', 'Stone', 'Wolf', 'Thorn', 'Elder', 'Black', 'Mar', 'Cold', 'Brack', 'Dun', 'Wyn', 'Holl', 'Ost', 'Kel', 'Red', 'Wester'];
+const NAME_B = ['wick', 'den', 'mere', 'hold', 'ford', 'gate', 'moor', 'watch', 'crest', 'barrow', 'fell', 'stead', 'rook', 'vale', 'ridge', 'holm'];
+function placeName(type, rnd) {
+  const base = NAME_A[rnd() * NAME_A.length | 0] + NAME_B[rnd() * NAME_B.length | 0];
+  return type === 1 ? `Fort ${base}` : type === 2 ? `${base} Tower` : `the ruins of Old ${base}`;   // 1 fort, 2 tower, 3 ruins
+}
+const MAIN_TITLE = placeName(1, mulberry32(SEED ^ 0x5eed));
+
 const MAIN_FORT = buildFort((x, y, z, v) => setEdit(x + F0, y + G, z + F0, v), {
   N: F1 - F0, wall: WALL, mat: BRICK,
   crates: [[7, 0, 7], [8, 0, 7], [7, 1, 7], [7, 0, 8], [38, 0, 32], [39, 0, 32], [38, 0, 33], [38, 1, 32], [12, 0, 30], [19, 0, 22], [20, 0, 22]],
@@ -706,7 +725,7 @@ function planFor(rx, rz) {
       if (type) plan = {
         type, N, ox, oz, base, pad, blend, rot: rnd() * 4 | 0, seed: rnd() * 1e9 | 0,
         mat: cl.desert > .5 ? SANDSTONE : BRICK, towerH: 11 + (rnd() * 4 | 0),
-        name: STRUCT_NAMES[type], cx: ox + N / 2, cz: oz + N / 2,
+        name: STRUCT_NAMES[type], title: placeName(type, rnd), cx: ox + N / 2, cz: oz + N / 2,
         _edits: null, decor: null, edits() { return this._edits || buildPlan(this); },
       };
     }
@@ -1123,10 +1142,10 @@ function makeGuard() {
   scene.add(g);
   return { g, legs };
 }
-function addGuard(a, b, speed, face = 0) {
+function addGuard(a, b, speed, face = 0, home = null) {
   const guard = makeGuard();
   guard.a = new THREE.Vector3(...a); guard.b = b && new THREE.Vector3(...b);
-  guard.speed = speed; guard.t = rand() * 10; guard.face = face;
+  guard.speed = speed; guard.t = rand() * 10; guard.face = face; guard.home = home;
   guard.g.position.copy(guard.a);
   guards.push(guard);
   return guard;
@@ -1140,7 +1159,7 @@ for (const [a, b, speed] of [
   [[19, 0, 33], [45, 0, 33], 1.3],
   [[CX - 3.2, 0, F1 + 2], null, 0],
   [[CX + 3.2, 0, F1 + 2], null, 0],
-]) addGuard([a[0], a[1] + G, a[2]], b && [b[0], b[1] + G, b[2]], speed);
+]) addGuard([a[0], a[1] + G, a[2]], b && [b[0], b[1] + G, b[2]], speed, 0, { title: MAIN_TITLE });
 
 // Torches and guards of procedural structures live with the chunk they stand in
 function addChunkDecor(c) {
@@ -1150,7 +1169,7 @@ function addChunkDecor(c) {
   plan.edits();
   const mine = (x, z) => Math.floor(x / CHUNK) === c.cx && Math.floor(z / CHUNK) === c.cz;
   for (const [x, y, z] of plan.decor.torches) if (mine(x, z)) c.decor.push(['torch', addTorch(x, y, z)]);
-  for (const gd of plan.decor.guards) if (mine(gd.a[0], gd.a[2])) c.decor.push(['guard', addGuard(gd.a, gd.b, gd.speed, gd.face ?? 0)]);
+  for (const gd of plan.decor.guards) if (mine(gd.a[0], gd.a[2])) c.decor.push(['guard', addGuard(gd.a, gd.b, gd.speed, gd.face ?? 0, { title: plan.title, plan })]);
 }
 function removeChunkDecor(c) {
   for (const [kind, obj] of c.decor || []) kind === 'torch' ? removeTorch(obj) : removeGuard(obj);
@@ -1305,9 +1324,9 @@ function pauseGame() {
   startEl.style.display = 'flex'; started = false;
 }
 document.addEventListener('pointerlockchange', () => {
-  if (!document.pointerLockElement && started && !isTouch && !mapOpen) pauseGame();
+  if (!document.pointerLockElement && started && !isTouch && !mapOpen && !dlg.open) pauseGame();
 });
-document.addEventListener('pointerlockerror', () => { if (started && !isTouch && !mapOpen) pauseGame(); });
+document.addEventListener('pointerlockerror', () => { if (started && !isTouch && !mapOpen && !dlg.open) pauseGame(); });
 document.addEventListener('mousemove', e => {
   if (document.pointerLockElement !== renderer.domElement) return;
   look(e.movementX * .0022, e.movementY * .0022);
@@ -1337,6 +1356,12 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyG') toggleStyle();
   if (e.code === 'BracketLeft') cycleCell(-1);
   if (e.code === 'BracketRight') cycleCell(1);
+  if (dlg.open) {                                        // conversation: number keys pick, Esc leaves
+    const n = parseInt(e.key, 10);
+    if (n >= 1 && n <= dlg.opts.length) dlg.opts[n - 1][1]();
+    if (e.code === 'Escape') closeDialogue(false);
+    return;
+  }
   if (e.code === 'KeyM') toggleMap();
   if (e.code === 'KeyN') toggleMini();
   if (e.code === 'KeyK') cycleTime();
@@ -1590,20 +1615,13 @@ function updateMaps() {
 }
 
 // ---------------------------------------------------------------------------
-// Guard awareness: notice the player (range + line of sight), stop and face them,
-// challenge them up close, give up when they leave. Pressing E answers a challenge.
+// NPCs (the guards for now): notice the player (range + line of sight), stop, face them and
+// greet them. Up close, E opens a conversation.
 // ---------------------------------------------------------------------------
 const LINES = {
-  notice: ['?', 'Hm?', "Who's that?"],
-  noticeNight: ['?', 'Who goes there?', 'Show yourself!'],
-  challenge: ['Halt! Who goes there?', 'State your business, stranger.', "That's close enough."],
-  wall: ["You can't be up here!", 'Off the walls, you!'],
-  repeat: ['I said halt!', 'Not one step further.', 'Speak up!'],
-  lost: ['Must have been the wind.', 'Hmph.', '...'],
-  leave: ['And stay away!', 'Hmph. Travellers.', 'Keep moving.'],
-  pass: ['Very well. Pass, friend.', 'Alright. Mind yourself.', 'Fine. Go on through.'],
-  greet: ['Good day.', 'Fine weather.', 'All quiet here.'],
-  greetNight: ['Evening, friend.', 'Cold night.', 'Keep to the torchlight.'],
+  greet: ['Good day, traveller.', 'Well met.', 'Fine weather for walking.', 'Morning.'],
+  greetNight: ['Evening, traveller.', 'Cold night for it.', 'Keep to the torchlight.'],
+  farewell: ['Safe travels.', 'Mind how you go.', 'Off you go, then.'],
 };
 const pick = a => a[Math.floor(Math.random() * a.length)];
 const bubbleBox = document.getElementById('bubbles');
@@ -1632,14 +1650,16 @@ function turnTowards(gd, target, dt) {
   gd.g.rotation.y += diff * Math.min(1, dt * 6);
 }
 
+const TALK_RANGE = 4.5;
 let talkTarget = null;
 document.getElementById('talk').addEventListener('click', e => { e.stopPropagation(); talk(); });
+
 function updateGuards(dt) {
   const now = clock.elapsedTime, night = env.daylight < .35;
   const range = 9 + env.daylight * 7;                          // they see further by day
   talkTarget = null;
   for (const gd of guards) {
-    gd.mode ??= 'patrol'; gd.lostT ??= 0; gd.lastSay ??= -99; gd.losT ??= 0;
+    gd.lastSay ??= -99; gd.losT ??= 0; gd.lostT ??= 99;
     const pos = gd.g.position, dx = P.pos.x - pos.x, dz = P.pos.z - pos.z, dy = P.pos.y - pos.y;
     const dist = Math.hypot(dx, dz) + Math.max(0, Math.abs(dy) - 2) * .7;
 
@@ -1651,28 +1671,15 @@ function updateGuards(dt) {
     const sees = gd.seeing && dist < range;
     gd.lostT = sees ? 0 : gd.lostT + dt;
 
-    if (gd.mode === 'friendly') {
-      if (now > gd.friendlyUntil) gd.mode = 'patrol';
-      else if (sees && dist < 5 && now - gd.lastSay > 25) say(gd, pick(night ? LINES.greetNight : LINES.greet));
-    } else if (gd.mode === 'patrol') {
-      if (sees) { gd.mode = 'alert'; say(gd, pick(night ? LINES.noticeNight : LINES.notice), 2); }
-    } else {
-      if (gd.mode === 'alert' && sees && dist < 6) {
-        gd.mode = 'challenge';
-        const onWall = P.pos.y - terrainHeight(Math.floor(P.pos.x), Math.floor(P.pos.z)) >= 4;    // up on the battlements
-        say(gd, pick(onWall ? LINES.wall : LINES.challenge));
-      } else if (gd.mode === 'challenge' && sees && dist < 6 && now - gd.lastSay > 7) say(gd, pick(LINES.repeat));
-      if (gd.lostT > 4 || dist > range + 6) {
-        say(gd, pick(gd.mode === 'challenge' ? LINES.leave : LINES.lost), 2.5);
-        gd.mode = 'patrol';
-      }
-    }
-    if (gd.mode === 'challenge' && dist < 6.5 && (!talkTarget || dist < talkTarget.dist)) talkTarget = { gd, dist };
+    // Greet once per encounter when you come near; forget you a few seconds after you've gone
+    if (sees && dist < 7 && !gd.greeted && now - gd.lastSay > 2) { say(gd, pick(night ? LINES.greetNight : LINES.greet)); gd.greeted = true; }
+    if (gd.lostT > 5) gd.greeted = false;
+    if (sees && dist < TALK_RANGE && (!talkTarget || dist < talkTarget.dist)) talkTarget = { gd, dist };
 
-    // Movement: patrol when calm (or friendly), otherwise stand and face the player
-    const watching = gd.mode === 'alert' || gd.mode === 'challenge' || gd.mode === 'friendly' && sees && dist < 4;
-    if (watching) {
-      turnTowards(gd, Math.atan2(dx, dz), dt);
+    // Stop and face the player while they're close and in view, otherwise carry on
+    const attending = sees && dist < 7 || dlg.gd === gd;
+    if (attending) {
+      turnTowards(gd, Math.atan2(dx, dz), Math.max(dt, .016));
       gd.legs[0].rotation.x = gd.legs[1].rotation.x = 0;
     } else if (!gd.b) {
       turnTowards(gd, gd.face, dt);
@@ -1687,19 +1694,108 @@ function updateGuards(dt) {
       gd.legs[0].rotation.x = swing; gd.legs[1].rotation.x = -swing;
     }
   }
-  document.getElementById('talk').hidden = !talkTarget;
-  document.getElementById('talkHint').hidden = !talkTarget || isTouch;
+  const prompt = !!talkTarget && !dlg.open;
+  document.getElementById('talk').hidden = !prompt;
+  document.getElementById('talkHint').hidden = !prompt || isTouch;
 }
 
+// ---------------------------------------------------------------------------
+// Conversations: a menu of options; answers about the area are worked out from the world itself
+// ---------------------------------------------------------------------------
+const dlg = { open: false, gd: null };
+const dlgEl = document.getElementById('dialogue');
+const COMPASS = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'];
+// Compass direction from a to b: -z is north, +x is east
+const compass = (dx, dz) => COMPASS[Math.round(((Math.atan2(dx, -dz) / (Math.PI * 2)) * 8 + 8)) % 8];
+const paces = d => d < 80 ? 'just' : `about ${Math.round(d / 50) * 50} paces`;
+const BIOME_PHRASE = { [OCEAN]: 'the sea', [DESERT]: 'desert', [PLAINS]: 'open grassland', [FOREST]: 'pine woods', [SNOWY]: 'the snowfields' };
+const cap = t => t[0].toUpperCase() + t.slice(1);
+
 function talk() {
-  if (!talkTarget) return;
-  // Answering satisfies every guard close by who was watching you; the nearest one replies
-  for (const gd of guards) {
-    if (gd.mode !== 'alert' && gd.mode !== 'challenge') continue;
-    if (gd.g.position.distanceTo(P.pos) > 10) continue;
-    gd.mode = 'friendly'; gd.friendlyUntil = clock.elapsedTime + 120; gd.lastSay = clock.elapsedTime;
+  if (!talkTarget || dlg.open) return;
+  openDialogue(talkTarget.gd);
+}
+
+function openDialogue(gd) {
+  dlg.open = true; dlg.gd = gd; dlg.area = null;
+  if (document.pointerLockElement) document.exitPointerLock();
+  dlgEl.querySelector('.who').textContent = gd.home ? `Guard · ${gd.home.title}` : 'Guard';
+  const night = env.daylight < .35;
+  showDialogue(night ? 'Evening, traveller. Something you need?' : 'Good day. What can I do for you?');
+}
+
+function showDialogue(text) {
+  dlgEl.hidden = false;
+  dlgEl.querySelector('.text').textContent = text;
+  const opts = [
+    ['What can you tell me about this area?', () => showDialogue(dlg.area ??= describeArea(dlg.gd))],
+    ['Goodbye.', () => closeDialogue()],
+  ];
+  const list = dlgEl.querySelector('.opts');
+  list.innerHTML = '';
+  opts.forEach(([label, fn], i) => {
+    const b = Object.assign(document.createElement('button'), { className: 'opt', textContent: `${i + 1}. ${label}` });
+    b.addEventListener('click', e => { e.stopPropagation(); fn(); });
+    list.append(b);
+  });
+  dlg.opts = opts;
+}
+
+function closeDialogue(relock = true) {
+  if (!dlg.open) return;
+  const gd = dlg.gd;
+  dlg.open = false; dlg.gd = null;
+  dlgEl.hidden = true;
+  say(gd, pick(LINES.farewell), 2.5);
+  if (started && !isTouch) {
+    if (relock) renderer.domElement.requestPointerLock?.();
+    else pauseGame();
   }
-  say(talkTarget.gd, pick(LINES.pass));
+}
+
+// What a guard knows about their surroundings, from the world generator itself
+function describeArea(gd) {
+  const x0 = gd.g.position.x, z0 = gd.g.position.z, out = [];
+  out.push(gd.home ? `This is ${gd.home.title}.` : 'Quiet country, this.');
+
+  // Nearest places with names
+  const places = [];
+  for (let rz = regionOf(z0) - 3; rz <= regionOf(z0) + 3; rz++) for (let rx = regionOf(x0) - 3; rx <= regionOf(x0) + 3; rx++) {
+    const plan = planFor(rx, rz);
+    if (plan && plan !== gd.home?.plan) places.push({ title: plan.title, type: plan.type, x: plan.cx, z: plan.cz });
+  }
+  if (gd.home?.title !== MAIN_TITLE) places.push({ title: MAIN_TITLE, type: FORT, x: CX, z: CX });
+  places.forEach(p => { p.d = Math.hypot(p.x - x0, p.z - z0); });
+  places.sort((a, b) => a.d - b.d);
+  const tail = { [FORT]: ['They keep a garrison there.', 'Good walls on that one.'], [TOWER]: ['You can see for miles from the top.', 'Climb it if you want a look around.'],
+    [RUINS]: ['Nothing but old stones now.', "Nobody's lived there in an age."] };
+  for (const p of places.slice(0, 2).filter(p => p.d < 700)) {
+    out.push(`${cap(p.title)} ${p.type === RUINS ? 'lie' : 'lies'} ${paces(p.d)} to the ${compass(p.x - x0, p.z - z0)}. ${pick(tail[p.type])}`);
+  }
+
+  // Which way the land changes: the nearest different biomes in eight directions
+  const here = biomeOf(climate(Math.floor(x0), Math.floor(z0)), terrainHeight(Math.floor(x0), Math.floor(z0)));
+  const seen = new Map();
+  for (let d = 60; d <= 600; d += 30) for (let k = 0; k < 8; k++) {
+    const a = k / 8 * Math.PI * 2, x = Math.floor(x0 + Math.sin(a) * d), z = Math.floor(z0 - Math.cos(a) * d);
+    const b = biomeOf(climate(x, z), terrainHeight(x, z));
+    if (b !== here && !seen.has(b)) seen.set(b, { d, dir: COMPASS[k] });
+  }
+  const far = d => d < 150 ? 'a short walk' : d < 350 ? 'a few hundred paces' : 'a long walk';
+  [...seen.entries()].sort((a, b) => a[1].d - b[1].d).slice(0, 2).forEach(([b, { d, dir }]) => {
+    out.push(`Head ${dir} and you'll reach ${BIOME_PHRASE[b]}, ${far(d)} off.`);
+  });
+
+  // A cave mouth nearby?
+  let cave = null;
+  for (let d = 40; d <= 280 && !cave; d += 40) for (let k = 0; k < 8 && !cave; k++) {
+    const a = k / 8 * Math.PI * 2, x = Math.floor(x0 + Math.sin(a) * d), z = Math.floor(z0 - Math.cos(a) * d);
+    const h = terrainHeight(x, z);
+    if (h > SEA + 1 && get(x, h - 1, z) === AIR && get(x, h - 2, z) === AIR) cave = { d, dir: COMPASS[k] };
+  }
+  if (cave) out.push(`There's a cave mouth ${paces(cave.d)} to the ${cave.dir}. Take a light if you go in.`);
+  if (env.daylight < .35) out.push('I\'d wait for daylight before wandering far.');
+  return out.join(' ');
 }
 
 // Place speech bubbles over the guards' heads (HTML, so they stay readable in ASCII mode)
@@ -1800,7 +1896,7 @@ function update(dt, t) {
 function frame() {
   const dt = Math.min(clock.getDelta(), .05);
   streamChunks(P.pos.x, P.pos.z, 6);
-  update(started && !mapOpen ? dt : 0, clock.elapsedTime);
+  update(started && !mapOpen && !dlg.open ? dt : 0, clock.elapsedTime);
   updateBubbles();
   updateMaps();
   if (!started) { P.yaw = P.homeYaw + Math.sin(clock.elapsedTime * .15) * .25; camera.rotation.set(P.pitch, P.yaw, 0); }
@@ -1808,7 +1904,7 @@ function frame() {
   // Water: drifting ripples, and murky blue fog with the camera under the surface
   TEX.water.offset.set(clock.elapsedTime * .05, Math.sin(clock.elapsedTime * .4) * .1);
   const under = get(Math.floor(camera.position.x), Math.floor(camera.position.y + .15), Math.floor(camera.position.z)) === WATER;
-  updateSky(started && !mapOpen ? dt : 0);
+  updateSky(started && !mapOpen && !dlg.open ? dt : 0);
   if (under) scene.fog.color.setHex(0x0d2e52).lerp(env.horizon, .25); else scene.fog.color.copy(env.horizon);
   scene.fog.density = under ? .09 : .018 - env.daylight * .002;
   scene.background.copy(scene.fog.color);
@@ -1899,7 +1995,7 @@ streamChunks(P.pos.x, P.pos.z, Infinity);
 // If the world changed under a saved position (e.g. a newer version of the generator), step out on top
 if (collides(P.pos.x, P.pos.y, P.pos.z)) { P.pos.y = surfaceY(Math.floor(P.pos.x), Math.floor(P.pos.z)); P.eye = P.pos.y + 1.6; }
 camera.position.set(P.pos.x, P.eye, P.pos.z);
-window.__fort = { lantern, guards, talk, saveGame, store, env, planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
+window.__fort = { dlg, describeArea, MAIN_TITLE, lantern, guards, talk, saveGame, store, env, planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
 frame();
 </script>
 </body>
