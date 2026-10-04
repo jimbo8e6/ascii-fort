@@ -26,7 +26,8 @@ npx serve .        # or: python3 -m http.server
 
 - **Rivers:** long meandering rivers wind across the continents, roughly 8–12 blocks wide. Each sits in a wide grassy valley with sandy banks and a channel cut just below sea level, so it fills with water and runs out to the coast. They freeze over in the far north and are rarer and thinner in deserts.
 - **Roads:** every fort, watchtower and village links to its two nearest neighbours within two regions (about 450 blocks), and the starting fort joins in too. The roads wind gently between them.
-  - They cross rivers on wooden plank bridges, but no road is built across open sea.
+  - **Bridges:** they cross rivers on plank bridges whose deck is level with the higher bank. Where the far bank is lower, the deck carries on level until it meets ground at the same height, so you never step down more than one block. Log posts hold them up, and boats can pass underneath. No road is built across open sea.
+  - **Leaving places:** roads leave fort gates and tower doors straight outwards before turning, so they never cut across a structure's walls.
   - Trees never grow on them, and they show on the map when zoomed in.
   - A guard will tell you when a road leads to a place they mention.
 - **Discovery:** forts, watchtowers and ruins are hidden on the map until you've been near one. Then a banner announces it (*DISCOVERED — Ravenvale Tower*) and its marker appears. The starting fort is announced when you first enter a world. Discoveries are saved with each world.

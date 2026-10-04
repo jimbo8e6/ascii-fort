@@ -564,7 +564,7 @@ function generateChunk(cx, cz) {
     const slope = Math.max(Math.abs(h - hAt(lx + 1, lz)), Math.abs(h - hAt(lx - 1, lz)), Math.abs(h - hAt(lx, lz + 1)), Math.abs(h - hAt(lx, lz - 1)));
     let top = GRASS, sub = DIRT;
     const st = structureAt(x, z);
-    const road = !st?.inside && roadAt(x, z);
+    const deck = st?.inside ? null : roadInfo(x, z), road = deck !== null;
     if (inCourtyard(x, z) || isRoad(x, z) || st?.inside && st.plan.type === FORT || road && h > SEA) top = PATH;
     else if (biome === OCEAN) { top = h < SEA - 4 ? DIRT : SAND; sub = SAND; }
     else if (biome === DESERT) { top = slope >= 4 ? SANDSTONE : SAND; sub = SANDSTONE; }
@@ -577,7 +577,10 @@ function generateChunk(cx, cz) {
     if (h > SEA && !st && SLAB_OF.has(top) && (hAt(lx + 1, lz) === h + 1 || hAt(lx - 1, lz) === h + 1 || hAt(lx, lz + 1) === h + 1 || hAt(lx, lz - 1) === h + 1))
       put(lx, h, lz, SLAB_OF.get(top));
     for (let y = h; y < SEA; y++) put(lx, y, lz, y === SEA - 1 && cold[i] > .6 ? ICE : WATER);
-    if (road && h < SEA) put(lx, SEA - 1, lz, WOOD);                          // plank bridge
+    if (deck && h < deck) {                                                  // bridge deck, level with the banks
+      put(lx, deck - 1, lz, PLANK);
+      if (hash2(x * 3, z * 5) < .12) for (let y = h; y < deck - 1; y++) put(lx, y, lz, LOG);   // the odd support post
+    }
   }
 
   // Caves. Three 3D noise fields are sampled every 4 blocks and interpolated between. Winding
@@ -1015,10 +1018,10 @@ function roadNode(rx, rz) {
   if (plan.type === VILLAGE) return [plan.cx, plan.cz];
   if (plan.type === FORT) {
     const [lx, lz] = rotateLocal(plan.N / 2, plan.N + 4, plan.N, plan.rot);
-    return [plan.ox + lx, plan.oz + lz];
+    return [plan.ox + lx, plan.oz + lz, ...DIR_VEC[rotateDir(2, plan.rot)]];      // + the way out of the gate
   }
   const [lx, lz] = rotateLocal(-3, 2.5, 7, plan.rot);
-  return [plan.ox + lx, plan.oz + lz];
+  return [plan.ox + lx, plan.oz + lz, ...DIR_VEC[rotateDir(1, plan.rot)]];        // + the way out of the door
 }
 
 // The road between two neighbouring regions (or null): a polyline of points every ~6 blocks
@@ -1029,12 +1032,20 @@ function roadBetween(ax, az, bx, bz) {
   let road = null;
   const a = roadNode(ax, az), b = roadNode(bx, bz);
   if (a && b) {
-    const dx = b[0] - a[0], dz = b[1] - a[1], len = Math.hypot(dx, dz), n = Math.max(2, Math.ceil(len / 6));
+    // Leave a gate or door straight outwards before turning, so a road never cuts across its own walls
+    const out = (n, k) => n.length > 2 ? [n[0] + n[2] * k, n[1] + n[3] * k] : null;
+    const a1 = out(a, 12), b1 = out(b, 12), s0 = a1 || a, s1 = b1 || b;
+    const dx = s1[0] - s0[0], dz = s1[1] - s0[1], len = Math.hypot(dx, dz) || 1, n = Math.max(2, Math.ceil(len / 6));
     const px = -dz / len, pz = dx / len, pts = [];
+    if (a1) pts.push(a[0], a[1]);
     let wet = 0, maxWet = 0;
-    for (let i = 0; i <= n; i++) {
-      const t = i / n, bend = Math.sin(t * Math.PI) * 14 * noiseC(ax * 3.1 + bx + t * 2.2, az * 1.7 + bz);   // winding, pinned at both ends
-      const x = a[0] + dx * t + px * bend, z = a[1] + dz * t + pz * bend;
+    for (let i = 0; i <= n + (b1 ? 1 : 0); i++) {
+      let x, z;
+      if (i > n) [x, z] = b;
+      else {
+        const t = i / n, bend = Math.sin(t * Math.PI) * 14 * noiseC(ax * 3.1 + bx + t * 2.2, az * 1.7 + bz);   // winding, pinned at both ends
+        x = s0[0] + dx * t + px * bend; z = s0[1] + dz * t + pz * bend;
+      }
       pts.push(x, z);
       wet = rawHeight(Math.floor(x), Math.floor(z)) <= SEA ? wet + 1 : 0;
       maxWet = Math.max(maxWet, wet);
@@ -1100,7 +1111,8 @@ function roadsForRegion(rx, rz) {
 }
 
 // Is this column on a road?
-function roadAt(x, z) {
+// Road at this column: null if none, otherwise the bridge deck height there (0 = ordinary road)
+function roadInfo(x, z) {
   const px = x + .5, pz = z + .5;
   for (const road of roadsForRegion(regionOf(x), regionOf(z))) {
     const [x0, z0, x1, z1] = road.box;
@@ -1109,10 +1121,39 @@ function roadAt(x, z) {
     for (let i = 0; i + 3 < p.length; i += 2) {
       const ax = p[i], az = p[i + 1], dx = p[i + 2] - ax, dz = p[i + 3] - az;
       const t = Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / (dx * dx + dz * dz)));
-      if (Math.hypot(px - ax - dx * t, pz - az - dz * t) < ROAD_HALF) return true;
+      if (Math.hypot(px - ax - dx * t, pz - az - dz * t) < ROAD_HALF) return bridgeDeck(road)[i >> 1];
     }
   }
-  return false;
+  return null;
+}
+const roadAt = (x, z) => roadInfo(x, z) !== null;
+
+// Bridges: wherever a road dips to the water, a level deck spans from bank to bank at the height of
+// the higher bank, carrying on over lower ground until it meets ground at deck height. Per segment.
+function bridgeDeck(road) {
+  if (road.deck) return road.deck;
+  const p = road.pts, n = p.length / 2 - 1, g = [], low = [], deck = new Array(n).fill(0);
+  for (let i = 0; i <= n; i++) g.push(rawHeight(Math.floor(p[i * 2]), Math.floor(p[i * 2 + 1])));
+  for (let i = 0; i < n; i++) {                        // lowest ground along each segment
+    let m = Infinity;
+    const sx = p[i * 2], sz = p[i * 2 + 1], ex = p[i * 2 + 2] - sx, ez = p[i * 2 + 3] - sz, l = Math.hypot(ex, ez) || 1;
+    for (let k = 0; k <= 6; k++) for (const o of [-ROAD_HALF - .5, 0, ROAD_HALF + .5]) {     // along the segment, and across the road's width
+      const t = k / 6;
+      m = Math.min(m, rawHeight(Math.floor(sx + ex * t - ez / l * o), Math.floor(sz + ez * t + ex / l * o)));
+    }
+    low.push(m);
+  }
+  for (let i = 0; i < n; i++) {
+    if (low[i] > SEA || deck[i]) continue;
+    let a = i, b = i;
+    while (b + 1 < n && low[b + 1] <= SEA) b++;
+    const level = Math.max(g[a], g[b + 1], SEA + 1);
+    // Carry on while the ground at the next point, or anywhere along the next segment, is lower than the deck
+    while (a > 0 && (g[a] < level || low[a - 1] < level - 1)) a--;
+    while (b + 1 < n && (g[b + 1] < level || low[b + 1] < level - 1)) b++;
+    for (let k = a; k <= b; k++) deck[k] = level;
+  }
+  return road.deck = deck;
 }
 
 // Flattening around a structure: weight 1 inside the padded footprint, fading over `blend` blocks
@@ -1670,7 +1711,8 @@ function groundAt(x, z) {
   let h = terrainHeight(fx, fz);
   const c = chunks.get(chunkKey(fx >> 4, fz >> 4));
   if (c && shapeOf(c.data[(fx & 15) + (fz & 15) * CHUNK + h * 256])?.shape === 'slab') h += .5;
-  return Math.max(h, SEA);                                   // bridges sit at water level
+  const deck = roadInfo(fx, fz);
+  return Math.max(h, SEA, deck || 0);                         // on a bridge, ride on the deck
 }
 function updateCarts(dt) {
   cartTime += dt;
@@ -2632,7 +2674,7 @@ streamChunks(P.pos.x, P.pos.z, Infinity);
 // If the world changed under a saved position (e.g. a newer version of the generator), step out on top
 if (collides(P.pos.x, P.pos.y, P.pos.z)) { P.pos.y = surfaceY(Math.floor(P.pos.x), Math.floor(P.pos.z)); P.eye = P.pos.y + 1.6; }
 camera.position.set(P.pos.x, P.eye, P.pos.z);
-window.__fort = { boatSpot, carts, animated, shapeOf, collides, roadsAtNode, linksOf, discovered, roadAt, roadBetween, rawHeight, dlg, describeArea, MAIN_TITLE, lantern, guards, talk, saveGame, store, env, planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
+window.__fort = { roadInfo, boatSpot, carts, animated, shapeOf, collides, roadsAtNode, linksOf, discovered, roadAt, roadBetween, rawHeight, dlg, describeArea, MAIN_TITLE, lantern, guards, talk, saveGame, store, env, planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
 frame();
 </script>
 </body>
