@@ -256,7 +256,7 @@ const MAT_NAMES = ['brick', 'wood', 'grassTop', 'grassSide', 'dirt', 'path', 'ro
 const MAT = Object.fromEntries(MAT_NAMES.map((n, i) => [n, i + 1]));
 const materials = MAT_NAMES.map(n => n === 'water'
   ? new THREE.MeshLambertMaterial({ map: TEX.water, transparent: true, opacity: .78, depthWrite: false, emissive: 0x0a1a34 })
-  : new THREE.MeshLambertMaterial({ map: TEX[n] }));
+  : new THREE.MeshLambertMaterial({ map: TEX[n], vertexColors: true }));     // vertex colours carry ambient occlusion
 
 // ---------------------------------------------------------------------------
 // Blocks, climate and terrain
@@ -779,6 +779,8 @@ const clockText = () => {
 // Chunk meshing: greedy merge of visible faces into one mesh per chunk,
 // with one geometry group per material
 // ---------------------------------------------------------------------------
+const AO_SHADE = [.22, .47, .73, 1];      // vertex brightness for 0..3 open sides
+
 // water = false meshes opaque blocks; water = true meshes only water surfaces (drawn as a separate transparent mesh)
 function meshChunk(c, water = false) {
   const ox = c.cx * CHUNK, oz = c.cz * CHUNK, data = c.data;
@@ -788,22 +790,38 @@ function meshChunk(c, water = false) {
   const dims = [CHUNK, ymax, CHUNK];
   const block = (x, y, z) => (x >= 0 && x < CHUNK && z >= 0 && z < CHUNK && y >= 0 && y < H)
     ? data[x + z * CHUNK + y * 256] : get(ox + x, y, oz + z);
-  const buf = MAT_NAMES.map(() => ({ pos: [], nrm: [], uv: [], idx: [] }));
+  const buf = MAT_NAMES.map(() => ({ pos: [], nrm: [], uv: [], col: [], idx: [] }));
+  const occ = (x, y, z) => solid(block(x, y, z)) ? 1 : 0;
 
   for (let d = 0; d < 3; d++) {
     const u = (d + 1) % 3, v = (d + 2) % 3, x = [0, 0, 0], q = [0, 0, 0];
     q[d] = 1;
-    const mask = new Int16Array(dims[u] * dims[v]);
+    const mask = new Int32Array(dims[u] * dims[v]);
     const posFace = d === 0 ? 0 : d === 1 ? 2 : 4;       // face index for the +d direction
+    const eu = [0, 0, 0], ev = [0, 0, 0];
+    eu[u] = 1; ev[v] = 1;
+    // Ambient occlusion for the four corners of a face, looking at the blocks around the air cell
+    // in front of it: 3 = open, 0 = tucked into a corner. Packed 2 bits per corner, in quad vertex order.
+    const aoPack = (px, py, pz) => {
+      let packed = 0;
+      for (let k = 0; k < 4; k++) {
+        const su = k === 1 || k === 2 ? 1 : -1, sv = k >= 2 ? 1 : -1;
+        const ux = eu[0] * su, uy = eu[1] * su, uz = eu[2] * su, vx = ev[0] * sv, vy = ev[1] * sv, vz = ev[2] * sv;
+        const s1 = occ(px + ux, py + uy, pz + uz), s2 = occ(px + vx, py + vy, pz + vz);
+        const ao = s1 && s2 ? 0 : 3 - s1 - s2 - occ(px + ux + vx, py + uy + vy, pz + uz + vz);
+        packed |= ao << (k * 2);
+      }
+      return packed;
+    };
     for (x[d] = -1; x[d] < dims[d];) {
       // Build the mask of faces between slice x[d] and x[d] + 1 that belong to this chunk
       let n = 0;
       for (x[v] = 0; x[v] < dims[v]; x[v]++) for (x[u] = 0; x[u] < dims[u]; x[u]++, n++) {
         const a = block(x[0], x[1], x[2]), b = block(x[0] + q[0], x[1] + q[1], x[2] + q[2]);
         const aIn = x[d] >= 0, bIn = x[d] < dims[d] - 1 || d === 1;
-        if (water) mask[n] = a === WATER && !b && aIn ? MAT.water : b === WATER && !a && bIn ? -MAT.water : 0;
-        else if (solid(a) && !solid(b) && aIn) mask[n] = faceMaterial(a, posFace);
-        else if (solid(b) && !solid(a) && bIn) mask[n] = -faceMaterial(b, posFace + 1);
+        if (water) mask[n] = a === WATER && !b && aIn ? MAT.water | 255 << 8 : b === WATER && !a && bIn ? -(MAT.water | 255 << 8) : 0;
+        else if (solid(a) && !solid(b) && aIn) mask[n] = faceMaterial(a, posFace) | aoPack(x[0] + q[0], x[1] + q[1], x[2] + q[2]) << 8;
+        else if (solid(b) && !solid(a) && bIn) mask[n] = -(faceMaterial(b, posFace + 1) | aoPack(x[0], x[1], x[2]) << 8);
         else mask[n] = 0;
       }
       x[d]++;
@@ -819,17 +837,22 @@ function meshChunk(c, water = false) {
         x[u] = i; x[v] = j;
         const du = [0, 0, 0], dv = [0, 0, 0];
         du[u] = w; dv[v] = h;
-        const b = buf[Math.abs(m) - 1], base = b.pos.length / 3;
+        const b = buf[(Math.abs(m) & 255) - 1], base = b.pos.length / 3, ao = Math.abs(m) >> 8;
         const corners = [[0, 0, 0], du, [du[0] + dv[0], du[1] + dv[1], du[2] + dv[2]], dv];
-        for (const cnr of corners) {
+        corners.forEach((cnr, k) => {
+          const shade = AO_SHADE[(ao >> (k * 2)) & 3];
+          b.col.push(shade, shade, shade);
           const px = ox + x[0] + cnr[0], py = x[1] + cnr[1] - (water ? .15 : 0), pz = oz + x[2] + cnr[2];  // water sits a little low
           b.pos.push(px, py, pz);
           b.nrm.push(d === 0 ? Math.sign(m) : 0, d === 1 ? Math.sign(m) : 0, d === 2 ? Math.sign(m) : 0);
           // World-space UVs: one texture tile per block, with v running up the sides
           if (d === 0) b.uv.push(pz, py); else if (d === 1) b.uv.push(px, pz); else b.uv.push(px, py);
-        }
-        if (m > 0) b.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
-        else b.idx.push(base, base + 2, base + 1, base, base + 3, base + 2);
+        });
+        // Split the quad along the diagonal that keeps a single dark corner from smearing across it
+        const flip = (ao & 3) + (ao >> 4 & 3) < (ao >> 2 & 3) + (ao >> 6 & 3);
+        const [i0, i1, i2, i3] = flip ? [base + 1, base + 2, base + 3, base] : [base, base + 1, base + 2, base + 3];
+        if (m > 0) b.idx.push(i0, i1, i2, i0, i2, i3);
+        else b.idx.push(i0, i2, i1, i0, i3, i2);
         for (let l = 0; l < h; l++) for (let k = 0; k < w; k++) mask[n + k + l * dims[u]] = 0;
         i += w; n += w;
       }
@@ -837,11 +860,11 @@ function meshChunk(c, water = false) {
   }
 
   // Merge the per-material buffers into one geometry with groups
-  const pos = [], nrm = [], uv = [], idx = [], geo = new THREE.BufferGeometry();
+  const pos = [], nrm = [], uv = [], col = [], idx = [], geo = new THREE.BufferGeometry();
   buf.forEach((b, mi) => {
     if (!b.idx.length) return;
     const vOff = pos.length / 3, start = idx.length;
-    for (let i = 0; i < b.pos.length; i++) { pos.push(b.pos[i]); nrm.push(b.nrm[i]); }
+    for (let i = 0; i < b.pos.length; i++) { pos.push(b.pos[i]); nrm.push(b.nrm[i]); col.push(b.col[i]); }
     for (let i = 0; i < b.uv.length; i++) uv.push(b.uv[i]);
     for (let i = 0; i < b.idx.length; i++) idx.push(b.idx[i] + vOff);
     geo.addGroup(start, b.idx.length, mi);
@@ -849,6 +872,7 @@ function meshChunk(c, water = false) {
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   geo.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
   geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   if (!idx.length) return null;
   geo.setIndex(idx);
   geo.computeBoundingSphere();
