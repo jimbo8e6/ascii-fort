@@ -312,6 +312,12 @@ Object.assign(TEX, {
     for (let x = 0; x < s; x += 8) g.fillRect(x, 0, 1, s);
     for (let i = 0; i < 6; i++) g.fillRect(rand() * s | 0, rand() * s | 0, 1, 1);
   }),
+  deckPlank: canvasTexture(32, (g, s) => {
+    noiseFill(g, s, [140, 104, 64], 18);
+    g.fillStyle = 'rgba(40,26,12,.85)';
+    for (let y = 0; y < s; y += 8) g.fillRect(0, y, s, 2);
+    for (let i = 0; i < 8; i++) g.fillRect(rand() * s | 0, rand() * s | 0, 1, 1);
+  }),
   roof: canvasTexture(32, (g, s) => {
     noiseFill(g, s, [140, 62, 46], 22);
     g.fillStyle = 'rgba(50,20,15,.75)';
@@ -577,10 +583,7 @@ function generateChunk(cx, cz) {
     if (h > SEA && !st && SLAB_OF.has(top) && (hAt(lx + 1, lz) === h + 1 || hAt(lx - 1, lz) === h + 1 || hAt(lx, lz + 1) === h + 1 || hAt(lx, lz - 1) === h + 1))
       put(lx, h, lz, SLAB_OF.get(top));
     for (let y = h; y < SEA; y++) put(lx, y, lz, y === SEA - 1 && cold[i] > .6 ? ICE : WATER);
-    if (deck && h < deck) {                                                  // bridge deck, level with the banks
-      put(lx, deck - 1, lz, PLANK);
-      if (hash2(x * 3, z * 5) < .12) for (let y = h; y < deck - 1; y++) put(lx, y, lz, LOG);   // the odd support post
-    }
+    if (deck && h > deck) { for (let y = deck; y < h; y++) put(lx, y, lz, AIR); put(lx, deck - 1, lz, PATH); }   // cut the approach level
   }
 
   // Caves. Three 3D noise fields are sampled every 4 blocks and interpolated between. Winding
@@ -1054,6 +1057,7 @@ function roadBetween(ax, az, bx, bz) {
       let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
       for (let i = 0; i < pts.length; i += 2) { x0 = Math.min(x0, pts[i]); x1 = Math.max(x1, pts[i]); z0 = Math.min(z0, pts[i + 1]); z1 = Math.max(z1, pts[i + 1]); }
       road = { pts, box: [x0 - 3, z0 - 3, x1 + 3, z1 + 3], seed: hash2(ax * 7919 + bx * 31, az * 104729 + bz * 17) };
+      planBridges(road);
     }
   }
   roadCache.set(key, road);
@@ -1128,10 +1132,87 @@ function roadInfo(x, z) {
 }
 const roadAt = (x, z) => roadInfo(x, z) !== null;
 
-// Bridges: wherever a road dips to the water, a level deck spans from bank to bank at the height of
-// the higher bank, carrying on over lower ground until it meets ground at deck height. Per segment.
-function bridgeDeck(road) {
-  if (road.deck) return road.deck;
+// ---------------------------------------------------------------------------
+// Bridge models: straight spans from bank to bank, wooden with handrails or stone with arches.
+// They're meshes, not blocks, so diagonal bridges keep clean straight edges. Collision is
+// handled against their real shape (deck, railings, parapets).
+// ---------------------------------------------------------------------------
+const BRIDGE_W = 3.6;
+// A box with UVs scaled so textures tile once per block on every face
+function scaledBox(w, h, d) {
+  const g = new THREE.BoxGeometry(w, h, d), uv = g.attributes.uv, dims = [[d, h], [d, h], [w, d], [w, d], [w, h], [w, h]];
+  for (let f = 0; f < 6; f++) for (let k = 0; k < 4; k++) { const i = f * 4 + k; uv.setXY(i, uv.getX(i) * dims[f][0], uv.getY(i) * dims[f][1]); }
+  return g;
+}
+const bridgeMats = {};
+const bmat = (name, color) => bridgeMats[name] ??= TEX[name] ? new THREE.MeshLambertMaterial({ map: TEX[name] }) : new THREE.MeshLambertMaterial({ color });
+function mesh(parent, geo, mat, x, y, z) { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); parent.add(m); return m; }
+
+// Local coordinates: z runs along the bridge (0..L), x across, y = 0 at the deck top
+function buildWoodBridge(b) {
+  const g = new THREE.Group(), L = b.len, W = BRIDGE_W, drop = b.deck - b.bed;
+  mesh(g, scaledBox(W, .2, L), bmat('deckPlank'), 0, -.1, L / 2);
+  for (const s of [1, -1]) {
+    mesh(g, scaledBox(.25, .35, L), bmat('log'), s * (W / 2 - .2), -.38, L / 2);                     // stringers
+    mesh(g, scaledBox(.1, .1, L), bmat('rail', 0x6a4a2a), s * (W / 2 - .08), 1.0, L / 2);            // top rail
+    mesh(g, scaledBox(.07, .07, L), bmat('rail', 0x6a4a2a), s * (W / 2 - .08), .55, L / 2);          // mid rail
+    const posts = Math.max(2, Math.round(L / 1.6));
+    for (let i = 0; i <= posts; i++) mesh(g, scaledBox(.14, 1.1, .14), bmat('post', 0x4a3420), s * (W / 2 - .08), .5, i / posts * L);
+  }
+  // Piles down to the riverbed, in braced pairs
+  const piles = Math.max(1, Math.round(L / 4) - 1);
+  for (let i = 1; i <= piles; i++) {
+    const z = i / (piles + 1) * L;
+    for (const s of [1, -1]) mesh(g, scaledBox(.25, drop + 1, .25), bmat('log'), s * (W / 2 - .3), -(drop + 1) / 2, z);
+    const brace = mesh(g, scaledBox(W - .6, .12, .12), bmat('post', 0x4a3420), 0, -Math.min(drop, 2.2) * .6, z);
+    brace.rotation.z = .35;
+  }
+  return g;
+}
+
+function buildStoneBridge(b) {
+  const g = new THREE.Group(), L = b.len, W = BRIDGE_W, spring = SEA - 1.2, top = -.15;
+  const arches = Math.max(1, Math.round(L / 13)), span = L / arches;
+  const stone = bmat(b.mat === SANDSTONE ? 'sandstone' : 'brick'), cap = bmat('rock');
+  // The arched body as one mesh: side walls follow the arch curve underneath, plus the soffit
+  const pos = [], nrm = [], uv = [], idx = [];
+  const add = (p, n, u, v) => { pos.push(...p); nrm.push(...n); uv.push(u, v); return pos.length / 3 - 1; };
+  // Underside profile: an elliptical arch over each opening, with flat-bottomed piers between them
+  const K = 18, rise = (top - .7) - (spring - b.deck), bottom = [], PIER = 2.2;
+  for (let j = 0; j < arches; j++) {
+    const o0 = j * span + (j ? PIER / 2 : 0), o1 = (j + 1) * span - (j < arches - 1 ? PIER / 2 : 0);
+    for (let k = 0; k <= K; k++) {
+      const t = k / K, x = Math.cos(Math.PI * (1 - t));          // -1..1, bunched towards the springs
+      bottom.push([o0 + (o1 - o0) * (x + 1) / 2, spring - b.deck + rise * Math.sqrt(Math.max(0, 1 - x * x))]);
+    }
+  }
+  for (const side of [1, -1]) for (let i = 0; i + 1 < bottom.length; i++) {
+    const [s0, y0] = bottom[i], [s1, y1] = bottom[i + 1], x = side * W / 2, n = [side, 0, 0];
+    const q = [add([x, top, s0], n, s0, top), add([x, y0, s0], n, s0, y0), add([x, y1, s1], n, s1, y1), add([x, top, s1], n, s1, top)];
+    side > 0 ? idx.push(q[0], q[1], q[2], q[0], q[2], q[3]) : idx.push(q[0], q[2], q[1], q[0], q[3], q[2]);
+  }
+  for (let i = 0; i + 1 < bottom.length; i++) {                                // underside of the arches
+    const [s0, y0] = bottom[i], [s1, y1] = bottom[i + 1];
+    const q = [add([-W / 2, y0, s0], [0, -1, 0], -W / 2, s0), add([W / 2, y0, s0], [0, -1, 0], W / 2, s0), add([W / 2, y1, s1], [0, -1, 0], W / 2, s1), add([-W / 2, y1, s1], [0, -1, 0], -W / 2, s1)];
+    idx.push(q[0], q[2], q[1], q[0], q[3], q[2]);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geo.setIndex(idx);
+  mesh(g, geo, stone, 0, 0, 0);
+  mesh(g, scaledBox(W, .3, L), cap, 0, -.15, L / 2);                           // paved deck
+  for (const s of [1, -1]) {
+    mesh(g, scaledBox(.35, .75, L), stone, s * (W / 2 - .17), .37, L / 2);     // parapets
+    mesh(g, scaledBox(.5, .14, L + .2), cap, s * (W / 2 - .17), .8, L / 2);    // capstones
+  }
+  return g;
+}
+
+// Work out a road's bridges once, when the road is made: where it dips to the water, a level deck
+// at the higher bank's height runs straight from bank to bank (the road is straightened to match)
+function planBridges(road, rx, rz) {
   const p = road.pts, n = p.length / 2 - 1, g = [], low = [], deck = new Array(n).fill(0);
   for (let i = 0; i <= n; i++) g.push(rawHeight(Math.floor(p[i * 2]), Math.floor(p[i * 2 + 1])));
   for (let i = 0; i < n; i++) {                        // lowest ground along each segment
@@ -1143,6 +1224,7 @@ function bridgeDeck(road) {
     }
     low.push(m);
   }
+  road.bridges = [];
   for (let i = 0; i < n; i++) {
     if (low[i] > SEA || deck[i]) continue;
     let a = i, b = i;
@@ -1152,9 +1234,53 @@ function bridgeDeck(road) {
     while (a > 0 && (g[a] < level || low[a - 1] < level - 1)) a--;
     while (b + 1 < n && (g[b + 1] < level || low[b + 1] < level - 1)) b++;
     for (let k = a; k <= b; k++) deck[k] = level;
+    // Straighten the road over the span
+    const ax = p[a * 2], az = p[a * 2 + 1], bx = p[b * 2 + 2], bz = p[b * 2 + 3];
+    for (let k = a + 1; k <= b; k++) { const t = (k - a) / (b + 1 - a); p[k * 2] = ax + (bx - ax) * t; p[k * 2 + 1] = az + (bz - az) * t; }
+    const len = Math.hypot(bx - ax, bz - az), seed = hash2(Math.floor(ax), Math.floor(az));
+    let bed = level;
+    for (let k = a; k <= b; k++) bed = Math.min(bed, low[k]);
+    const cl = climate(Math.floor(ax), Math.floor(az));
+    road.bridges.push({ ax, az, bx, bz, len, deck: level, bed, dirx: (bx - ax) / len, dirz: (bz - az) / len,
+      type: len <= 40 && seed < .55 ? 'stone' : 'wood', mat: cl.desert > .5 ? SANDSTONE : BRICK, mesh: null });
+    i = b;
   }
-  return road.deck = deck;
+  road.deck = deck;
 }
+const bridgeDeck = road => road.deck;
+
+// Bridges near the player get meshes (and collision); far ones are dropped
+const activeBridges = new Set();
+let bridgeScan = 0;
+function updateBridges(dt) {
+  bridgeScan -= dt;
+  if (bridgeScan > 0) return;
+  bridgeScan = .7;
+  const want = new Set(), rx0 = regionOf(P.pos.x), rz0 = regionOf(P.pos.z);
+  for (let rz = rz0 - 1; rz <= rz0 + 1; rz++) for (let rx = rx0 - 1; rx <= rx0 + 1; rx++)
+    for (const road of roadsForRegion(rx, rz)) for (const b of road.bridges)
+      if (Math.hypot((b.ax + b.bx) / 2 - P.pos.x, (b.az + b.bz) / 2 - P.pos.z) < 160 + b.len / 2) want.add(b);
+  for (const b of activeBridges) if (!want.has(b)) { scene.remove(b.mesh); b.mesh = null; activeBridges.delete(b); }
+  for (const b of want) if (!b.mesh) {
+    b.mesh = b.type === 'stone' ? buildStoneBridge(b) : buildWoodBridge(b);
+    b.mesh.position.set(b.ax, b.deck, b.az);
+    b.mesh.rotation.y = Math.atan2(b.dirx, b.dirz);
+    scene.add(b.mesh); activeBridges.add(b);
+  }
+}
+// Bridge collision for a player at (x, y, z): returns the deck top if standing in the deck slab,
+// 'wall' if pushing into a railing or parapet, or null
+function bridgeHit(x, y, z) {
+  for (const b of activeBridges) {
+    const dx = x - b.ax, dz = z - b.az, u = dx * b.dirx + dz * b.dirz, v = Math.abs(-dx * b.dirz + dz * b.dirx);
+    if (u < -RADIUS || u > b.len + RADIUS || v > BRIDGE_W / 2 + RADIUS) continue;
+    const top = b.deck;
+    if (u > .3 && u < b.len - .3 && v > BRIDGE_W / 2 - .35 - RADIUS && y < top + 1.4 && y + HEIGHT > top) return 'wall';   // higher than any step-up
+    if (v < BRIDGE_W / 2 + RADIUS - .05 && y < top - 1e-4 && y > top - .6) return top;
+  }
+  return null;
+}
+
 
 // Flattening around a structure: weight 1 inside the padded footprint, fading over `blend` blocks
 function structureAt(x, z) {
@@ -1893,7 +2019,7 @@ function collides(x, y, z) {
         const top = cellTop(get(ix, iy, iz), ix, iz, x, z);
         if (top && y < iy + top - eps) return true;
       }
-  return false;
+  return bridgeHit(x, y, z) !== null;
 }
 // Where feet land when falling into the layer at y: the highest solid top under the footprint
 function landingY(x, y, z) {
@@ -1904,6 +2030,8 @@ function landingY(x, y, z) {
       const top = cellTop(get(ix, iy, iz), ix, iz, x, z);
       if (top) best = Math.max(best, iy + top);
     }
+  const bt = bridgeHit(x, y, z);
+  if (typeof bt === 'number') best = Math.max(best, bt);
   return best > -Infinity ? best : iy + 1;
 }
 
@@ -2565,6 +2693,7 @@ function update(dt, t) {
   updateLantern(dt);
   checkDiscoveries(dt);
   updateModels(dt);
+  updateBridges(dt);
 }
 
 function frame() {
@@ -2674,7 +2803,7 @@ streamChunks(P.pos.x, P.pos.z, Infinity);
 // If the world changed under a saved position (e.g. a newer version of the generator), step out on top
 if (collides(P.pos.x, P.pos.y, P.pos.z)) { P.pos.y = surfaceY(Math.floor(P.pos.x), Math.floor(P.pos.z)); P.eye = P.pos.y + 1.6; }
 camera.position.set(P.pos.x, P.eye, P.pos.z);
-window.__fort = { roadInfo, boatSpot, carts, animated, shapeOf, collides, roadsAtNode, linksOf, discovered, roadAt, roadBetween, rawHeight, dlg, describeArea, MAIN_TITLE, lantern, guards, talk, saveGame, store, env, planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
+window.__fort = { activeBridges, roadInfo, boatSpot, carts, animated, shapeOf, collides, roadsAtNode, linksOf, discovered, roadAt, roadBetween, rawHeight, dlg, describeArea, MAIN_TITLE, lantern, guards, talk, saveGame, store, env, planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
 frame();
 </script>
 </body>

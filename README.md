@@ -26,7 +26,10 @@ npx serve .        # or: python3 -m http.server
 
 - **Rivers:** long meandering rivers wind across the continents, roughly 8–12 blocks wide. Each sits in a wide grassy valley with sandy banks and a channel cut just below sea level, so it fills with water and runs out to the coast. They freeze over in the far north and are rarer and thinner in deserts.
 - **Roads:** every fort, watchtower and village links to its two nearest neighbours within two regions (about 450 blocks), and the starting fort joins in too. The roads wind gently between them.
-  - **Bridges:** they cross rivers on plank bridges whose deck is level with the higher bank. Where the far bank is lower, the deck carries on level until it meets ground at the same height, so you never step down more than one block. Log posts hold them up, and boats can pass underneath. No road is built across open sea.
+  - **Bridges:** where a road crosses a river it runs straight over a bridge model, with clean straight edges at any angle. The deck is level with the higher bank and carries on level until it meets ground, so you never step down more than one block. The seed picks one of two kinds:
+    - **Wooden:** a slatted deck on stringer beams, posted handrails with top and middle rails, and braced piles down to the riverbed.
+    - **Stone:** elliptical arches (two or three on longer spans, with piers between), parapet walls with capstones and a paved deck. Built in sandstone in the desert. Spans over 40 blocks are always wooden.
+    - **Collision** follows the real deck, and the rails and parapets stop you walking off the side. Boats fit underneath, and no road is built across open sea.
   - **Leaving places:** roads leave fort gates and tower doors straight outwards before turning, so they never cut across a structure's walls.
   - Trees never grow on them, and they show on the map when zoomed in.
   - A guard will tell you when a road leads to a place they mention.
