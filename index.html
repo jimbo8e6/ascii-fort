@@ -56,6 +56,7 @@
   <p class="keys">WASD / arrows: move &middot; mouse: look &middot; shift: run &middot; space: jump<br>
      T: toggle ASCII &middot; G: style &middot; [ ]: character size &middot; M: map &middot; N: minimap &middot; K: time speed &middot; esc: pause</p>
   <p class="touchhelp">Left thumb: move &middot; right thumb: look &middot; button: jump</p>
+  <p id="saveInfo"></p>
   <div class="go" id="go">click / tap to enter</div>
 </div>
 <div id="hud"><span class="keys">T ascii &middot; G style &middot; [ ] size &middot; M map &middot; N minimap &middot; K time</span></div>
@@ -74,7 +75,9 @@
     <div class="row">
       <span class="info">seed</span><input id="mapSeed" inputmode="numeric">
       <button class="btn" id="mapGo">GO</button><button class="btn" id="mapRandom">NEW WORLD</button>
+      <button class="btn" id="mapReset">RESTART THIS WORLD</button>
     </div>
+    <div class="row" id="savedWorlds"></div>
   </div>
 </div>
 <div id="buttons">
@@ -102,7 +105,17 @@ function mulberry32(seed) {
   };
 }
 const rand = mulberry32(1337);                       // cosmetic randomness (textures, flicker)
-const SEED = (parseInt(new URLSearchParams(location.search).get('seed'), 10) || 1337) | 0;
+// Saving lives in this browser only (localStorage). Every read and write is guarded, so the game
+// still runs where storage is blocked (private windows, previews); it just won't remember anything.
+const store = {
+  get(k) { try { return JSON.parse(localStorage.getItem('asciifort:' + k)); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem('asciifort:' + k, JSON.stringify(v)); return true; } catch { return false; } },
+  del(k) { try { localStorage.removeItem('asciifort:' + k); } catch { /* storage unavailable */ } },
+};
+const params = new URLSearchParams(location.search);
+// World seed: from the URL, else the world you were last in, else the default
+const SEED = (parseInt(params.get('seed'), 10) || parseInt(store.get('lastSeed'), 10) || 1337) | 0;
+if (!params.get('seed')) { params.set('seed', SEED); try { history.replaceState(null, '', '?' + params); } catch { /* file:// etc. */ } }
 
 // 2D simplex noise, roughly in [-1, 1]
 function makeNoise2D(seed) {
@@ -725,7 +738,7 @@ const starMat = new THREE.PointsMaterial({ color: 0x6a7498, size: 1, sizeAttenua
 const DAY_SECONDS = 600;
 const TIME_SPEEDS = [1, 20, 0];               // normal, fast, frozen
 const env = {
-  time: (() => { const t = parseFloat(new URLSearchParams(location.search).get('time')); return isNaN(t) ? 18.5 : ((t % 24) + 24) % 24; })(),
+  time: (() => { const t = parseFloat(params.get('time')); return isNaN(t) ? 18.5 : ((t % 24) + 24) % 24; })(),
   day: 1, speedIdx: 0, daylight: 0, horizon: new THREE.Color(SKY),
 };
 const C = hex => new THREE.Color(hex);
@@ -1102,7 +1115,7 @@ resize();
 // ---------------------------------------------------------------------------
 // Player and collision
 // ---------------------------------------------------------------------------
-const P = { pos: new THREE.Vector3(CX + .5, 0, F1 + 24.5), vy: 0, grounded: true, yaw: 0, pitch: 0.05, eye: 1.6, bob: 0, inWater: false };
+const P = { pos: new THREE.Vector3(CX + .5, 0, F1 + 24.5), vy: 0, grounded: true, yaw: 0, pitch: 0.05, eye: 1.6, bob: 0, inWater: false, homeYaw: 0 };   // homeYaw: facing while on the start screen
 const RADIUS = .3, HEIGHT = 1.75;
 
 function collides(x, y, z) {
@@ -1136,12 +1149,13 @@ if (isTouch) document.body.classList.add('touch');
 
 const startEl = document.getElementById('start');
 startEl.addEventListener('click', () => {
-  if (!started) P.yaw = 0;
+  if (!started) P.yaw = P.homeYaw;
   started = true; startEl.style.display = 'none';
   if (!isTouch) renderer.domElement.requestPointerLock?.();
 });
 renderer.domElement.addEventListener('click', () => { if (started && !isTouch) renderer.domElement.requestPointerLock?.(); });
 function pauseGame() {
+  P.homeYaw = P.yaw;
   document.getElementById('go').textContent = 'paused \u00b7 click to resume';
   startEl.style.display = 'flex'; started = false;
 }
@@ -1158,12 +1172,13 @@ function look(dx, dy) {
   P.pitch = Math.max(-1.45, Math.min(1.45, P.pitch - dy));
 }
 
-function toggleAscii() { asciiOn = !asciiOn; document.getElementById('btnAscii').textContent = `ASCII: ${asciiOn ? 'ON' : 'OFF'}`; }
-function cycleCell(d) { cellIdx = (cellIdx + d + CELLS.length) % CELLS.length; resize(); }
+function toggleAscii() { asciiOn = !asciiOn; document.getElementById('btnAscii').textContent = `ASCII: ${asciiOn ? 'ON' : 'OFF'}`; saveSettings(); }
+function cycleCell(d) { cellIdx = (cellIdx + d + CELLS.length) % CELLS.length; resize(); saveSettings(); }
 function toggleStyle() {
   style = style === STYLES.fine ? STYLES.classic : STYLES.fine;
   document.getElementById('btnStyle').textContent = `STYLE: ${style.name}`;
   resize();
+  saveSettings();
 }
 document.getElementById('btnAscii').addEventListener('click', e => { e.stopPropagation(); toggleAscii(); });
 document.getElementById('btnCell').addEventListener('click', e => { e.stopPropagation(); cycleCell(1); });
@@ -1382,11 +1397,12 @@ function toggleMap(open = !mapOpen, relock = true) {
     else pauseGame();
   }
 }
-function toggleMini() { miniOn = !miniOn; miniEl.hidden = mapOpen || !miniOn; }
+function toggleMini() { miniOn = !miniOn; miniEl.hidden = mapOpen || !miniOn; saveSettings(); }
 
 function cycleTime() {
   env.speedIdx = (env.speedIdx + 1) % TIME_SPEEDS.length;
   document.getElementById('btnTime').textContent = ['TIME', 'TIME \u00bb', 'TIME ||'][env.speedIdx];
+  saveSettings();
 }
 document.getElementById('btnTime').addEventListener('click', e => { e.stopPropagation(); cycleTime(); });
 document.getElementById('btnMap').addEventListener('click', e => { e.stopPropagation(); toggleMap(); });
@@ -1394,7 +1410,7 @@ document.getElementById('mapClose').addEventListener('click', () => toggleMap(fa
 document.getElementById('mapIn').addEventListener('click', () => zoomMap(-1));
 document.getElementById('mapOut').addEventListener('click', () => zoomMap(1));
 document.getElementById('mapCenter').addEventListener('click', () => { mapState.cx = P.pos.x; mapState.cz = P.pos.z; renderBigMap(); });
-const goSeed = seed => { const u = new URL(location.href); u.searchParams.set('seed', seed); location.href = u.href; };
+const goSeed = seed => { saveGame(); const u = new URL(location.href); u.searchParams.set('seed', seed); u.searchParams.delete('time'); location.href = u.href; };
 document.getElementById('mapGo').addEventListener('click', () => goSeed(parseInt(document.getElementById('mapSeed').value, 10) || 1));
 document.getElementById('mapRandom').addEventListener('click', () => goSeed(1 + Math.floor(Math.random() * 999999)));
 mapCanvas.addEventListener('wheel', e => { e.preventDefault(); zoomMap(e.deltaY > 0 ? 1 : -1); }, { passive: false });
@@ -1509,7 +1525,7 @@ function frame() {
   streamChunks(P.pos.x, P.pos.z, 6);
   update(started && !mapOpen ? dt : 0, clock.elapsedTime);
   updateMaps();
-  if (!started) { P.yaw = Math.sin(clock.elapsedTime * .15) * .25; camera.rotation.set(P.pitch, P.yaw, 0); }
+  if (!started) { P.yaw = P.homeYaw + Math.sin(clock.elapsedTime * .15) * .25; camera.rotation.set(P.pitch, P.yaw, 0); }
   sky.position.copy(camera.position);
   // Water: drifting ripples, and murky blue fog with the camera under the surface
   TEX.water.offset.set(clock.elapsedTime * .05, Math.sin(clock.elapsedTime * .4) * .1);
@@ -1530,12 +1546,82 @@ function frame() {
   }
   requestAnimationFrame(frame);
 }
-// Load the area around the start before the first frame so nothing pops in at spawn
-P.pos.y = surfaceY(Math.floor(P.pos.x), Math.floor(P.pos.z));
+// ---------------------------------------------------------------------------
+// Saving: settings, plus one save per world seed (position, view, time). Autosaves every
+// 10 s and when the page is hidden or closed.
+// ---------------------------------------------------------------------------
+let saveSettingsReady = false, savingOff = false;
+function saveSettings() {
+  if (!saveSettingsReady) return;
+  store.set('settings', { ascii: asciiOn, style: style.name, cell: cellIdx, mini: miniOn, speed: env.speedIdx });
+}
+function saveGame() {
+  if (savingOff) return;
+  const save = { v: 1, seed: SEED, x: P.pos.x, y: P.pos.y, z: P.pos.z, yaw: P.yaw, pitch: P.pitch,
+    time: env.time, day: env.day, savedAt: Date.now() };
+  if (!store.set('world:' + SEED, save)) return;
+  store.set('lastSeed', SEED);
+  const worlds = (store.get('worlds') || []).filter(w => w.seed !== SEED);
+  worlds.unshift({ seed: SEED, day: env.day, time: env.time, savedAt: save.savedAt });
+  for (const old of worlds.splice(8)) store.del('world:' + old.seed);      // keep the 8 most recent worlds
+  store.set('worlds', worlds);
+}
+setInterval(() => { if (started) saveGame(); }, 10000);
+addEventListener('pagehide', saveGame);
+document.addEventListener('visibilitychange', () => { if (document.hidden) saveGame(); });
+
+// Restore settings
+{
+  const st = store.get('settings');
+  if (st) {
+    if (st.ascii === false) toggleAscii();
+    if (st.style === STYLES.classic.name) toggleStyle();
+    if (Number.isInteger(st.cell) && st.cell >= 0 && st.cell < CELLS.length) { cellIdx = st.cell; resize(); }
+    if (st.mini === false) toggleMini();
+    for (let i = 0; i < TIME_SPEEDS.length && env.speedIdx !== st.speed; i++) cycleTime();
+  }
+  saveSettingsReady = true;
+}
+
+// Restore this world's save, or start at the fort
+const saved = store.get('world:' + SEED);
+if (saved?.v === 1 && [saved.x, saved.y, saved.z].every(Number.isFinite)) {
+  P.pos.set(saved.x, saved.y, saved.z);
+  P.yaw = P.homeYaw = saved.yaw || 0; P.pitch = saved.pitch || 0;
+  if (!params.has('time')) { env.time = saved.time; env.day = saved.day || 1; }
+  document.getElementById('saveInfo').textContent = `seed ${SEED} \u00b7 ${clockText().replace(/ [\u00bb|]+$/, '')}`;
+  document.getElementById('go').textContent = 'click / tap to continue';
+} else {
+  P.pos.y = surfaceY(Math.floor(P.pos.x), Math.floor(P.pos.z));
+}
+
+// Saved worlds and restart, on the map panel
+function renderSavedWorlds() {
+  const worlds = (store.get('worlds') || []).filter(w => w.seed !== SEED);
+  const el = document.getElementById('savedWorlds');
+  el.innerHTML = worlds.length ? '<span class="info">saved worlds</span>' : '';
+  for (const w of worlds) {
+    const b = Object.assign(document.createElement('button'), { className: 'btn', textContent: `${w.seed} \u00b7 day ${w.day}` });
+    b.addEventListener('click', () => { saveGame(); goSeed(w.seed); });
+    el.append(b);
+  }
+}
+renderSavedWorlds();
+document.getElementById('mapReset').addEventListener('click', () => {
+  if (!confirm(`Restart world ${SEED}? Your position and time in this world will be forgotten.`)) return;
+  store.del('world:' + SEED);
+  store.set('worlds', (store.get('worlds') || []).filter(w => w.seed !== SEED));
+  savingOff = true;
+  location.reload();
+});
+
+// Load the area around the start before the first frame so nothing pops in
 P.eye = P.pos.y + 1.6;
 streamChunks(P.pos.x, P.pos.z, Infinity);
+// If the world changed under a saved position (e.g. a newer version of the generator), step out on top
+if (collides(P.pos.x, P.pos.y, P.pos.z)) { P.pos.y = surfaceY(Math.floor(P.pos.x), Math.floor(P.pos.z)); P.eye = P.pos.y + 1.6; }
 camera.position.set(P.pos.x, P.eye, P.pos.z);
-window.__fort = { env, planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
+window.__fort = { saveGame, store, env, planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
 frame();
 </script>
 </body>

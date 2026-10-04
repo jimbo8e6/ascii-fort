@@ -21,6 +21,17 @@ npx serve .        # or: python3 -m http.server
 | K: time speed (normal / 20× / paused) | TIME button |
 | Esc: pause and free the mouse (top-right buttons stay clickable) | |
 
+## Saving
+
+The game saves to this browser's local storage, automatically every 10 seconds and whenever you leave the page.
+
+- **What's saved for each world (seed):** where you are, which way you're facing, and the time and day. The 8 most recently played worlds are kept.
+- **Settings** are saved too: ASCII on or off, style, character size, minimap and time speed.
+- **Coming back:** opening the page returns you to the last world you played, and the start screen shows *continue* with the day and time.
+- **On the world map:** a list of your other saved worlds to jump between, and RESTART THIS WORLD to forget your progress in the current one.
+- **Limits:** saves stay on this device and browser. A private window, or a browser that blocks storage, simply won't remember; the game still runs.
+- If a newer version of the world generator puts a block where you saved, you're placed on top of it.
+
 ## Day and night
 
 A full day lasts 10 minutes. The game starts at 18:30, just after sunset. Add `?time=` to the URL to start at another hour, e.g. `index.html?time=12` for noon. The clock and day number show under the minimap and on the world map.
