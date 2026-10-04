@@ -63,9 +63,39 @@ function mulberry32(seed) {
     return ((t ^ t >>> 14) >>> 0) / 4294967296;
   };
 }
-const rand = mulberry32(1337);
+const rand = mulberry32(1337);                       // cosmetic randomness (textures, flicker)
+const SEED = (parseInt(new URLSearchParams(location.search).get('seed'), 10) || 1337) | 0;
 
-function canvasTexture(size, draw, repeat = 1) {
+// 2D simplex noise, roughly in [-1, 1]
+function makeNoise2D(seed) {
+  const r = mulberry32(seed), p = new Uint8Array(512);
+  const base = [...Array(256).keys()];
+  for (let i = 255; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [base[i], base[j]] = [base[j], base[i]]; }
+  for (let i = 0; i < 512; i++) p[i] = base[i & 255];
+  const GX = [1, -1, 1, -1, 1, -1, 0, 0], GY = [1, 1, -1, -1, 0, 0, 1, -1];
+  const F2 = .5 * (Math.sqrt(3) - 1), G2 = (3 - Math.sqrt(3)) / 6;
+  const corner = (x, y, g) => { let t = .5 - x * x - y * y; if (t < 0) return 0; t *= t; return t * t * (GX[g & 7] * x + GY[g & 7] * y); };
+  return (xin, yin) => {
+    const s = (xin + yin) * F2, i = Math.floor(xin + s), j = Math.floor(yin + s), t = (i + j) * G2;
+    const x0 = xin - (i - t), y0 = yin - (j - t);
+    const i1 = x0 > y0 ? 1 : 0, j1 = 1 - i1;
+    const ii = i & 255, jj = j & 255;
+    return 70 * (corner(x0, y0, p[ii + p[jj]]) +
+                 corner(x0 - i1 + G2, y0 - j1 + G2, p[ii + i1 + p[jj + j1]]) +
+                 corner(x0 - 1 + 2 * G2, y0 - 1 + 2 * G2, p[ii + 1 + p[jj + 1]]));
+  };
+}
+const noiseA = makeNoise2D(SEED), noiseB = makeNoise2D(SEED + 1), noiseC = makeNoise2D(SEED + 2);
+
+// Deterministic per-column random number in [0, 1)
+function hash2(x, z) {
+  let h = Math.imul(x, 374761393) ^ Math.imul(z, 668265263) ^ Math.imul(SEED, 1442695041);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+const smoothstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+
+function canvasTexture(size, draw) {
   const c = document.createElement('canvas');
   c.width = c.height = size;
   draw(c.getContext('2d'), size);
@@ -73,12 +103,11 @@ function canvasTexture(size, draw, repeat = 1) {
   t.colorSpace = THREE.SRGBColorSpace;
   t.magFilter = THREE.NearestFilter;
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.repeat.set(repeat, repeat);
   return t;
 }
 
-function noiseFill(g, size, base, spread) {
-  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+function noiseFill(g, size, base, spread, y0 = 0, y1 = size) {
+  for (let y = y0; y < y1; y++) for (let x = 0; x < size; x++) {
     const v = (rand() - .5) * spread;
     g.fillStyle = `rgb(${base[0] + v | 0},${base[1] + v | 0},${base[2] + v | 0})`;
     g.fillRect(x, y, 1, 1);
@@ -86,99 +115,254 @@ function noiseFill(g, size, base, spread) {
 }
 
 // ---------------------------------------------------------------------------
-// Procedural textures
+// Procedural textures (one block = one texture tile; canvas top = block top)
 // ---------------------------------------------------------------------------
-const brickTex = canvasTexture(32, (g, s) => {
-  noiseFill(g, s, [150, 140, 125], 30);
-  g.fillStyle = 'rgba(30,25,20,.85)';
-  for (let row = 0; row < 4; row++) {
-    const y = row * 8;
-    g.fillRect(0, y, s, 1);
-    const off = row % 2 ? 8 : 0;
-    for (let x = off; x < s + 16; x += 16) g.fillRect(x % s, y, 1, 8);
-  }
-});
-const woodTex = canvasTexture(32, (g, s) => {
-  noiseFill(g, s, [120, 80, 45], 25);
-  g.fillStyle = 'rgba(40,25,10,.8)';
-  for (let y = 0; y < s; y += 8) g.fillRect(0, y, s, 1);
-  g.strokeStyle = 'rgba(40,25,10,.8)';
-  g.strokeRect(.5, .5, s - 1, s - 1);
-  g.beginPath(); g.moveTo(0, 0); g.lineTo(s, s); g.stroke();
-});
-const grassTex = canvasTexture(32, (g, s) => noiseFill(g, s, [55, 85, 40], 30), 140);
-const dirtTex = canvasTexture(32, (g, s) => noiseFill(g, s, [110, 90, 65], 28), 1);
+const TEX = {
+  brick: canvasTexture(32, (g, s) => {
+    noiseFill(g, s, [150, 140, 125], 30);
+    g.fillStyle = 'rgba(30,25,20,.85)';
+    for (let row = 0; row < 4; row++) {
+      const y = row * 8;
+      g.fillRect(0, y, s, 1);
+      for (let x = row % 2 ? 8 : 0; x < s + 16; x += 16) g.fillRect(x % s, y, 1, 8);
+    }
+  }),
+  wood: canvasTexture(32, (g, s) => {
+    noiseFill(g, s, [120, 80, 45], 25);
+    g.fillStyle = 'rgba(40,25,10,.8)';
+    for (let y = 0; y < s; y += 8) g.fillRect(0, y, s, 1);
+    g.strokeStyle = 'rgba(40,25,10,.8)';
+    g.strokeRect(.5, .5, s - 1, s - 1);
+    g.beginPath(); g.moveTo(0, 0); g.lineTo(s, s); g.stroke();
+  }),
+  grassTop: canvasTexture(32, (g, s) => noiseFill(g, s, [62, 92, 44], 34)),
+  grassSide: canvasTexture(32, (g, s) => {
+    noiseFill(g, s, [110, 85, 60], 28);
+    noiseFill(g, s, [62, 92, 44], 34, 0, 6);
+    for (let x = 0; x < s; x++) if (rand() < .5) { g.fillStyle = 'rgb(62,92,44)'; g.fillRect(x, 6, 1, 1 + rand() * 4 | 0); }
+  }),
+  dirt: canvasTexture(32, (g, s) => noiseFill(g, s, [110, 85, 60], 28)),
+  path: canvasTexture(32, (g, s) => {
+    noiseFill(g, s, [128, 108, 80], 30);
+    g.fillStyle = 'rgba(70,60,45,.6)';
+    for (let i = 0; i < 14; i++) g.fillRect(rand() * s | 0, rand() * s | 0, 2, 2);
+  }),
+  rock: canvasTexture(32, (g, s) => {
+    noiseFill(g, s, [118, 118, 122], 34);
+    g.strokeStyle = 'rgba(40,40,45,.6)';
+    for (let i = 0; i < 4; i++) { g.beginPath(); g.moveTo(rand() * s, rand() * s); g.lineTo(rand() * s, rand() * s); g.stroke(); }
+  }),
+  log: canvasTexture(32, (g, s) => {
+    noiseFill(g, s, [85, 60, 38], 20);
+    g.fillStyle = 'rgba(30,20,10,.7)';
+    for (let x = 2; x < s; x += 5) g.fillRect(x, 0, 1, s);
+  }),
+  logTop: canvasTexture(32, (g, s) => {
+    noiseFill(g, s, [150, 115, 75], 18);
+    g.strokeStyle = 'rgba(80,55,30,.8)';
+    for (let r = 3; r < 16; r += 4) { g.beginPath(); g.arc(16, 16, r, 0, Math.PI * 2); g.stroke(); }
+  }),
+  leaves: canvasTexture(32, (g, s) => {
+    noiseFill(g, s, [40, 78, 42], 40);
+    g.fillStyle = 'rgba(10,25,12,.7)';
+    for (let i = 0; i < 40; i++) g.fillRect(rand() * s | 0, rand() * s | 0, 2, 2);
+  }),
+};
+// Material ids (1-based, used by the mesher); index = id - 1
+const MAT_NAMES = ['brick', 'wood', 'grassTop', 'grassSide', 'dirt', 'path', 'rock', 'log', 'logTop', 'leaves'];
+const MAT = Object.fromEntries(MAT_NAMES.map((n, i) => [n, i + 1]));
+const materials = MAT_NAMES.map(n => new THREE.MeshLambertMaterial({ map: TEX[n] }));
 
 // ---------------------------------------------------------------------------
-// Voxel world
+// Blocks and terrain
 // ---------------------------------------------------------------------------
-const W = 64, H = 14, D = 64;
-const AIR = 0, STONE = 1, WOOD = 2;
-const vox = new Uint8Array(W * H * D);
-const idx = (x, y, z) => x + W * (z + D * y);
-const inside = (x, y, z) => x >= 0 && y >= 0 && z >= 0 && x < W && y < H && z < D;
-const get = (x, y, z) => inside(x, y, z) ? vox[idx(x, y, z)] : AIR;
-const set = (x, y, z, v) => { if (inside(x, y, z)) vox[idx(x, y, z)] = v; };
-function fill(x0, x1, y0, y1, z0, z1, v = STONE) {
-  for (let y = y0; y < y1; y++) for (let z = z0; z < z1; z++) for (let x = x0; x < x1; x++) set(x, y, z, v);
-}
-const clear = (x0, x1, y0, y1, z0, z1) => fill(x0, x1, y0, y1, z0, z1, AIR);
-
-// Crenellations along the outer edge of a rectangle at height y
-function merlons(x0, x1, z0, z1, y) {
-  for (let x = x0; x < x1; x++) for (let z = z0; z < z1; z++) {
-    const edge = x === x0 || x === x1 - 1 || z === z0 || z === z1 - 1;
-    if (edge && (x + z) % 2 === 0) set(x, y, z, STONE);
-  }
-}
-
+const AIR = 0, BRICK = 1, WOOD = 2, GRASS = 3, DIRT = 4, PATH = 5, ROCK = 6, LOG = 7, LEAVES = 8;
+const CHUNK = 16, H = 64;                 // chunk footprint and world height
+const G = 16;                             // ground level the fort is built on
+const CX = 32;                            // fort centre line (x); the fort spans roughly 6..58 in x and z
 const F0 = 8, F1 = 56, WALL = 7;          // fort footprint and wall height
-const CX = 32;                            // fort centre line
 
-// Curtain walls (3 thick), walkway on top at y = 7
-fill(F0, F1, 0, WALL, F0, F0 + 3);
-fill(F0, F1, 0, WALL, F1 - 3, F1);
-fill(F0, F0 + 3, 0, WALL, F0, F1);
-fill(F1 - 3, F1, 0, WALL, F0, F1);
-for (let i = F0; i < F1; i++) {
-  if (i % 2 === 0) { set(i, WALL, F0, STONE); set(i, WALL, F1 - 1, STONE); set(F0, WALL, i, STONE); set(F1 - 1, WALL, i, STONE); }
+// Faces: 0 +x, 1 -x, 2 +y, 3 -y, 4 +z, 5 -z
+function faceMaterial(type, face) {
+  switch (type) {
+    case BRICK: return MAT.brick;
+    case WOOD: return MAT.wood;
+    case GRASS: return face === 2 ? MAT.grassTop : face === 3 ? MAT.dirt : MAT.grassSide;
+    case DIRT: return MAT.dirt;
+    case PATH: return face === 2 ? MAT.path : MAT.dirt;
+    case ROCK: return MAT.rock;
+    case LOG: return face === 2 || face === 3 ? MAT.logTop : MAT.log;
+    case LEAVES: return MAT.leaves;
+  }
+  return 0;
 }
 
-// Corner towers with tunnels so the wall walk is continuous
-for (const [tx, tz] of [[F0 - 2, F0 - 2], [F1 - 5, F0 - 2], [F0 - 2, F1 - 5], [F1 - 5, F1 - 5]]) {
-  fill(tx, tx + 7, 0, 10, tz, tz + 7);
-  merlons(tx, tx + 7, tz, tz + 7, 10);
-  const xa = Math.max(tx, F0), xb = Math.min(tx + 7, F1), za = Math.max(tz, F0), zb = Math.min(tz + 7, F1);
-  clear(xa, xb, WALL, WALL + 2, tz < CX ? F0 : F1 - 3, tz < CX ? F0 + 3 : F1);
-  clear(tx < CX ? F0 : F1 - 3, tx < CX ? F0 + 3 : F1, WALL, WALL + 2, za, zb);
+// How strongly terrain is flattened to ground level G (1 = fully flat): the fort and the start of the road
+function flatness(x, z) {
+  const dx = Math.max(2 - x, 0, x - 62), dz = Math.max(2 - z, 0, z - 62);
+  const fort = 1 - smoothstep(0, 18, Math.hypot(dx, dz));
+  const road = (1 - smoothstep(3, 10, Math.abs(x + .5 - CX))) * (1 - smoothstep(20, 60, z - 62)) * (z > 50 ? 1 : 0);
+  return Math.max(fort, road);
 }
 
-// Gatehouse: two flanking towers and an arched opening in the south wall
-for (const gx of [CX - 6, CX + 2]) {
-  fill(gx, gx + 4, 0, 10, F1 - 4, F1 + 1);
-  merlons(gx, gx + 4, F1 - 4, F1 + 1, 10);
-  clear(gx, gx + 4, WALL, WALL + 2, F1 - 3, F1);
-}
-clear(CX - 2, CX + 2, 0, 4, F1 - 3, F1);
-for (let z = F1 - 3; z < F1; z++) { set(CX - 2, 3, z, STONE); set(CX + 1, 3, z, STONE); }
+const isRoad = (x, z) => z >= F1 && Math.abs(x + .5 - CX) < 2.2 + noiseC(x * .2, z * .2) * .6;
+const inCourtyard = (x, z) => x >= F0 && x < F1 && z >= F0 && z < F1;
 
-// Stairs up to the south wall walk, either side of the gate
-for (let k = 1; k <= WALL; k++) {
-  fill(13 + k, 14 + k, 0, k, F1 - 5, F1 - 3);
-  fill(50 - k, 51 - k, 0, k, F1 - 5, F1 - 3);
+// Surface height: number of solid blocks in the column (player stands at this y)
+function terrainHeight(x, z) {
+  const n = .65 * noiseA(x * .006, z * .006) + .25 * noiseA(x * .02 + 31, z * .02 - 17) + .1 * noiseA(x * .07, z * .07);
+  const mountains = Math.max(0, noiseB(x * .004 + 50, z * .004)) ** 2 * 26;
+  let h = G + n * 13 + mountains;
+  h += (G - h) * flatness(x, z);
+  return Math.max(2, Math.min(H - 12, Math.round(h)));
 }
 
-// Keep in the courtyard: hollow, with a door and window slits
-fill(26, 38, 0, 8, 18, 28);
-clear(27, 37, 0, 7, 19, 27);
-merlons(26, 38, 18, 28, 8);
-clear(31, 33, 0, 3, 27, 28);
-clear(26, 27, 3, 5, 22, 24); clear(37, 38, 3, 5, 22, 24);
-clear(29, 30, 3, 5, 18, 19); clear(34, 35, 3, 5, 18, 19);
+// Forest density in [0, 1]
+const forest = (x, z) => smoothstep(-.15, .35, noiseB(x * .012 - 80, z * .012 + 40));
 
-// Crates
-for (const [x, y, z] of [[15, 0, 15], [16, 0, 15], [15, 1, 15], [15, 0, 16], [46, 0, 40], [47, 0, 40], [46, 0, 41],
-                         [46, 1, 40], [20, 0, 38], [27, 0, 30], [28, 0, 30]]) set(x, y, z, WOOD);
+// Structure edits (the fort) applied on top of the terrain, stored per chunk
+const edits = new Map();
+const chunkKey = (cx, cz) => (cx + 32768) * 65536 + (cz + 32768);
+function setEdit(x, y, z, v) {
+  const k = chunkKey(x >> 4, z >> 4);
+  if (!edits.has(k)) edits.set(k, []);
+  edits.get(k).push((x & 15) | (z & 15) << 4 | y << 8, v);
+}
+
+// Generate one chunk's blocks: terrain, then trees, then structure edits
+function generateChunk(cx, cz) {
+  const data = new Uint8Array(CHUNK * CHUNK * H);
+  const ox = cx * CHUNK, oz = cz * CHUNK, M = 3, S = CHUNK + 2 * M;   // margin for trees overhanging the chunk
+  const hm = new Int16Array(S * S);
+  for (let z = 0; z < S; z++) for (let x = 0; x < S; x++) hm[x + z * S] = terrainHeight(ox + x - M, oz + z - M);
+  const hAt = (lx, lz) => hm[(lx + M) + (lz + M) * S];
+  const put = (lx, y, lz, v, onlyAir) => {
+    if (lx < 0 || lz < 0 || lx >= CHUNK || lz >= CHUNK || y < 0 || y >= H) return;
+    const i = lx + lz * CHUNK + y * 256;
+    if (!onlyAir || !data[i]) data[i] = v;
+  };
+
+  for (let lz = 0; lz < CHUNK; lz++) for (let lx = 0; lx < CHUNK; lx++) {
+    const x = ox + lx, z = oz + lz, h = hAt(lx, lz);
+    const slope = Math.max(Math.abs(h - hAt(lx + 1, lz)), Math.abs(h - hAt(lx - 1, lz)), Math.abs(h - hAt(lx, lz + 1)), Math.abs(h - hAt(lx, lz - 1)));
+    let top = GRASS;
+    if (inCourtyard(x, z) || isRoad(x, z)) top = PATH;
+    else if (slope >= 3 || h > G + 22) top = ROCK;
+    for (let y = 0; y < h; y++) put(lx, y, lz, y === h - 1 ? top : y >= h - 4 && top !== ROCK ? DIRT : ROCK);
+  }
+
+  // Pine trees, including ones rooted just outside this chunk whose leaves reach in
+  for (let tz = -M; tz < CHUNK + M; tz++) for (let tx = -M; tx < CHUNK + M; tx++) {
+    const x = ox + tx, z = oz + tz;
+    if (hash2(x, z) > .045 * forest(x, z) || flatness(x, z) > .05) continue;
+    const h = hAt(tx, tz);
+    if (h > G + 20 || Math.abs(h - hAt(tx + 1, tz)) + Math.abs(h - hAt(tx, tz + 1)) > 2) continue;
+    const r = hash2(z, x), th = 5 + (r * 4 | 0), topY = h + th + 1;
+    for (let y = h; y < topY; y++) put(tx, y, tz, LOG);
+    for (let y = h + 2; y <= topY; y++) {
+      const rad = Math.min(3, (topY - y + 1) >> 1);
+      for (let dz = -rad; dz <= rad; dz++) for (let dx = -rad; dx <= rad; dx++) {
+        if (dx * dx + dz * dz > rad * rad + rad * .6) continue;
+        put(tx + dx, y, tz + dz, LEAVES, true);
+      }
+    }
+  }
+
+  const list = edits.get(chunkKey(cx, cz));
+  if (list) for (let i = 0; i < list.length; i += 2) {
+    const p = list[i];
+    data[(p & 15) + ((p >> 4) & 15) * CHUNK + (p >> 8) * 256] = list[i + 1];
+  }
+  return data;
+}
+
+// ---------------------------------------------------------------------------
+// The fort, written as edits on ground level G
+// ---------------------------------------------------------------------------
+{
+  const set = (x, y, z, v = BRICK) => setEdit(x, y + G, z, v);
+  const fill = (x0, x1, y0, y1, z0, z1, v = BRICK) => {
+    for (let y = y0; y < y1; y++) for (let z = z0; z < z1; z++) for (let x = x0; x < x1; x++) set(x, y, z, v);
+  };
+  const clear = (x0, x1, y0, y1, z0, z1) => fill(x0, x1, y0, y1, z0, z1, AIR);
+  // Crenellations along the outer edge of a rectangle at height y
+  const merlons = (x0, x1, z0, z1, y) => {
+    for (let x = x0; x < x1; x++) for (let z = z0; z < z1; z++) {
+      const edge = x === x0 || x === x1 - 1 || z === z0 || z === z1 - 1;
+      if (edge && (x + z) % 2 === 0) set(x, y, z);
+    }
+  };
+
+  // Clear the air above the courtyard so nothing generated pokes through
+  clear(F0 - 4, F1 + 4, 0, 14, F0 - 4, F1 + 4);
+
+  // Curtain walls (3 thick), walkway on top at y = 7
+  fill(F0, F1, 0, WALL, F0, F0 + 3);
+  fill(F0, F1, 0, WALL, F1 - 3, F1);
+  fill(F0, F0 + 3, 0, WALL, F0, F1);
+  fill(F1 - 3, F1, 0, WALL, F0, F1);
+  for (let i = F0; i < F1; i++) {
+    if (i % 2 === 0) { set(i, WALL, F0); set(i, WALL, F1 - 1); set(F0, WALL, i); set(F1 - 1, WALL, i); }
+  }
+
+  // Corner towers with tunnels so the wall walk is continuous
+  for (const [tx, tz] of [[F0 - 2, F0 - 2], [F1 - 5, F0 - 2], [F0 - 2, F1 - 5], [F1 - 5, F1 - 5]]) {
+    fill(tx, tx + 7, 0, 10, tz, tz + 7);
+    merlons(tx, tx + 7, tz, tz + 7, 10);
+    const xa = Math.max(tx, F0), xb = Math.min(tx + 7, F1), za = Math.max(tz, F0), zb = Math.min(tz + 7, F1);
+    clear(xa, xb, WALL, WALL + 2, tz < CX ? F0 : F1 - 3, tz < CX ? F0 + 3 : F1);
+    clear(tx < CX ? F0 : F1 - 3, tx < CX ? F0 + 3 : F1, WALL, WALL + 2, za, zb);
+  }
+
+  // Gatehouse: two flanking towers and an arched opening in the south wall
+  for (const gx of [CX - 6, CX + 2]) {
+    fill(gx, gx + 4, 0, 10, F1 - 4, F1 + 1);
+    merlons(gx, gx + 4, F1 - 4, F1 + 1, 10);
+    clear(gx, gx + 4, WALL, WALL + 2, F1 - 3, F1);
+  }
+  clear(CX - 2, CX + 2, 0, 4, F1 - 3, F1);
+  for (let z = F1 - 3; z < F1; z++) { set(CX - 2, 3, z); set(CX + 1, 3, z); }
+
+  // Stairs up to the south wall walk, either side of the gate
+  for (let k = 1; k <= WALL; k++) {
+    fill(13 + k, 14 + k, 0, k, F1 - 5, F1 - 3);
+    fill(50 - k, 51 - k, 0, k, F1 - 5, F1 - 3);
+  }
+
+  // Keep in the courtyard: hollow, with a door and window slits
+  fill(26, 38, 0, 8, 18, 28);
+  clear(27, 37, 0, 7, 19, 27);
+  merlons(26, 38, 18, 28, 8);
+  clear(31, 33, 0, 3, 27, 28);
+  clear(26, 27, 3, 5, 22, 24); clear(37, 38, 3, 5, 22, 24);
+  clear(29, 30, 3, 5, 18, 19); clear(34, 35, 3, 5, 18, 19);
+
+  // Crates
+  for (const [x, y, z] of [[15, 0, 15], [16, 0, 15], [15, 1, 15], [15, 0, 16], [46, 0, 40], [47, 0, 40], [46, 0, 41],
+                           [46, 1, 40], [20, 0, 38], [27, 0, 30], [28, 0, 30]]) set(x, y, z, WOOD);
+}
+
+// ---------------------------------------------------------------------------
+// Chunk store and block lookup
+// ---------------------------------------------------------------------------
+const chunks = new Map();   // key -> { cx, cz, data, mesh }
+function chunkAt(cx, cz) {
+  const k = chunkKey(cx, cz);
+  let c = chunks.get(k);
+  if (!c) { c = { cx, cz, data: generateChunk(cx, cz), mesh: null }; chunks.set(k, c); }
+  return c;
+}
+// Block at integer world coordinates; below the world counts as solid
+function get(x, y, z) {
+  if (y < 0) return ROCK;
+  if (y >= H) return AIR;
+  return chunkAt(x >> 4, z >> 4).data[(x & 15) + (z & 15) * CHUNK + y * 256];
+}
+// Top of the highest solid block in a column
+function surfaceY(x, z) {
+  for (let y = H - 1; y >= 0; y--) if (get(x, y, z)) return y + 1;
+  return 0;
+}
 
 // ---------------------------------------------------------------------------
 // Renderer, scene, camera
@@ -190,7 +374,7 @@ document.body.prepend(renderer.domElement);
 const SKY = 0x0b0f24;
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(SKY);
-scene.fog = new THREE.FogExp2(SKY, 0.016);
+scene.fog = new THREE.FogExp2(SKY, 0.018);
 
 const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 400);
 camera.rotation.order = 'YXZ';
@@ -200,82 +384,130 @@ const moonLight = new THREE.DirectionalLight(0x99aaff, 1.2);
 moonLight.position.set(-120, 90, -200);
 scene.add(moonLight);
 
-// Moon and stars ignore fog so they read through the haze
-const moon = new THREE.Mesh(new THREE.SphereGeometry(7, 16, 12), new THREE.MeshBasicMaterial({ color: 0xdfe4ff, fog: false }));
-moon.position.copy(moonLight.position).add(new THREE.Vector3(CX, 0, CX));
-scene.add(moon);
+// Moon and stars follow the camera so they always look infinitely far away; they ignore fog
+const sky = new THREE.Group();
+scene.add(sky);
 {
+  const moon = new THREE.Mesh(new THREE.SphereGeometry(7, 16, 12), new THREE.MeshBasicMaterial({ color: 0xdfe4ff, fog: false }));
+  moon.position.copy(moonLight.position);
   const n = 600, pos = new Float32Array(n * 3);
   for (let i = 0; i < n; i++) {
     const th = rand() * Math.PI * 2, ph = rand() * Math.PI * .45, r = 300;
-    pos.set([CX + r * Math.cos(th) * Math.cos(ph), r * Math.sin(ph) + 10, CX + r * Math.sin(th) * Math.cos(ph)], i * 3);
+    pos.set([r * Math.cos(th) * Math.cos(ph), r * Math.sin(ph) + 10, r * Math.sin(th) * Math.cos(ph)], i * 3);
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color: 0x6a7498, size: 1, sizeAttenuation: false, fog: false })));
+  sky.add(moon, new THREE.Points(g, new THREE.PointsMaterial({ color: 0x6a7498, size: 1, sizeAttenuation: false, fog: false })));
 }
 
-// Ground, courtyard and road
-{
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshLambertMaterial({ map: grassTex }));
-  ground.rotation.x = -Math.PI / 2;
-  ground.position.set(CX, 0, CX);
-  scene.add(ground);
-  const dirt = (w, d, x, z) => {
-    const t = dirtTex.clone(); t.needsUpdate = true; t.repeat.set(w / 2, d / 2);
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshLambertMaterial({ map: t }));
-    m.rotation.x = -Math.PI / 2; m.position.set(x, 0.01, z); scene.add(m);
-  };
-  dirt(F1 - F0, F1 - F0, CX, CX);
-  dirt(4, 60, CX, F1 + 30);
-}
+// ---------------------------------------------------------------------------
+// Chunk meshing: greedy merge of visible faces into one mesh per chunk,
+// with one geometry group per material
+// ---------------------------------------------------------------------------
+function meshChunk(c) {
+  const ox = c.cx * CHUNK, oz = c.cz * CHUNK, data = c.data;
+  let ymax = 0;
+  for (let i = data.length - 1; i >= 0; i--) if (data[i]) { ymax = Math.floor(i / 256) + 2; break; }
+  ymax = Math.min(ymax, H);
+  const dims = [CHUNK, ymax, CHUNK];
+  const block = (x, y, z) => (x >= 0 && x < CHUNK && z >= 0 && z < CHUNK && y >= 0 && y < H)
+    ? data[x + z * CHUNK + y * 256] : get(ox + x, y, oz + z);
+  const buf = MAT_NAMES.map(() => ({ pos: [], nrm: [], uv: [], idx: [] }));
 
-// Voxel meshes: one InstancedMesh per material, only blocks with an exposed face
-function buildVoxels(type, map) {
-  const list = [];
-  for (let y = 0; y < H; y++) for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) {
-    if (get(x, y, z) !== type) continue;
-    if (get(x + 1, y, z) && get(x - 1, y, z) && get(x, y + 1, z) && get(x, y, z + 1) && get(x, y, z - 1) &&
-        (y === 0 || get(x, y - 1, z))) continue;
-    list.push([x, y, z]);
-  }
-  const mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ map }), list.length);
-  const m = new THREE.Matrix4(), c = new THREE.Color();
-  list.forEach(([x, y, z], i) => {
-    m.makeTranslation(x + .5, y + .5, z + .5);
-    mesh.setMatrixAt(i, m);
-    const v = .75 + rand() * .25;
-    mesh.setColorAt(i, c.setRGB(v, v * (.97 + rand() * .03), v * (.92 + rand() * .06)));
-  });
-  scene.add(mesh);
-}
-buildVoxels(STONE, brickTex);
-buildVoxels(WOOD, woodTex);
-
-// Forest ring
-const trees = [];
-{
-  while (trees.length < 320) {
-    const a = rand() * Math.PI * 2, r = 46 + rand() * 70;
-    const x = CX + Math.cos(a) * r, z = CX + Math.sin(a) * r;
-    if (Math.abs(x - CX) < 9 && z > CX) continue; // keep the road clear
-    trees.push({ x, z, s: .8 + rand() * .7 });
-  }
-  const trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(.2, .3, 2, 5),
-    new THREE.MeshLambertMaterial({ color: 0x4a3420 }), trees.length);
-  const leaves = new THREE.InstancedMesh(new THREE.ConeGeometry(1.6, 4, 7),
-    new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), trees.length * 2);
-  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), c = new THREE.Color();
-  trees.forEach((t, i) => {
-    const sc = new THREE.Vector3(t.s, t.s, t.s);
-    trunk.setMatrixAt(i, m.compose(new THREE.Vector3(t.x, t.s, t.z), q, sc));
-    for (let k = 0; k < 2; k++) {
-      leaves.setMatrixAt(i * 2 + k, m.compose(new THREE.Vector3(t.x, t.s * (3.2 + k * 1.8), t.z), q,
-        new THREE.Vector3(t.s * (1 - k * .3), t.s, t.s * (1 - k * .3))));
-      leaves.setColorAt(i * 2 + k, c.setHSL(.3 + rand() * .06, .45, .18 + rand() * .08));
+  for (let d = 0; d < 3; d++) {
+    const u = (d + 1) % 3, v = (d + 2) % 3, x = [0, 0, 0], q = [0, 0, 0];
+    q[d] = 1;
+    const mask = new Int16Array(dims[u] * dims[v]);
+    const posFace = d === 0 ? 0 : d === 1 ? 2 : 4;       // face index for the +d direction
+    for (x[d] = -1; x[d] < dims[d];) {
+      // Build the mask of faces between slice x[d] and x[d] + 1 that belong to this chunk
+      let n = 0;
+      for (x[v] = 0; x[v] < dims[v]; x[v]++) for (x[u] = 0; x[u] < dims[u]; x[u]++, n++) {
+        const a = block(x[0], x[1], x[2]), b = block(x[0] + q[0], x[1] + q[1], x[2] + q[2]);
+        const aIn = x[d] >= 0, bIn = x[d] < dims[d] - 1 || d === 1;
+        if (a && !b && aIn) mask[n] = faceMaterial(a, posFace);
+        else if (b && !a && bIn) mask[n] = -faceMaterial(b, posFace + 1);
+        else mask[n] = 0;
+      }
+      x[d]++;
+      // Greedily merge equal neighbours into rectangles
+      n = 0;
+      for (let j = 0; j < dims[v]; j++) for (let i = 0; i < dims[u];) {
+        const m = mask[n];
+        if (!m) { i++; n++; continue; }
+        let w = 1;
+        while (i + w < dims[u] && mask[n + w] === m) w++;
+        let h = 1;
+        outer: for (; j + h < dims[v]; h++) for (let k = 0; k < w; k++) if (mask[n + k + h * dims[u]] !== m) break outer;
+        x[u] = i; x[v] = j;
+        const du = [0, 0, 0], dv = [0, 0, 0];
+        du[u] = w; dv[v] = h;
+        const b = buf[Math.abs(m) - 1], base = b.pos.length / 3;
+        const corners = [[0, 0, 0], du, [du[0] + dv[0], du[1] + dv[1], du[2] + dv[2]], dv];
+        for (const cnr of corners) {
+          const px = ox + x[0] + cnr[0], py = x[1] + cnr[1], pz = oz + x[2] + cnr[2];
+          b.pos.push(px, py, pz);
+          b.nrm.push(d === 0 ? Math.sign(m) : 0, d === 1 ? Math.sign(m) : 0, d === 2 ? Math.sign(m) : 0);
+          // World-space UVs: one texture tile per block, with v running up the sides
+          if (d === 0) b.uv.push(pz, py); else if (d === 1) b.uv.push(px, pz); else b.uv.push(px, py);
+        }
+        if (m > 0) b.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+        else b.idx.push(base, base + 2, base + 1, base, base + 3, base + 2);
+        for (let l = 0; l < h; l++) for (let k = 0; k < w; k++) mask[n + k + l * dims[u]] = 0;
+        i += w; n += w;
+      }
     }
+  }
+
+  // Merge the per-material buffers into one geometry with groups
+  const pos = [], nrm = [], uv = [], idx = [], geo = new THREE.BufferGeometry();
+  buf.forEach((b, mi) => {
+    if (!b.idx.length) return;
+    const vOff = pos.length / 3, start = idx.length;
+    for (let i = 0; i < b.pos.length; i++) { pos.push(b.pos[i]); nrm.push(b.nrm[i]); }
+    for (let i = 0; i < b.uv.length; i++) uv.push(b.uv[i]);
+    for (let i = 0; i < b.idx.length; i++) idx.push(b.idx[i] + vOff);
+    geo.addGroup(start, b.idx.length, mi);
   });
-  scene.add(trunk, leaves);
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geo.setIndex(idx);
+  geo.computeBoundingSphere();
+  const mesh = new THREE.Mesh(geo, materials);
+  mesh.matrixAutoUpdate = false;
+  return mesh;
+}
+
+// Stream chunks around the player: build the nearest missing meshes within a time budget, drop far ones
+const VIEW = 6;              // view radius in chunks
+let lastCenter = '';
+let buildQueue = [];
+function streamChunks(px, pz, budgetMs) {
+  const pcx = Math.floor(px / CHUNK), pcz = Math.floor(pz / CHUNK), center = pcx + ',' + pcz;
+  if (center !== lastCenter) {
+    lastCenter = center;
+    buildQueue = [];
+    for (let dz = -VIEW; dz <= VIEW; dz++) for (let dx = -VIEW; dx <= VIEW; dx++) {
+      if (dx * dx + dz * dz > VIEW * VIEW + 1) continue;
+      const c = chunks.get(chunkKey(pcx + dx, pcz + dz));
+      if (!c || !c.mesh) buildQueue.push([pcx + dx, pcz + dz, dx * dx + dz * dz]);
+    }
+    buildQueue.sort((a, b) => b[2] - a[2]);    // nearest last, popped first
+    for (const [k, c] of chunks) {
+      const ddx = c.cx - pcx, ddz = c.cz - pcz, d2 = ddx * ddx + ddz * ddz;
+      if (c.mesh && d2 > (VIEW + 2) ** 2) { scene.remove(c.mesh); c.mesh.geometry.dispose(); c.mesh = null; }
+      if (d2 > (VIEW + 4) ** 2) chunks.delete(k);
+    }
+  }
+  const t0 = performance.now();
+  while (buildQueue.length && performance.now() - t0 < budgetMs) {
+    const [cx, cz] = buildQueue.pop();
+    const c = chunkAt(cx, cz);
+    if (c.mesh) continue;
+    c.mesh = meshChunk(c);
+    scene.add(c.mesh);
+  }
 }
 
 // Torches: a bracket, a flickering flame and a point light
@@ -286,14 +518,14 @@ const torches = [];
   const stickMat = new THREE.MeshLambertMaterial({ color: 0x2a1c10 });
   const spots = [
     [16, F0 + 3.3], [CX, F0 + 3.3], [48, F0 + 3.3],
-    [F0 + 3.3, 22, 'x'], [F0 + 3.3, 40, 'x'], [F1 - 3.3, 22, 'x'], [F1 - 3.3, 40, 'x'],
+    [F0 + 3.3, 22], [F0 + 3.3, 40], [F1 - 3.3, 22], [F1 - 3.3, 40],
     [23, F1 - 3.3], [41, F1 - 3.3],
     [CX - 2.5, F1 + .3], [CX + 2.5, F1 + .3],
-    [30, 28.3], [34, 28.3], [CX, 22.5, 'free'],
+    [30, 28.3], [34, 28.3], [CX, 22.5],
   ];
   for (const [x, z] of spots) {
     const g = new THREE.Group();
-    g.position.set(x, 3.4, z);
+    g.position.set(x, G + 3.4, z);
     const stick = new THREE.Mesh(new THREE.BoxGeometry(.12, .6, .12), stickMat);
     stick.position.y = -.3;
     const flame = new THREE.Mesh(new THREE.OctahedronGeometry(.22, 0), flameMat);
@@ -335,7 +567,7 @@ for (const [a, b, speed] of [
   [[CX + 3.2, 0, F1 + 2], null, 0],
 ]) {
   const guard = makeGuard();
-  guard.a = new THREE.Vector3(...a); guard.b = b && new THREE.Vector3(...b);
+  guard.a = new THREE.Vector3(a[0], a[1] + G, a[2]); guard.b = b && new THREE.Vector3(b[0], b[1] + G, b[2]);
   guard.speed = speed; guard.t = rand() * 10;
   guard.g.position.copy(guard.a);
   guards.push(guard);
@@ -443,7 +675,7 @@ resize();
 // ---------------------------------------------------------------------------
 // Player and collision
 // ---------------------------------------------------------------------------
-const P = { pos: new THREE.Vector3(CX, 0, F1 + 24), vy: 0, grounded: true, yaw: 0, pitch: 0.05, eye: 1.6, bob: 0 };
+const P = { pos: new THREE.Vector3(CX + .5, 0, F1 + 24.5), vy: 0, grounded: true, yaw: 0, pitch: 0.05, eye: 1.6, bob: 0 };
 const RADIUS = .3, HEIGHT = 1.75;
 
 function collides(x, y, z) {
@@ -452,11 +684,7 @@ function collides(x, y, z) {
     for (let iz = Math.floor(z - RADIUS); iz <= Math.floor(z + RADIUS - eps); iz++)
       for (let ix = Math.floor(x - RADIUS); ix <= Math.floor(x + RADIUS - eps); ix++)
         if (get(ix, iy, iz)) return true;
-  if (y < 6) for (const t of trees) {
-    const dx = x - t.x, dz = z - t.z;
-    if (dx * dx + dz * dz < (RADIUS + .35 * t.s) ** 2) return true;
-  }
-  return Math.hypot(x - CX, z - CX) > 150;
+  return false;
 }
 
 function moveAxis(dx, dz) {
@@ -592,8 +820,7 @@ function update(dt, t) {
   P.vy -= 22 * dt;
   const ny = P.pos.y + P.vy * dt;
   if (P.vy <= 0) {
-    if (ny <= 0) { P.pos.y = 0; P.vy = 0; P.grounded = true; }
-    else if (collides(P.pos.x, ny, P.pos.z)) { P.pos.y = Math.floor(ny) + 1; P.vy = 0; P.grounded = true; }
+    if (collides(P.pos.x, ny, P.pos.z)) { P.pos.y = Math.floor(ny) + 1; P.vy = 0; P.grounded = true; }
     else { P.pos.y = ny; P.grounded = false; }
   } else {
     if (collides(P.pos.x, ny, P.pos.z)) P.vy = 0; else P.pos.y = ny;
@@ -631,8 +858,10 @@ function update(dt, t) {
 
 function frame() {
   const dt = Math.min(clock.getDelta(), .05);
+  streamChunks(P.pos.x, P.pos.z, 6);
   update(started ? dt : 0, clock.elapsedTime);
   if (!started) { P.yaw = Math.sin(clock.elapsedTime * .15) * .25; camera.rotation.set(P.pitch, P.yaw, 0); }
+  sky.position.copy(camera.position);
   if (asciiOn) {
     renderer.setRenderTarget(sceneRT);
     renderer.render(scene, camera);
@@ -643,8 +872,12 @@ function frame() {
   }
   requestAnimationFrame(frame);
 }
+// Load the area around the start before the first frame so nothing pops in at spawn
+P.pos.y = surfaceY(Math.floor(P.pos.x), Math.floor(P.pos.z));
+P.eye = P.pos.y + 1.6;
+streamChunks(P.pos.x, P.pos.z, Infinity);
 camera.position.set(P.pos.x, P.eye, P.pos.z);
-window.__fort = { P, camera, scene };
+window.__fort = { P, camera, scene, chunks, get, surfaceY, SEED };
 frame();
 </script>
 </body>
