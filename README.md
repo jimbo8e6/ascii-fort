@@ -17,11 +17,14 @@ npx serve .        # or: python3 -m http.server
 | WASD / arrows: move, mouse: look | left thumb: move |
 | Shift: run, Space: jump (hold to swim up) | right thumb: look, JUMP button (hold to swim up) |
 | T: toggle ASCII, G: style, `[` `]`: character size | ASCII / STYLE / SIZE buttons |
+| M: world map, N: minimap | MAP button |
 | Esc: pause and free the mouse (top-right buttons stay clickable) | |
 
-## World seed
+## World seed and map
 
-The terrain is generated from a seed. Add `?seed=` to the URL to get a different world, e.g. `index.html?seed=42`. The same seed always produces the same world. The default is 1337.
+The terrain is generated from a seed. Add `?seed=` to the URL to get a different world, e.g. `index.html?seed=42`. The same seed always produces the same world. The default is 1337. The world map also has a seed box and a NEW WORLD button.
+
+The world map (M) shows biomes, water depth and hill shading, with the fort and your position and facing marked. Drag to pan, scroll or use +/− to zoom (256 to 8192 blocks across), and CENTRE ON ME to jump back to yourself. A minimap in the top-left corner (N) follows you and shows the biome and coordinates you're at. Both are drawn from the same climate and height functions as the 3D world, a few rows per frame so the game never stalls.
 
 ## How it works
 

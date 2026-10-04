@@ -8,7 +8,7 @@
   html, body { margin: 0; height: 100%; background: #05060d; overflow: hidden; touch-action: none;
     font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; color: #e8d9b0;
     -webkit-user-select: none; user-select: none; }
-  canvas { display: block; position: fixed; inset: 0; width: 100%; height: 100%; }
+  body > canvas { display: block; position: fixed; inset: 0; width: 100%; height: 100%; }
   #start { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
     gap: 14px; background: rgba(5, 6, 13, .72); text-align: center; padding: 16px; cursor: pointer; z-index: 5; }
   #start h1 { margin: 0; font-size: clamp(28px, 7vw, 56px); letter-spacing: .2em; color: #ffb347; }
@@ -27,6 +27,23 @@
   body.touch #jump { display: flex; }
   body.touch .keys { display: none; }
   body:not(.touch) .touchhelp { display: none; }
+  #mini { position: fixed; top: max(12px, env(safe-area-inset-top)); left: 12px; z-index: 2; pointer-events: none;
+    font-size: 11px; color: #e8d9b0; text-shadow: 0 1px 2px #000; }
+  #miniCanvas { display: block; width: 132px; height: 132px; border: 1px solid rgba(255, 179, 71, .6); image-rendering: pixelated; }
+  #miniWhere { margin-top: 4px; opacity: .85; }
+  #map { position: fixed; inset: 0; z-index: 7; background: rgba(5, 6, 13, .88); display: flex; align-items: center;
+    justify-content: center; padding: 16px; }
+  #map[hidden], #mini[hidden] { display: none; }
+  #map .panel { display: flex; flex-direction: column; gap: 10px; max-width: 100%; }
+  #map header, #map .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  #map header { justify-content: space-between; color: #ffb347; letter-spacing: .15em; }
+  #mapCanvas { width: min(88vw, 66vh, 640px); height: min(88vw, 66vh, 640px); border: 1px solid rgba(255, 179, 71, .6);
+    image-rendering: pixelated; cursor: grab; touch-action: none; }
+  #mapLegend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; max-width: min(88vw, 66vh, 640px); }
+  #mapLegend i { display: inline-block; width: 10px; height: 10px; margin-right: 5px; vertical-align: -1px; }
+  #map .info { font-size: 12px; opacity: .85; }
+  #mapSeed { width: 90px; background: rgba(10, 12, 24, .8); border: 1px solid rgba(255, 179, 71, .6); color: #e8d9b0;
+    font: inherit; font-size: 12px; padding: 6px; }
 </style>
 <script type="importmap">
 { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
@@ -36,15 +53,34 @@
 <div id="start">
   <h1>ASCII FORT</h1>
   <p class="keys">WASD / arrows: move &middot; mouse: look &middot; shift: run &middot; space: jump<br>
-     T: toggle ASCII &middot; G: style &middot; [ ]: character size &middot; esc: pause</p>
+     T: toggle ASCII &middot; G: style &middot; [ ]: character size &middot; M: map &middot; N: minimap &middot; esc: pause</p>
   <p class="touchhelp">Left thumb: move &middot; right thumb: look &middot; button: jump</p>
   <div class="go" id="go">click / tap to enter</div>
 </div>
-<div id="hud"><span class="keys">T ascii &middot; G style &middot; [ ] size</span></div>
+<div id="hud"><span class="keys">T ascii &middot; G style &middot; [ ] size &middot; M map &middot; N minimap</span></div>
+<div id="mini"><canvas id="miniCanvas" width="192" height="192"></canvas><div id="miniWhere"></div></div>
+<div id="map" hidden>
+  <div class="panel">
+    <header><span>WORLD MAP</span><button class="btn" id="mapClose">CLOSE (M)</button></header>
+    <canvas id="mapCanvas" width="512" height="512"></canvas>
+    <div class="row">
+      <button class="btn" id="mapIn">+</button><button class="btn" id="mapOut">&minus;</button>
+      <button class="btn" id="mapCenter">CENTRE ON ME</button>
+      <span class="info" id="mapZoom"></span>
+    </div>
+    <div id="mapLegend"></div>
+    <div class="info" id="mapWhere"></div>
+    <div class="row">
+      <span class="info">seed</span><input id="mapSeed" inputmode="numeric">
+      <button class="btn" id="mapGo">GO</button><button class="btn" id="mapRandom">NEW WORLD</button>
+    </div>
+  </div>
+</div>
 <div id="buttons">
   <button class="btn" id="btnAscii">ASCII: ON</button>
   <button class="btn" id="btnStyle">STYLE: FINE</button>
   <button class="btn" id="btnCell">SIZE</button>
+  <button class="btn" id="btnMap">MAP</button>
 </div>
 <button class="btn" id="jump">JUMP</button>
 <div id="stick"><div id="knob"></div></div>
@@ -263,7 +299,8 @@ function flatness(x, z) {
   return Math.max(fort, road);
 }
 
-const isRoad = (x, z) => z >= F1 && Math.abs(x + .5 - CX) < 2.2 + noiseC(x * .2, z * .2) * .6;
+const ROAD_END = F1 + 90;   // the road from the gate fades out after this
+const isRoad = (x, z) => z >= F1 && z < ROAD_END + noiseC(x * .1, 0) * 8 && Math.abs(x + .5 - CX) < 2.2 + noiseC(x * .2, z * .2) * .6;
 const inCourtyard = (x, z) => x >= F0 && x < F1 && z >= F0 && z < F1;
 
 // Climate: slow temperature, moisture and continent noise. All weights blend smoothly so
@@ -829,12 +866,14 @@ startEl.addEventListener('click', () => {
   if (!isTouch) renderer.domElement.requestPointerLock?.();
 });
 renderer.domElement.addEventListener('click', () => { if (started && !isTouch) renderer.domElement.requestPointerLock?.(); });
+function pauseGame() {
+  document.getElementById('go').textContent = 'paused \u00b7 click to resume';
+  startEl.style.display = 'flex'; started = false;
+}
 document.addEventListener('pointerlockchange', () => {
-  if (!document.pointerLockElement && started && !isTouch) {
-    document.getElementById('go').textContent = 'paused \u00b7 click to resume';
-    startEl.style.display = 'flex'; started = false;
-  }
+  if (!document.pointerLockElement && started && !isTouch && !mapOpen) pauseGame();
 });
+document.addEventListener('pointerlockerror', () => { if (started && !isTouch && !mapOpen) pauseGame(); });
 document.addEventListener('mousemove', e => {
   if (document.pointerLockElement !== renderer.domElement) return;
   look(e.movementX * .0022, e.movementY * .0022);
@@ -856,12 +895,18 @@ document.getElementById('btnCell').addEventListener('click', e => { e.stopPropag
 document.getElementById('btnStyle').addEventListener('click', e => { e.stopPropagation(); toggleStyle(); });
 
 addEventListener('keydown', e => {
+  if (e.target instanceof HTMLInputElement) return;        // typing a seed
   keys[e.code] = true;
   if (e.code === 'Space') { jumpQueued = true; e.preventDefault(); }  // don't re-press a focused button
   if (e.code === 'KeyT') toggleAscii();
   if (e.code === 'KeyG') toggleStyle();
   if (e.code === 'BracketLeft') cycleCell(-1);
   if (e.code === 'BracketRight') cycleCell(1);
+  if (e.code === 'KeyM') toggleMap();
+  if (e.code === 'KeyN') toggleMini();
+  if (e.code === 'Escape' && mapOpen) toggleMap(false, false);
+  if (mapOpen && (e.code === 'Equal' || e.code === 'NumpadAdd')) zoomMap(-1);
+  if (mapOpen && (e.code === 'Minus' || e.code === 'NumpadSubtract')) zoomMap(1);
 });
 addEventListener('keyup', e => { keys[e.code] = false; });
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
@@ -907,6 +952,174 @@ const endTouch = e => {
 };
 renderer.domElement.addEventListener('touchend', endTouch);
 renderer.domElement.addEventListener('touchcancel', endTouch);
+
+// ---------------------------------------------------------------------------
+// World map and minimap, drawn from the same climate and height functions as the world
+// ---------------------------------------------------------------------------
+const MAP_COLORS = {
+  [DESERT]: [201, 178, 122], [PLAINS]: [122, 154, 74], [FOREST]: [58, 102, 50], [SNOWY]: [222, 230, 238],
+  beach: [210, 194, 142], rock: [128, 126, 124], path: [156, 124, 88], ice: [188, 212, 232],
+  shallow: [72, 124, 184], deep: [22, 48, 92], fort: [190, 70, 50],
+};
+const LEGEND = [['Ocean', MAP_COLORS.shallow], ['Beach', MAP_COLORS.beach], ['Desert', MAP_COLORS[DESERT]],
+  ['Plains', MAP_COLORS[PLAINS]], ['Forest', MAP_COLORS[FOREST]], ['Snow', MAP_COLORS[SNOWY]],
+  ['Rock', MAP_COLORS.rock], ['Fort', MAP_COLORS.fort]];
+
+function mapColor(x, z, h, biome, cl) {
+  if (inCourtyard(x, z) || isRoad(x, z)) return MAP_COLORS.path;
+  if (h <= SEA) {
+    if (cl.cold > .6) return MAP_COLORS.ice;
+    const d = Math.min(1, (SEA - h) / 10), a = MAP_COLORS.shallow, b = MAP_COLORS.deep;
+    return [a[0] + (b[0] - a[0]) * d, a[1] + (b[1] - a[1]) * d, a[2] + (b[2] - a[2]) * d];
+  }
+  if (biome === DESERT || biome === SNOWY) return MAP_COLORS[biome];
+  if (h <= SEA + 1) return MAP_COLORS.beach;
+  if (h > G + 22) return MAP_COLORS.rock;
+  return MAP_COLORS[biome];
+}
+
+// A map image rendered progressively (a few rows per frame) into an offscreen canvas.
+// While a new view renders, the previous image is shifted/scaled into place as a placeholder.
+class MapView {
+  constructor(size) {
+    this.size = size;
+    this.base = Object.assign(document.createElement('canvas'), { width: size, height: size });
+    this.tmp = Object.assign(document.createElement('canvas'), { width: size, height: size });
+    this.bctx = this.base.getContext('2d');
+    this.bctx.fillStyle = '#05060d'; this.bctx.fillRect(0, 0, size, size);
+    this.bx = 0; this.bz = 0; this.bscale = 1; this.job = null;
+  }
+  // Where the base image lands when drawn centred on (cx, cz) at `scale` blocks per pixel, times `k` output pixels
+  placement(cx, cz, scale, k = 1) {
+    const w = this.size * this.bscale / scale;
+    return [(this.size / 2 + (this.bx - cx) / scale - w / 2) * k, (this.size / 2 + (this.bz - cz) / scale - w / 2) * k, w * k];
+  }
+  request(cx, cz, scale) {
+    cx = Math.round(cx); cz = Math.round(cz);
+    const t = this.tmp.getContext('2d');
+    t.clearRect(0, 0, this.size, this.size); t.drawImage(this.base, 0, 0);
+    const [px, pz, w] = this.placement(cx, cz, scale);
+    this.bctx.fillStyle = '#05060d'; this.bctx.fillRect(0, 0, this.size, this.size);
+    this.bctx.imageSmoothingEnabled = false;
+    this.bctx.drawImage(this.tmp, px, pz, w, w);
+    this.bx = cx; this.bz = cz; this.bscale = scale;
+    this.job = { row: 0, img: new ImageData(this.size, this.size), prevRow: new Float32Array(this.size) };
+  }
+  step(budgetMs) {
+    const job = this.job;
+    if (!job) return;
+    const t0 = performance.now(), size = this.size, r0 = job.row, d = job.img.data;
+    while (job.row < size && performance.now() - t0 < budgetMs) {
+      const z = this.bz + (job.row - size / 2) * this.bscale;
+      let left = 0;
+      for (let i = 0; i < size; i++) {
+        const x = this.bx + (i - size / 2) * this.bscale;
+        const cl = climate(x, z), h = terrainHeight(x, z, cl), biome = biomeOf(cl, h);
+        let [r, g, b] = mapColor(x, z, h, biome, cl);
+        if (h > SEA) {   // hill shading from the north-west, slightly brighter with height
+          const up = job.row ? job.prevRow[i] : h, lf = i ? left : h;
+          const shade = Math.max(.65, Math.min(1.35, 1 + ((h - up) + (h - lf)) * .06 / Math.sqrt(this.bscale) + (h - G) * .006));
+          r *= shade; g *= shade; b *= shade;
+        }
+        const o = (job.row * size + i) * 4;
+        d[o] = r; d[o + 1] = g; d[o + 2] = b; d[o + 3] = 255;
+        job.prevRow[i] = h; left = h;
+      }
+      job.row++;
+    }
+    this.bctx.putImageData(job.img, 0, 0, 0, r0, size, job.row - r0);
+    if (job.row >= size) this.job = null;
+  }
+  // Draw onto a visible canvas (k = its pixels per map pixel) with the fort and player marked
+  draw(canvas, cx, cz, scale) {
+    const ctx = canvas.getContext('2d'), k = canvas.width / this.size;
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = '#05060d'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const [px, pz, w] = this.placement(cx, cz, scale, k);
+    ctx.drawImage(this.base, px, pz, w, w);
+    const toScreen = (x, z) => [(this.size / 2 + (x - cx) / scale) * k, (this.size / 2 + (z - cz) / scale) * k];
+    // Fort
+    const [fx, fz] = toScreen(CX, CX), fs = Math.max(5, 52 / scale * k);
+    ctx.strokeStyle = 'rgb(190,70,50)'; ctx.lineWidth = Math.max(1.5, k);
+    ctx.strokeRect(fx - fs / 2, fz - fs / 2, fs, fs);
+    // Player arrow (north / -z is up)
+    const [ppx, ppz] = toScreen(P.pos.x, P.pos.z), a = Math.atan2(-Math.sin(P.yaw), -Math.cos(P.yaw)), r = 4 * k + 3;
+    ctx.save(); ctx.translate(ppx, ppz); ctx.rotate(a + Math.PI / 2);
+    ctx.beginPath(); ctx.moveTo(r, 0); ctx.lineTo(-r * .7, r * .6); ctx.lineTo(-r * .35, 0); ctx.lineTo(-r * .7, -r * .6); ctx.closePath();
+    ctx.fillStyle = '#ffb347'; ctx.strokeStyle = '#05060d'; ctx.lineWidth = 1.5; ctx.fill(); ctx.stroke();
+    ctx.restore();
+  }
+}
+
+const mapEl = document.getElementById('map'), mapCanvas = document.getElementById('mapCanvas');
+const miniEl = document.getElementById('mini'), miniCanvas = document.getElementById('miniCanvas');
+const bigMap = new MapView(256), miniMap = new MapView(96);
+const MAP_SCALES = [1, 2, 4, 8, 16, 32];
+const mapState = { cx: 0, cz: 0, scaleIdx: 2 };
+const MINI_SCALE = 2;
+let mapOpen = false, miniOn = true;
+
+document.getElementById('mapLegend').innerHTML = LEGEND.map(([n, c]) =>
+  `<span><i style="background:rgb(${c})"></i>${n}</span>`).join('');
+document.getElementById('mapSeed').value = SEED;
+
+function renderBigMap() { bigMap.request(mapState.cx, mapState.cz, MAP_SCALES[mapState.scaleIdx]); }
+function zoomMap(d) {
+  mapState.scaleIdx = Math.max(0, Math.min(MAP_SCALES.length - 1, mapState.scaleIdx + d));
+  document.getElementById('mapZoom').textContent = `${MAP_SCALES[mapState.scaleIdx] * 256} blocks`;
+  renderBigMap();
+}
+function toggleMap(open = !mapOpen, relock = true) {
+  mapOpen = open;
+  mapEl.hidden = !open;
+  miniEl.hidden = open || !miniOn;
+  if (open) {
+    mapState.cx = P.pos.x; mapState.cz = P.pos.z;
+    zoomMap(0);
+    if (document.pointerLockElement) document.exitPointerLock();
+  } else if (started && !isTouch) {
+    if (relock) renderer.domElement.requestPointerLock?.();
+    else pauseGame();
+  }
+}
+function toggleMini() { miniOn = !miniOn; miniEl.hidden = mapOpen || !miniOn; }
+
+document.getElementById('btnMap').addEventListener('click', e => { e.stopPropagation(); toggleMap(); });
+document.getElementById('mapClose').addEventListener('click', () => toggleMap(false));
+document.getElementById('mapIn').addEventListener('click', () => zoomMap(-1));
+document.getElementById('mapOut').addEventListener('click', () => zoomMap(1));
+document.getElementById('mapCenter').addEventListener('click', () => { mapState.cx = P.pos.x; mapState.cz = P.pos.z; renderBigMap(); });
+const goSeed = seed => { const u = new URL(location.href); u.searchParams.set('seed', seed); location.href = u.href; };
+document.getElementById('mapGo').addEventListener('click', () => goSeed(parseInt(document.getElementById('mapSeed').value, 10) || 1));
+document.getElementById('mapRandom').addEventListener('click', () => goSeed(1 + Math.floor(Math.random() * 999999)));
+mapCanvas.addEventListener('wheel', e => { e.preventDefault(); zoomMap(e.deltaY > 0 ? 1 : -1); }, { passive: false });
+
+// Drag to pan (mouse or touch)
+let drag = null;
+mapCanvas.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY }; mapCanvas.setPointerCapture(e.pointerId); });
+mapCanvas.addEventListener('pointermove', e => {
+  if (!drag) return;
+  const k = MAP_SCALES[mapState.scaleIdx] * bigMap.size / mapCanvas.getBoundingClientRect().width;
+  mapState.cx -= (e.clientX - drag.x) * k; mapState.cz -= (e.clientY - drag.y) * k;
+  drag = { x: e.clientX, y: e.clientY };
+});
+mapCanvas.addEventListener('pointerup', () => { if (drag) { drag = null; renderBigMap(); } });
+mapCanvas.addEventListener('pointercancel', () => { drag = null; });
+
+function updateMaps() {
+  const biome = BIOME_NAMES[biomeOf(climate(Math.floor(P.pos.x), Math.floor(P.pos.z)), terrainHeight(Math.floor(P.pos.x), Math.floor(P.pos.z)))];
+  const where = `${biome} · ${Math.floor(P.pos.x)}, ${Math.floor(P.pos.z)}`;
+  if (mapOpen) {
+    bigMap.step(10);
+    bigMap.draw(mapCanvas, mapState.cx, mapState.cz, MAP_SCALES[mapState.scaleIdx]);
+    document.getElementById('mapWhere').textContent = `you: ${where}`;
+  } else if (miniOn) {
+    if (!miniMap.job && Math.hypot(P.pos.x - miniMap.bx, P.pos.z - miniMap.bz) > 24 || miniMap.bscale !== MINI_SCALE) miniMap.request(P.pos.x, P.pos.z, MINI_SCALE);
+    miniMap.step(3);
+    miniMap.draw(miniCanvas, P.pos.x, P.pos.z, MINI_SCALE);
+    document.getElementById('miniWhere').textContent = where;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Main loop
@@ -983,7 +1196,8 @@ function update(dt, t) {
 function frame() {
   const dt = Math.min(clock.getDelta(), .05);
   streamChunks(P.pos.x, P.pos.z, 6);
-  update(started ? dt : 0, clock.elapsedTime);
+  update(started && !mapOpen ? dt : 0, clock.elapsedTime);
+  updateMaps();
   if (!started) { P.yaw = Math.sin(clock.elapsedTime * .15) * .25; camera.rotation.set(P.pitch, P.yaw, 0); }
   sky.position.copy(camera.position);
   // Water: drifting ripples, and murky blue fog with the camera under the surface
@@ -1007,7 +1221,7 @@ P.pos.y = surfaceY(Math.floor(P.pos.x), Math.floor(P.pos.z));
 P.eye = P.pos.y + 1.6;
 streamChunks(P.pos.x, P.pos.z, Infinity);
 camera.position.set(P.pos.x, P.eye, P.pos.z);
-window.__fort = { P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
+window.__fort = { toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
 frame();
 </script>
 </body>
