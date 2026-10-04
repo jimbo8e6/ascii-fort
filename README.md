@@ -89,6 +89,18 @@ Villages sit on the road network. The roads meet at a village square with a ston
   - **Look:** a plum coat and broad feathered hat.
   - **With the village:** when they arrive they sell seed to households that have run out, sell flour to a bakery with no mill, and buy up surplus flour from the mill and surplus bread from the bakery. That's money coming in from outside.
   - **With you:** they trade every kind of goods, at a mark-up. Ask *What's the news?* to hear what they did that morning.
+- **Farming and forest villages:**
+  - **Farming villages** have a windmill: farmers, a miller and a bakery.
+  - **Forest villages** have no mill, no fields and no bakery, so they can't make bread. Instead they have:
+    - **a woodcutter** (red jerkin, axe on the shoulder), who splits lumber at a chopping block behind the house; the log stack shows the stock;
+    - **a hunter** (green hood, bow and quiver), who heads off into the woods each morning, out of sight, and comes back in the afternoon with meat and a hide on good hunting days, hanging the hides on a drying rack behind the house.
+  - Households eat bread if they have it, otherwise meat.
+- **Trade runs between villages:** each farming village's bakery is paired with a neighbouring forest village linked by road.
+  - **Out:** every other day at 8:00 the bakery loads its spare bread onto a cart. A carter from the baker's household (leather jerkin, flat cap, whip) drives it along the road to the forest village, arriving around 9:30.
+  - **There:** households buy bread (up to two loaves each), and the carter buys meat from the hunter, tanned hides, and lumber from the woodcutter. The cart stays parked until 12:30, and you can talk and trade with the carter.
+  - **Back:** the cart is home by 14:00. Meat goes on sale at the bakery and the midday stall, and travelling merchants buy the hides and lumber, bringing coin into the village.
+  - **Off-screen too:** runs happen whether or not you're nearby. Each village's roster exists as data even if you've never been there, and both villages' memories are updated at load, arrival and return. You'll see the cart on the road if you're within about 160 blocks.
+  - **Asking about it:** bakers answer *Where does your cart go?* (and what the last run sold and bought); woodcutters and hunters answer *Who buys your lumber / meat and hides?*; forest villagers explain where their bread comes from.
 - **Groundwork for trade:** a goods catalogue (wheat seed, wheat, flour, bread, each with a value and source) and per-household stock. Farming, milling, baking and trading will build on this.
 - **Job outfits:** each job has its own look, so you can tell who's who at a glance:
   - **Baker:** white apron and cap.
