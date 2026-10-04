@@ -48,7 +48,21 @@ Villages sit on the road network. The roads meet at a village square with a ston
 - **Fires:** most houses light the fire in the evening, through the night and early morning, and some cook at midday. A lit fire flickers and lights the room. At night its windows glow, and smoke drifts up from the chimney. When the fire's out there's no flame and no smoke.
 - **Solid:** walls, the plinth, floors, stairs and furniture are all solid. You go in through the door and climb the stairs, and you can't walk through tables or into the fire.
 - **Windmills:** about half of all villages have one, a tapered tower mill with a stone base, a door facing the square with a lantern, small windows, a pointed cap and turning sails.
-- **Villagers:** they wear coloured tunics and straw hats and potter about outside their doors. They greet you ("Hello there!", "Welcome, stranger.") and talk like guards, with the same "about this area" answer from their village.
+- **Villagers have homes, names and jobs:** each cottage houses a family of one to three, e.g. *Ulric Hollins*.
+  - **Jobs:** in a village with a windmill, the miller lives in the house nearest it. The head of about half the other households farms, and the rest keep house.
+- **Daily routine** (times vary a little per person):
+  1. Asleep in bed overnight.
+  2. Up around 6. The first one up lights the fire, then breakfast at the table.
+  3. Morning work: the miller at the mill (the sails only turn while they're working), farmers in the plot behind their house, homemakers at chores and fetching water from the well.
+  4. Everyone gathers at the square around midday.
+  5. Afternoon work.
+  6. Evenings at home by the fire and table.
+  7. Bed around 21:30.
+- **Fires follow the people:** a fire only burns while someone's home and awake. Chimney smoke and lit windows now mean someone's in.
+- **Getting around:** villagers walk a path network covering the streets, the square, each house's door, its rooms, stairs and bed, and a path round the outside to the plot behind. They go through doorways and up the stairs instead of through walls.
+- **Talking:** the panel shows their name, job and village. Ask *Who are you?*, *What are you doing?* (it depends on what they're actually doing) and, for millers and farmers, *Where do you get your wheat seed?* Seed is kept back from each harvest and stored in the house, with a count of sacks; when a harvest fails, it's bought from the merchant who comes from the nearest other village.
+- **Groundwork for trade:** a goods catalogue (wheat seed, wheat, flour, bread, each with a value and source) and per-household stock. Farming, milling, baking and trading will build on this.
+- **Simulation scope:** only villages near you are fully simulated. When you arrive, everyone starts wherever their routine has them at that hour.
 - **On the map:** villages show as a little house marker once discovered.
 
 ## Windmills, carts and boats

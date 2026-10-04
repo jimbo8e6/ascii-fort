@@ -840,7 +840,6 @@ function buildVillage(set, plan, rnd) {
     for (let z = z0 - 1; z <= z1 + 1; z++) for (let x = x0 - 1; x <= x1 + 1; x++) if (used[x + z * N] || nearRoad(x + .5, z + .5, ROAD_HALF + 1.2)) return false;
     return true;
   };
-  const tunics = [0x3c6e8a, 0x6a8a3c, 0x8a6a3c, 0x7a4a6a, 0x9a8a5a];
   let side = 1;
   for (const p of streets) for (let i = 1; i < p.length; i++) {
     const [ax, az] = p[i - 1], [bx, bz] = p[i];
@@ -862,10 +861,6 @@ function buildVillage(set, plan, rnd) {
     if (!ok) continue;
     for (const k of cells) used[k] = 1;
     models.push({ kind: 'cottage', x: cx, y: 0, z: cz, angle: yaw, w, d, storeys, seed: rnd() * 1e9 | 0 });
-    if (rnd() < .7) {                                              // a villager pottering outside the door
-      const sx = cx + (d / 2 + 1.8) * s, sz = cz + (d / 2 + 1.8) * c;
-      guards.push({ a: [sx, 0, sz], b: [sx + ux * 4, 0, sz + uz * 4], speed: .5 + rnd() * .3, kind: 'villager', color: tunics[rnd() * tunics.length | 0] });
-    }
   }
   // A windmill (tower mill) at the edge of about half of all villages, door towards the square
   if (rnd() < .5) for (let k = 0, a0 = rnd() * Math.PI * 2; k < 16; k++) {
@@ -876,7 +871,7 @@ function buildVillage(set, plan, rnd) {
     models.push({ kind: 'windmill', x: cx + .5, y: 0, z: cz + .5, angle: Math.atan2(-ix / l, -iz / l) });
     break;
   }
-  return { torches, guards, models };
+  return { torches, guards, models, village: { streets, radius: C - 3 } };
 }
 
 
@@ -966,6 +961,10 @@ function buildPlan(plan) {
   plan.decor = {
     torches: extra.torches.map(toWorld),
     models: (extra.models || []).map(m => ({ ...m, pos: toWorld([m.x, m.y, m.z]) })),
+    village: extra.village && {
+      streets: extra.village.streets.map(p => p.map(([x, z]) => [x + plan.ox, z + plan.oz])),
+      radius: extra.village.radius, centre: toWorld([plan.N / 2, 0, plan.N / 2]),
+    },
     guards: extra.guards.map(g => {
       const a = toWorld(g.a), b = g.b ? toWorld(g.b) : null;
       let face = null;
@@ -2252,7 +2251,11 @@ function makeTowerMill(m) {
   }
   hub.add(sails); scene.add(hub);
   const lamp = addLantern(...built.toWorld(.8, 2.4, -2.75));
-  const obj = { g: built.group, extra: [hub], colliders: built.colliders, torches: [lamp], tick: dt => { sails.rotation.z -= dt * .9; } };
+  const key = millKey(m.pos);
+  const obj = { g: built.group, extra: [hub], colliders: built.colliders, torches: [lamp], spin: 1, tick: dt => {
+    obj.spin += ((millBusy.has(key) ? +millBusy.get(key) : 1) - obj.spin) * Math.min(1, dt * .4);   // sails wind up and down
+    sails.rotation.z -= dt * .9 * obj.spin;
+  } };
   animated.add(obj);
   return obj;
 }
@@ -2277,7 +2280,7 @@ const smokeTex = (() => {
 const puffs = [], puffPool = [];
 function updateCottages(dt) {
   for (const h of cottages) {
-    const on = fireLit(h.seed, env.time);
+    const on = activeHouses.has(h.seed) ? (houseAwake.get(h.seed) || 0) > 0 : fireLit(h.seed, env.time);
     if (on !== h.on) {
       h.on = on; h.fire.off = !on;
       if (h.glass) h.glass.material = on && env.daylight < .5 ? WINDOW_GLOW : buildingMat('glass');
@@ -2305,6 +2308,218 @@ function updateCottages(dt) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Village life: households, names, jobs and daily routines. Villagers walk a small path network
+// (streets, square, doors, rooms, stairs, beds) to wherever their schedule says they should be.
+// Fires burn while someone is home and awake. Goods and household stock are the groundwork for
+// farming and trade.
+// ---------------------------------------------------------------------------
+const ITEMS = {
+  wheatSeed: { name: 'wheat seed', unit: 'sack', value: 4, from: 'kept back from each harvest, or bought from a merchant' },
+  wheat: { name: 'wheat', unit: 'sack', value: 3, from: 'grown in the fields' },
+  flour: { name: 'flour', unit: 'sack', value: 7, from: 'milled at the windmill' },
+  bread: { name: 'bread', unit: 'loaf', value: 2, from: 'baked by the baker' },
+};
+const FIRST_NAMES = ['Ada', 'Bram', 'Cora', 'Dunstan', 'Edda', 'Fenn', 'Gilda', 'Hal', 'Isolde', 'Jory', 'Kit', 'Lene', 'Mags', 'Ned', 'Orla', 'Piers',
+  'Quill', 'Rosalind', 'Silas', 'Tamsin', 'Ulric', 'Vera', 'Wat', 'Yara', 'Alwin', 'Bess', 'Cuthbert', 'Dilys', 'Elric', 'Freya'];
+const FAMILY_NAMES = ['Thorne', 'Miller', 'Ashby', 'Cole', 'Fletcher', 'Greaves', 'Hollins', 'Marsh', 'Pike', 'Rook', 'Tanner', 'Webb', 'Yates', 'Brook', 'Dale'];
+const villages = new Set();
+const activeHouses = new Set(), houseAwake = new Map(), millBusy = new Map();
+const millKey = pos => `${Math.round(pos[0])},${Math.round(pos[2])}`;
+
+// Interior layout of a cottage (matches makeCottage)
+function cottagePlan(m) {
+  const W = m.w, D = m.d, two = m.storeys === 2, t = .25, floorY = .3, ix0 = -W / 2 + t, ix1 = W / 2 - t, iz0 = -D / 2 + t, iz1 = D / 2 - t;
+  const groundTop = floorY + 2.8 + (two ? .2 : 0), partX = ix0 + 2.6, fx0 = ix1 - .7;
+  return { W, D, two, floorY, groundTop, ix0, ix1, iz0, iz1, partX, fx0, doorX: two ? .5 : (partX + ix1 - .7) / 2,
+    stairX0: ix0, stairZ0: iz1 - .9, RUN: 3, tx: two ? (ix0 + 1 + fx0) / 2 + .1 : (partX + fx0) / 2 };
+}
+
+function startVillage(plan) {
+  const info = plan.decor.village, rnd = mulberry32(plan.seed ^ 0x51ab1e), [Cx, base, Cz] = info.centre;
+  const V = { plan, nodes: [], houses: [], people: [], ring: [], mill: null };
+  const node = (x, y, z, tag) => { const n = { id: V.nodes.length, x, y, z, links: [], tag }; V.nodes.push(n); return n; };
+  const link = (a, b) => { if (a && b && a !== b) { a.links.push(b); b.links.push(a); } };
+  const nearest = (x, z, ok) => { let best = null, bd = Infinity; for (const n of V.nodes) if (ok(n)) { const d = Math.hypot(n.x - x, n.z - z); if (d < bd) { bd = d; best = n; } } return best; };
+  // Square: a ring of spots round the well
+  for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; V.ring.push(node(Cx + Math.cos(a) * 3.2, base, Cz + Math.sin(a) * 3.2, 'square')); }
+  V.ring.forEach((n, i) => link(n, V.ring[(i + 1) % 8]));
+  // Streets: a point every ~4 blocks out to the village edge, joined to the square
+  for (const p of info.streets) {
+    let prev = null;
+    outer: for (let i = 0; i + 1 < p.length; i++) {
+      const [ax, az] = p[i], [bx, bz] = p[i + 1], steps = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / 4));
+      for (let k = 0; k < steps; k++) {
+        const t = k / steps, x = ax + (bx - ax) * t, z = az + (bz - az) * t, r = Math.hypot(x - Cx, z - Cz);
+        if (r < 5) continue;
+        if (r > info.radius) break outer;
+        const n = node(x, base, z, 'street');
+        link(prev || nearest(x, z, m => m.tag === 'square'), n); prev = n;
+      }
+    }
+  }
+  const toStreet = n => link(n, nearest(n.x, n.z, m => m.tag === 'street' || m.tag === 'square'));
+  // Houses: door, rooms, stairs and bed, plus a path round the outside to the plot behind
+  for (const m of info.cottages) {
+    const L = cottagePlan(m), c = Math.cos(m.angle), s = Math.sin(m.angle), [ox, oy, oz] = m.pos;
+    const at = (lx, ly, lz, tag, face) => { const n = node(ox + lx * c + lz * s, oy + ly, oz - lx * s + lz * c, tag); n.house = m.seed; if (face !== undefined) n.face = m.angle + face; return n; };
+    const out = at(L.doorX, 0, L.D / 2 + 1.3, 'door'), inn = at(L.doorX, L.floorY, L.D / 2 - 1, 'in');
+    const fire = at(L.fx0 - .6, L.floorY, 0, 'fire', Math.PI / 2), seat = at(L.tx, L.floorY, L.two ? 1 : .45, 'seat', Math.PI);
+    const o = 1.4, fr = at(L.W / 2 + o, 0, L.D / 2 + o), fl = at(-L.W / 2 - o, 0, L.D / 2 + o), br = at(L.W / 2 + o, 0, -L.D / 2 - o), bl = at(-L.W / 2 - o, 0, -L.D / 2 - o);
+    const back = at(0, 0, -L.D / 2 - 2.6, 'plot', Math.PI);
+    [out, fr, br, back, bl, fl, out].reduce((a, b) => (link(a, b), b));
+    link(out, inn); link(inn, fire); link(inn, seat); link(seat, fire);
+    let bed;
+    if (L.two) {
+      const foot = at(L.stairX0 + .5, L.floorY, L.stairZ0 + .45), top = at(L.stairX0 + .5, L.groundTop, L.stairZ0 - L.RUN - .45);
+      const side = at(-.9, L.groundTop, L.iz0 + 1);
+      bed = at(0, L.groundTop + .55, L.iz0 + 1.95, 'bed', 0);
+      link(inn, foot); link(foot, top); link(top, side); link(side, bed);
+    } else {
+      const way = at(L.partX, L.floorY, L.iz1 - 1), side = at(L.ix0 + 1.5, L.floorY, L.iz0 + 1);
+      bed = at(L.ix0 + .65, L.floorY + .55, L.iz0 + 1.95, 'bed', 0);
+      link(inn, way); link(way, side); link(side, bed);
+    }
+    toStreet(out);
+    V.houses.push({ m, two: L.two, out, fire, seat, back, bed, people: [], stock: {} });
+    activeHouses.add(m.seed);
+  }
+  if (info.mill) {
+    const m = info.mill, c = Math.cos(m.angle), s = Math.sin(m.angle);
+    V.mill = node(m.pos[0] - 3.6 * s, m.pos[1], m.pos[2] - 3.6 * c, 'mill');
+    V.mill.face = m.angle; V.millKey = millKey(m.pos);
+    toStreet(V.mill);
+  }
+  // Households: a family name each, one to three people
+  const tunics = [0x3c6e8a, 0x6a8a3c, 0x8a6a3c, 0x7a4a6a, 0x9a8a5a, 0x4a4a7a];
+  V.houses.forEach(h => {
+    const fam = FAMILY_NAMES[rnd() * FAMILY_NAMES.length | 0], n = h.two ? 2 + (rnd() < .4 ? 1 : 0) : 1 + (rnd() < .5 ? 1 : 0);
+    for (let k = 0; k < n; k++) {
+      const p = { idx: V.people.length, name: `${FIRST_NAMES[rnd() * FIRST_NAMES.length | 0]} ${fam}`, house: h, job: 'homemaker',
+        jitter: (rnd() - .5) * .8, firstUp: k === 0, color: tunics[rnd() * tunics.length | 0], village: V };
+      h.people.push(p); V.people.push(p);
+    }
+  });
+  // Jobs: the miller lives nearest the mill; the head of about half the other households farms
+  if (V.mill) {
+    const h = V.houses.reduce((a, b) => Math.hypot(b.out.x - V.mill.x, b.out.z - V.mill.z) < Math.hypot(a.out.x - V.mill.x, a.out.z - V.mill.z) ? b : a, V.houses[0]);
+    if (h) { h.people[0].job = 'miller'; h.stock.wheatSeed = 3 + (rnd() * 3 | 0); }
+  }
+  V.houses.forEach((h, i) => { if (h.people[0].job === 'homemaker' && i % 2 === 0) { h.people[0].job = 'farmer'; h.stock.wheatSeed = 2 + (rnd() * 4 | 0); } });
+  // Bring everyone in at wherever their routine has them right now
+  for (const p of V.people) {
+    p.act = activityFor(p, env.time);
+    const n = targetNode(p, p.act);
+    p.gd = addGuard([n.x, n.y, n.z], null, 0, n.face ?? 0, { title: plan.title, plan, kind: 'villager', color: p.color, person: p });
+    p.gd.g.rotation.order = 'YXZ';
+    p.gd.agent = { node: n, goal: n, path: [] };
+    pose(p.gd, n, p.act === 'sleep');
+  }
+  villages.add(V);
+  return V;
+}
+function stopVillage(V) {
+  for (const p of V.people) removeGuard(p.gd);
+  for (const h of V.houses) { activeHouses.delete(h.m.seed); houseAwake.delete(h.m.seed); }
+  if (V.millKey) millBusy.delete(V.millKey);
+  villages.delete(V);
+}
+
+// The daily routine: what someone should be doing at hour h
+function activityFor(p, h) {
+  const wake = 6 + p.jitter, bed = 21.6 + p.jitter;
+  if (h < wake || h >= bed) return 'sleep';
+  if (h < wake + .5) return p.firstUp ? 'fire' : 'seat';            // first up lights the fire
+  if (h < 7.3) return 'seat';                                          // breakfast
+  if (h >= 11.8 && h < 13.2) return 'square';                           // midday at the square
+  if (h >= 17.6 + p.jitter * .5) return Math.floor((h - 17.6) * 2) % 3 === 0 ? 'fire' : 'seat';   // evening at home
+  if (p.job === 'miller') return p.village.mill ? 'mill' : 'plot';
+  if (p.job === 'farmer') return 'plot';
+  return Math.floor(h) % 2 ? 'chores' : 'well';
+}
+function targetNode(p, act) {
+  const h = p.house, V = p.village;
+  return { sleep: h.bed, fire: h.fire, chores: h.fire, seat: h.seat, square: V.ring[p.idx % 8], well: V.ring[(p.idx + 4) % 8],
+    mill: V.mill || h.back, plot: h.back }[act];
+}
+// Shortest route over the path network (breadth-first; the graphs are small)
+function route(a, b) {
+  if (a === b) return [];
+  const prev = new Map([[a, null]]), q = [a];
+  while (q.length) { const n = q.shift(); if (n === b) break; for (const m of n.links) if (!prev.has(m)) { prev.set(m, n); q.push(m); } }
+  if (!prev.has(b)) return [b];
+  const path = []; for (let n = b; n !== a; n = prev.get(n)) path.unshift(n);
+  return path;
+}
+function pose(gd, n, lying) {
+  gd.g.rotation.x = lying ? -Math.PI / 2 : 0;
+  if (n.face !== undefined) gd.g.rotation.y = n.face;
+  gd.legs[0].rotation.x = gd.legs[1].rotation.x = 0;
+}
+// Walk towards the current goal; re-plan when the schedule moves on
+function stepAgent(gd, dt) {
+  const A = gd.agent, p = gd.home.person, want = activityFor(p, env.time);
+  if (want !== p.act) {
+    p.act = want; A.goal = targetNode(p, want); A.path = route(A.node, A.goal);
+    gd.g.rotation.x = 0; A.asleep = false;
+  }
+  const pos = gd.g.position;
+  if (A.path.length) {
+    const n = A.path[0], dx = n.x - pos.x, dy = n.y - pos.y, dz = n.z - pos.z, d = Math.hypot(dx, dz), step = 2.3 * dt;
+    if (d <= step) { pos.set(n.x, n.y, n.z); A.node = n; A.path.shift(); }
+    else {
+      pos.x += dx / d * step; pos.z += dz / d * step; pos.y += dy * step / d;
+      turnTowards(gd, Math.atan2(dx, dz), dt * 2);
+      const swing = Math.sin(clock.elapsedTime * 7) * .5;
+      gd.legs[0].rotation.x = swing; gd.legs[1].rotation.x = -swing;
+    }
+    if (!A.path.length) { pose(gd, A.goal, p.act === 'sleep'); A.asleep = p.act === 'sleep'; }
+  }
+}
+function updateVillages() {
+  houseAwake.clear();
+  for (const V of villages) {
+    for (const p of V.people) if (['fire', 'seat', 'chores'].includes(p.act)) houseAwake.set(p.house.m.seed, (houseAwake.get(p.house.m.seed) || 0) + 1);
+    if (V.millKey) {
+      const miller = V.people.find(p => p.job === 'miller');
+      millBusy.set(V.millKey, !!miller && miller.act === 'mill' && !miller.gd.agent.path.length);
+    }
+  }
+}
+
+// Conversation pieces for villagers
+const JOB_NAMES = { miller: 'miller', farmer: 'farmer', homemaker: 'villager' };
+function villagerAbout(p) {
+  const h = p.house, V = p.village, [Cx, , Cz] = V.plan.decor.village.centre;
+  const where = Math.hypot(h.out.x - Cx, h.out.z - Cz) < 8 ? 'by the square' : `on the ${compass(h.out.x - Cx, h.out.z - Cz)} side of the village`;
+  const job = { miller: "I'm the miller. I grind the village's grain at the windmill.", farmer: 'I farm the plot behind our house.',
+    homemaker: 'I keep house for the family.' }[p.job];
+  const others = h.people.filter(q => q !== p).map(q => q.name.split(' ')[0]);
+  return `I'm ${p.name}. ${job} We live in the ${h.two ? 'two-storey ' : ''}cottage ${where}` + (others.length ? `, with ${others.join(' and ')}.` : '.');
+}
+function villagerDoing(p) {
+  const h = env.time;
+  return {
+    fire: 'Seeing to the fire.', chores: 'Keeping the hearth going and the house in order.',
+    seat: h < 10 ? 'Having a bit of breakfast.' : 'Resting after the day.',
+    square: 'Catching up on the gossip, same as everyone at midday.',
+    well: 'Fetching water from the well.',
+    mill: p.gd.agent.path.length ? 'Off to the mill. The sails won\'t turn themselves.' : 'Minding the millstones. The sails are turning nicely today.',
+    plot: p.job === 'miller' ? 'Seeing to the wheat behind the house.' : 'Tending our plot. The wheat is coming on.',
+  }[p.act] || 'Nothing much.';
+}
+function villagerSeed(p) {
+  const stock = p.house.stock.wheatSeed || 0, V = p.village;
+  let other = null, best = Infinity;
+  const rx0 = regionOf(V.plan.ox), rz0 = regionOf(V.plan.oz);
+  for (let rz = rz0 - 3; rz <= rz0 + 3; rz++) for (let rx = rx0 - 3; rx <= rx0 + 3; rx++) {
+    const q = planFor(rx, rz);
+    if (q && q.type === VILLAGE && q !== V.plan) { const d = Math.hypot(q.cx - V.plan.cx, q.cz - V.plan.cz); if (d < best) { best = d; other = q; } }
+  }
+  return `We keep back a share of every harvest as seed for the next sowing. There are ${stock} ${stock === 1 ? 'sack' : 'sacks'} of it in the house right now. ` +
+    (other ? `If a harvest fails, we buy seed from the merchant who comes over from ${other.title}.` : 'If a harvest fails, we have to wait for a merchant to come by with seed.');
+}
+
 // Torches and guards of procedural structures live with the chunk they stand in
 function addChunkDecor(c) {
   const plan = planFor(regionOf(c.cx * CHUNK), regionOf(c.cz * CHUNK));
@@ -2316,10 +2531,15 @@ function addChunkDecor(c) {
   const mine = (x, z) => Math.floor(x / CHUNK) === c.cx && Math.floor(z / CHUNK) === c.cz;
   for (const [x, y, z] of plan.decor.torches) if (mine(x, z)) c.decor.push(['torch', addTorch(x, y, z)]);
   for (const m of plan.decor.models) if (mine(m.pos[0], m.pos[2])) c.decor.push(['building', m.kind === 'cottage' ? makeCottage(m) : makeTowerMill(m)]);
+  if (plan.decor.village && mine(plan.cx, plan.cz)) {               // the village's people live with its central chunk
+    plan.decor.village.cottages = plan.decor.models.filter(m => m.kind === 'cottage');
+    plan.decor.village.mill = plan.decor.models.find(m => m.kind === 'windmill');
+    c.decor.push(['village', startVillage(plan)]);
+  }
   for (const gd of plan.decor.guards) if (mine(gd.a[0], gd.a[2])) c.decor.push(['guard', addGuard(gd.a, gd.b, gd.speed, gd.face ?? 0, { title: plan.title, plan, kind: gd.kind, color: gd.color })]);
 }
 function removeChunkDecor(c) {
-  for (const [kind, obj] of c.decor || []) kind === 'torch' ? removeTorch(obj) : kind === 'model' ? removeModel(obj) : kind === 'building' ? removeBuilding(obj) : removeGuard(obj);
+  for (const [kind, obj] of c.decor || []) kind === 'torch' ? removeTorch(obj) : kind === 'model' ? removeModel(obj) : kind === 'building' ? removeBuilding(obj) : kind === 'village' ? stopVillage(obj) : removeGuard(obj);
   c.decor = null;
 }
 
@@ -2855,7 +3075,7 @@ function updateGuards(dt) {
       gd.losT -= dt;
       if (gd.losT <= 0) { gd.losT = .2; gd.seeing = dist < 2.5 || canSee(pos.x, pos.y + 1.65, pos.z, P.pos.x, P.pos.y + 1.6, P.pos.z); }
     } else gd.seeing = false;
-    const sees = gd.seeing && dist < range;
+    const sees = gd.seeing && dist < range && !gd.agent?.asleep;   // sleepers don't notice you
     gd.lostT = sees ? 0 : gd.lostT + dt;
 
     // Greet once per encounter when you come near; forget you a few seconds after you've gone
@@ -2867,10 +3087,13 @@ function updateGuards(dt) {
     if (sees && dist < TALK_RANGE && (!talkTarget || dist < talkTarget.dist)) talkTarget = { gd, dist };
 
     // Stop and face the player while they're close and in view, otherwise carry on
-    const attending = sees && dist < 7 || dlg.gd === gd;
+    // (villagers going about their day only stop for you when you're right next to them)
+    const attending = dlg.gd === gd || sees && dist < (gd.agent ? 3.5 : 7);
     if (attending) {
       turnTowards(gd, Math.atan2(dx, dz), Math.max(dt, .016));
       gd.legs[0].rotation.x = gd.legs[1].rotation.x = 0;
+    } else if (gd.agent) {
+      stepAgent(gd, dt);
     } else if (!gd.b) {
       turnTowards(gd, gd.face, dt);
     } else {
@@ -2909,7 +3132,7 @@ function talk() {
 function openDialogue(gd) {
   dlg.open = true; dlg.gd = gd; dlg.area = null;
   if (document.pointerLockElement) document.exitPointerLock();
-  const role = gd.home?.kind === 'villager' ? 'Villager' : 'Guard';
+  const p = gd.home?.person, role = p ? `${p.name} \u00b7 ${JOB_NAMES[p.job]}` : gd.home?.kind === 'villager' ? 'Villager' : 'Guard';
   dlgEl.querySelector('.who').textContent = gd.home ? `${role} \u00b7 ${gd.home.title}` : role;
   const night = env.daylight < .35;
   showDialogue(night ? 'Evening, traveller. Something you need?' : 'Good day. What can I do for you?');
@@ -2918,10 +3141,14 @@ function openDialogue(gd) {
 function showDialogue(text) {
   dlgEl.hidden = false;
   dlgEl.querySelector('.text').textContent = text;
-  const opts = [
-    ['What can you tell me about this area?', () => showDialogue(dlg.area ??= describeArea(dlg.gd))],
-    ['Goodbye.', () => closeDialogue()],
-  ];
+  const p = dlg.gd.home?.person, opts = [];
+  if (p) {
+    opts.push(['Who are you?', () => showDialogue(villagerAbout(p))]);
+    opts.push(['What are you doing?', () => showDialogue(villagerDoing(p))]);
+    if (p.job === 'miller' || p.job === 'farmer') opts.push(['Where do you get your wheat seed?', () => showDialogue(villagerSeed(p))]);
+  }
+  opts.push(['What can you tell me about this area?', () => showDialogue(dlg.area ??= describeArea(dlg.gd))]);
+  opts.push(['Goodbye.', () => closeDialogue()]);
   const list = dlgEl.querySelector('.opts');
   list.innerHTML = '';
   opts.forEach(([label, fn], i) => {
@@ -3121,6 +3348,7 @@ function update(dt, t) {
   updateGuards(dt);
   updateLantern(dt);
   checkDiscoveries(dt);
+  updateVillages();
   updateModels(dt);
   updateCottages(dt);
   if (dt) pushFromSolids();
@@ -3234,7 +3462,13 @@ streamChunks(P.pos.x, P.pos.z, Infinity);
 // If the world changed under a saved position (e.g. a newer version of the generator), step out on top
 if (collides(P.pos.x, P.pos.y, P.pos.z)) { P.pos.y = surfaceY(Math.floor(P.pos.x), Math.floor(P.pos.z)); P.eye = P.pos.y + 1.6; }
 camera.position.set(P.pos.x, P.eye, P.pos.z);
-window.__fort = { cottages, colliderGrid, solids, activeBridges, roadInfo, boatSpot, carts, animated, shapeOf, collides, roadsAtNode, linksOf, discovered, roadAt, roadBetween, rawHeight, dlg, describeArea, MAIN_TITLE, lantern, guards, talk, saveGame, store, env, planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
+// Debug hook for tests: run village life for `seconds` of game play without rendering
+function simulate(seconds) {
+  const keep = env.speedIdx; env.speedIdx = 0;                 // the clock runs at normal speed
+  for (let t = 0; t < seconds; t += .05) { updateSky(.05); updateVillages(); updateGuards(.05); updateCottages(.05); }
+  env.speedIdx = keep;
+}
+window.__fort = { millBusy, simulate, villages, activityFor, cottages, colliderGrid, solids, activeBridges, roadInfo, boatSpot, carts, animated, shapeOf, collides, roadsAtNode, linksOf, discovered, roadAt, roadBetween, rawHeight, dlg, describeArea, MAIN_TITLE, lantern, guards, talk, saveGame, store, env, planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
 frame();
 </script>
 </body>
