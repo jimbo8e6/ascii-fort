@@ -15,7 +15,7 @@
   #start p { margin: 0; font-size: 14px; line-height: 1.7; opacity: .85; }
   #start .go { margin-top: 8px; padding: 10px 22px; border: 1px solid #ffb347; color: #ffb347; }
   #hud { position: fixed; left: 12px; bottom: 12px; font-size: 12px; opacity: .7; pointer-events: none; z-index: 2; line-height: 1.6; }
-  #buttons { position: fixed; top: max(12px, env(safe-area-inset-top)); right: 12px; display: flex; gap: 8px; z-index: 3; }
+  #buttons { position: fixed; top: max(12px, env(safe-area-inset-top)); right: 12px; display: flex; gap: 8px; z-index: 6; }
   .btn { background: rgba(10, 12, 24, .6); border: 1px solid rgba(255, 179, 71, .6); color: #ffb347;
     font: inherit; font-size: 12px; padding: 6px 10px; cursor: pointer; }
   #jump { position: fixed; right: 24px; bottom: 32px; width: 64px; height: 64px; border-radius: 50%; display: none; z-index: 3;
@@ -36,13 +36,14 @@
 <div id="start">
   <h1>ASCII FORT</h1>
   <p class="keys">WASD / arrows: move &middot; mouse: look &middot; shift: run &middot; space: jump<br>
-     T: toggle ASCII &middot; [ ]: character size &middot; esc: release mouse</p>
+     T: toggle ASCII &middot; G: style &middot; [ ]: character size &middot; esc: pause</p>
   <p class="touchhelp">Left thumb: move &middot; right thumb: look &middot; button: jump</p>
-  <div class="go">click / tap to enter</div>
+  <div class="go" id="go">click / tap to enter</div>
 </div>
-<div id="hud"><span class="keys">T ascii &middot; [ ] size</span></div>
+<div id="hud"><span class="keys">T ascii &middot; G style &middot; [ ] size</span></div>
 <div id="buttons">
   <button class="btn" id="btnAscii">ASCII: ON</button>
+  <button class="btn" id="btnStyle">STYLE: FINE</button>
   <button class="btn" id="btnCell">SIZE</button>
 </div>
 <button class="btn" id="jump">JUMP</button>
@@ -343,33 +344,58 @@ for (const [a, b, speed] of [
 // ---------------------------------------------------------------------------
 // ASCII post-process
 // ---------------------------------------------------------------------------
-const RAMP = ' .,:-=+*o#%@';
-const glyphTex = (() => {
-  const gw = 24, gh = 40, c = document.createElement('canvas');
-  c.width = gw * RAMP.length; c.height = gh;
+// Character sets. FINE uses many glyphs sorted by how much ink they cover, giving
+// near-continuous shading; CLASSIC is the short, chunky ramp.
+const CANDIDATES = ` .'\`,-_:;~"^!=+<>ir/\\|()?lcvtxzjfsLnuoTJY1I7*e{}[]aZ5S3C2kwyqpdbhXV4EFUPGA9068%OHKRDNQ$#BWM&@`;
+const FONT = '"Courier New", Courier, monospace';
+const FINE_RAMP = (() => {
+  const c = document.createElement('canvas'); c.width = 24; c.height = 40;
+  const g = c.getContext('2d', { willReadFrequently: true });
+  g.font = `bold 34px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+  const ink = [...new Set(CANDIDATES)].map(ch => {
+    g.clearRect(0, 0, 24, 40); g.fillText(ch, 12, 22);
+    let sum = 0; const d = g.getImageData(0, 0, 24, 40).data;
+    for (let i = 3; i < d.length; i += 4) sum += d[i];
+    return [ch, sum];
+  }).sort((a, b) => a[1] - b[1]);
+  // Keep glyphs whose coverage is noticeably above the previous one so steps are even
+  const max = ink[ink.length - 1][1], out = [ink[0]];
+  for (const e of ink) if (e[1] - out[out.length - 1][1] > max / 48) out.push(e);
+  return out.map(e => e[0]).join('');
+})();
+const STYLES = {
+  fine:    { name: 'FINE',    ramp: FINE_RAMP,      underlay: 0.45, gain: 0.85 },
+  classic: { name: 'CLASSIC', ramp: ' .,:-=+*o#%@', underlay: 0.1,  gain: 1.0 },
+};
+let style = STYLES.fine;
+
+// Glyph atlas drawn at the exact on-screen cell size so small characters stay crisp
+function buildGlyphs(cw, ch) {
+  const ramp = style.ramp, c = document.createElement('canvas');
+  c.width = cw * ramp.length; c.height = ch;
   const g = c.getContext('2d');
   g.fillStyle = '#000'; g.fillRect(0, 0, c.width, c.height);
-  g.fillStyle = '#fff'; g.font = 'bold 34px "Courier New", Courier, monospace';
+  g.fillStyle = '#fff'; g.font = `bold ${Math.max(4, Math.round(ch * .9))}px ${FONT}`;
   g.textAlign = 'center'; g.textBaseline = 'middle';
-  [...RAMP].forEach((ch, i) => g.fillText(ch, i * gw + gw / 2, gh / 2 + 2));
+  [...ramp].forEach((chr, i) => g.fillText(chr, i * cw + cw / 2, ch / 2 + ch * .05));
   const t = new THREE.CanvasTexture(c);
   t.generateMipmaps = false;
-  t.minFilter = t.magFilter = THREE.LinearFilter;
+  t.minFilter = t.magFilter = THREE.NearestFilter;
   return t;
-})();
+}
 
 const sceneRT = new THREE.WebGLRenderTarget(1, 1, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter });
 const asciiMat = new THREE.ShaderMaterial({
   uniforms: {
-    tScene: { value: sceneRT.texture }, tGlyphs: { value: glyphTex },
+    tScene: { value: sceneRT.texture }, tGlyphs: { value: null },
     resolution: { value: new THREE.Vector2() }, cell: { value: new THREE.Vector2() },
-    glyphCount: { value: RAMP.length }, exposure: { value: 2.0 },
+    glyphCount: { value: 1 }, exposure: { value: 2.0 }, underlay: { value: .1 }, gain: { value: 1 },
   },
   vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
   fragmentShader: `
     uniform sampler2D tScene, tGlyphs;
     uniform vec2 resolution, cell;
-    uniform float glyphCount, exposure;
+    uniform float glyphCount, exposure, underlay, gain;
     varying vec2 vUv;
     void main() {
       vec2 frag = vUv * resolution;
@@ -382,7 +408,7 @@ const asciiMat = new THREE.ShaderMaterial({
       float mask = texture2D(tGlyphs, vec2((g + local.x) / glyphCount, local.y)).r;
       vec3 hue = c / max(max(c.r, max(c.g, c.b)), 0.001);
       vec3 fg = mix(hue * (0.4 + 0.8 * l), c * 1.3, 0.5);
-      vec3 col = fg * mask + c * 0.1;
+      vec3 col = fg * gain * mask + c * underlay;
       vec2 q = vUv - 0.5;
       col *= 1.0 - dot(q, q) * 0.8;
       gl_FragColor = vec4(col, 1.0);
@@ -393,18 +419,23 @@ const postScene = new THREE.Scene();
 postScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), asciiMat));
 const postCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 
-const CELLS = [[5, 8], [6, 10], [7, 12], [9, 15], [12, 20]];
+const CELLS = [[3, 5], [4, 7], [5, 8], [6, 10], [7, 12], [9, 15], [12, 20]];
 let cellIdx = 2, asciiOn = true;
 
 function resize() {
   const w = window.innerWidth, h = window.innerHeight, dpr = renderer.getPixelRatio();
   renderer.setSize(w, h);
   camera.aspect = w / h; camera.updateProjectionMatrix();
-  const [cw, ch] = CELLS[cellIdx].map(v => v * dpr);
+  const [cw, ch] = CELLS[cellIdx].map(v => Math.max(2, Math.round(v * dpr)));
   asciiMat.uniforms.resolution.value.set(w * dpr, h * dpr);
   asciiMat.uniforms.cell.value.set(cw, ch);
   // Render the scene at 2x the character grid; linear sampling averages each cell
   sceneRT.setSize(Math.ceil(w * dpr / cw) * 2, Math.ceil(h * dpr / ch) * 2);
+  asciiMat.uniforms.tGlyphs.value?.dispose();
+  asciiMat.uniforms.tGlyphs.value = buildGlyphs(cw, ch);
+  asciiMat.uniforms.glyphCount.value = style.ramp.length;
+  asciiMat.uniforms.underlay.value = style.underlay;
+  asciiMat.uniforms.gain.value = style.gain;
 }
 window.addEventListener('resize', resize);
 resize();
@@ -456,7 +487,10 @@ startEl.addEventListener('click', () => {
 });
 renderer.domElement.addEventListener('click', () => { if (started && !isTouch) renderer.domElement.requestPointerLock?.(); });
 document.addEventListener('pointerlockchange', () => {
-  if (!document.pointerLockElement && started && !isTouch) { startEl.style.display = 'flex'; started = false; }
+  if (!document.pointerLockElement && started && !isTouch) {
+    document.getElementById('go').textContent = 'paused \u00b7 click to resume';
+    startEl.style.display = 'flex'; started = false;
+  }
 });
 document.addEventListener('mousemove', e => {
   if (document.pointerLockElement !== renderer.domElement) return;
@@ -469,13 +503,20 @@ function look(dx, dy) {
 
 function toggleAscii() { asciiOn = !asciiOn; document.getElementById('btnAscii').textContent = `ASCII: ${asciiOn ? 'ON' : 'OFF'}`; }
 function cycleCell(d) { cellIdx = (cellIdx + d + CELLS.length) % CELLS.length; resize(); }
+function toggleStyle() {
+  style = style === STYLES.fine ? STYLES.classic : STYLES.fine;
+  document.getElementById('btnStyle').textContent = `STYLE: ${style.name}`;
+  resize();
+}
 document.getElementById('btnAscii').addEventListener('click', e => { e.stopPropagation(); toggleAscii(); });
 document.getElementById('btnCell').addEventListener('click', e => { e.stopPropagation(); cycleCell(1); });
+document.getElementById('btnStyle').addEventListener('click', e => { e.stopPropagation(); toggleStyle(); });
 
 addEventListener('keydown', e => {
   keys[e.code] = true;
-  if (e.code === 'Space') jumpQueued = true;
+  if (e.code === 'Space') { jumpQueued = true; e.preventDefault(); }  // don't re-press a focused button
   if (e.code === 'KeyT') toggleAscii();
+  if (e.code === 'KeyG') toggleStyle();
   if (e.code === 'BracketLeft') cycleCell(-1);
   if (e.code === 'BracketRight') cycleCell(1);
 });
