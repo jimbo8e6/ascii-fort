@@ -316,8 +316,8 @@ function climate(x, z) {
   return { desert: hot * dry, cold, wet: wet * (1 - hot), ocean: 1 - smoothstep(-.45, -.15, c) };
 }
 
-// Surface height: number of solid blocks in the column (player stands at this y)
-function terrainHeight(x, z, cl = climate(x, z)) {
+// Natural surface height, before flattening for procedural structures
+function rawHeight(x, z, cl = climate(x, z)) {
   const n = .65 * noiseA(x * .006, z * .006) + .25 * noiseA(x * .02 + 31, z * .02 - 17) + .1 * noiseA(x * .07, z * .07);
   const mountains = Math.max(0, noiseB(x * .004 + 50, z * .004)) ** 2 * 28 * (1 - cl.desert * .8) * (1 - cl.ocean);
   const rough = 1 - .55 * cl.desert - .3 * (1 - cl.wet) * (1 - cl.cold);       // deserts and plains are flatter
@@ -326,6 +326,12 @@ function terrainHeight(x, z, cl = climate(x, z)) {
   h += (SEA - 8 - h) * cl.ocean;                                                   // sea floor
   h += (G - h) * flatness(x, z);
   return Math.max(2, Math.min(H - 12, Math.round(h)));
+}
+
+// Surface height: number of solid blocks in the column (player stands at this y)
+function terrainHeight(x, z, cl = climate(x, z)) {
+  const h = rawHeight(x, z, cl), s = structureAt(x, z);
+  return s ? Math.round(h + (s.plan.base - h) * s.w) : h;
 }
 
 const OCEAN = 0, DESERT = 1, PLAINS = 2, FOREST = 3, SNOWY = 4;
@@ -371,7 +377,8 @@ function generateChunk(cx, cz) {
     const x = ox + lx, z = oz + lz, i = at(lx, lz), h = hm[i], biome = bm[i];
     const slope = Math.max(Math.abs(h - hAt(lx + 1, lz)), Math.abs(h - hAt(lx - 1, lz)), Math.abs(h - hAt(lx, lz + 1)), Math.abs(h - hAt(lx, lz - 1)));
     let top = GRASS, sub = DIRT;
-    if (inCourtyard(x, z) || isRoad(x, z)) top = PATH;
+    const st = structureAt(x, z);
+    if (inCourtyard(x, z) || isRoad(x, z) || st?.inside && st.plan.type === FORT) top = PATH;
     else if (biome === OCEAN) { top = h < SEA - 4 ? DIRT : SAND; sub = SAND; }
     else if (biome === DESERT) { top = slope >= 4 ? SANDSTONE : SAND; sub = SANDSTONE; }
     else if (slope >= 3) top = sub = ROCK;
@@ -387,7 +394,7 @@ function generateChunk(cx, cz) {
     const x = ox + tx, z = oz + tz, r0 = hash2(x, z);
     if (r0 > .05) continue;                                                     // cheap early out
     const i = at(tx, tz), h = hm[i], biome = bm[i];
-    if (biome === OCEAN || h <= SEA + 1 || h > G + 24 || flatness(x, z) > .05) continue;
+    if (biome === OCEAN || h <= SEA + 1 || h > G + 24 || flatness(x, z) > .05 || structureAt(x, z)) continue;
     if (Math.abs(h - hAt(tx + 1, tz)) + Math.abs(h - hAt(tx, tz + 1)) > 2) continue;
     const r = hash2(z, x);
     if (biome === FOREST || biome === SNOWY) {
@@ -413,8 +420,9 @@ function generateChunk(cx, cz) {
     }
   }
 
-  const list = edits.get(chunkKey(cx, cz));
-  if (list) for (let i = 0; i < list.length; i += 2) {
+  // Structure edits: the main fort (global list) and any procedural structure in this chunk's region
+  const lists = [edits.get(chunkKey(cx, cz)), planFor(regionOf(ox), regionOf(oz))?.edits().get(chunkKey(cx, cz))];
+  for (const list of lists) if (list) for (let i = 0; i < list.length; i += 2) {
     const p = list[i];
     data[(p & 15) + ((p >> 4) & 15) * CHUNK + (p >> 8) * 256] = list[i + 1];
   }
@@ -422,11 +430,11 @@ function generateChunk(cx, cz) {
 }
 
 // ---------------------------------------------------------------------------
-// The fort, written as edits on ground level G
+// Structure builders. Each writes blocks through set(x, y, z, v) in local coordinates
+// (y = 0 is the ground the structure stands on) and lists torches and guards to place.
 // ---------------------------------------------------------------------------
-{
-  const set = (x, y, z, v = BRICK) => setEdit(x, y + G, z, v);
-  const fill = (x0, x1, y0, y1, z0, z1, v = BRICK) => {
+function blockTools(set, mat) {
+  const fill = (x0, x1, y0, y1, z0, z1, v = mat) => {
     for (let y = y0; y < y1; y++) for (let z = z0; z < z1; z++) for (let x = x0; x < x1; x++) set(x, y, z, v);
   };
   const clear = (x0, x1, y0, y1, z0, z1) => fill(x0, x1, y0, y1, z0, z1, AIR);
@@ -434,57 +442,202 @@ function generateChunk(cx, cz) {
   const merlons = (x0, x1, z0, z1, y) => {
     for (let x = x0; x < x1; x++) for (let z = z0; z < z1; z++) {
       const edge = x === x0 || x === x1 - 1 || z === z0 || z === z1 - 1;
-      if (edge && (x + z) % 2 === 0) set(x, y, z);
+      if (edge && (x + z) % 2 === 0) set(x, y, z, mat);
     }
   };
+  return { fill, clear, merlons };
+}
 
-  // Clear the air above the courtyard so nothing generated pokes through
-  clear(F0 - 4, F1 + 4, 0, 14, F0 - 4, F1 + 4);
+// Square fort, N blocks across, gate in the middle of the +z wall
+function buildFort(set, { N, wall, mat, keep = true, crates = [] }) {
+  const { fill, clear, merlons } = blockTools(set, mat), C = N / 2, TOWER = wall + 3;
+  clear(-4, N + 4, 0, 14, -4, N + 4);                  // nothing generated pokes through
 
-  // Curtain walls (3 thick), walkway on top at y = 7
-  fill(F0, F1, 0, WALL, F0, F0 + 3);
-  fill(F0, F1, 0, WALL, F1 - 3, F1);
-  fill(F0, F0 + 3, 0, WALL, F0, F1);
-  fill(F1 - 3, F1, 0, WALL, F0, F1);
-  for (let i = F0; i < F1; i++) {
-    if (i % 2 === 0) { set(i, WALL, F0); set(i, WALL, F1 - 1); set(F0, WALL, i); set(F1 - 1, WALL, i); }
-  }
+  // Curtain walls (3 thick) with a walkway on top
+  fill(0, N, 0, wall, 0, 3); fill(0, N, 0, wall, N - 3, N);
+  fill(0, 3, 0, wall, 0, N); fill(N - 3, N, 0, wall, 0, N);
+  for (let i = 0; i < N; i += 2) { set(i, wall, 0, mat); set(i, wall, N - 1, mat); set(0, wall, i, mat); set(N - 1, wall, i, mat); }
 
   // Corner towers with tunnels so the wall walk is continuous
-  for (const [tx, tz] of [[F0 - 2, F0 - 2], [F1 - 5, F0 - 2], [F0 - 2, F1 - 5], [F1 - 5, F1 - 5]]) {
-    fill(tx, tx + 7, 0, 10, tz, tz + 7);
-    merlons(tx, tx + 7, tz, tz + 7, 10);
-    const xa = Math.max(tx, F0), xb = Math.min(tx + 7, F1), za = Math.max(tz, F0), zb = Math.min(tz + 7, F1);
-    clear(xa, xb, WALL, WALL + 2, tz < CX ? F0 : F1 - 3, tz < CX ? F0 + 3 : F1);
-    clear(tx < CX ? F0 : F1 - 3, tx < CX ? F0 + 3 : F1, WALL, WALL + 2, za, zb);
+  for (const [tx, tz] of [[-2, -2], [N - 5, -2], [-2, N - 5], [N - 5, N - 5]]) {
+    fill(tx, tx + 7, 0, TOWER, tz, tz + 7);
+    merlons(tx, tx + 7, tz, tz + 7, TOWER);
+    const xa = Math.max(tx, 0), xb = Math.min(tx + 7, N), za = Math.max(tz, 0), zb = Math.min(tz + 7, N);
+    clear(xa, xb, wall, wall + 2, tz < C ? 0 : N - 3, tz < C ? 3 : N);
+    clear(tx < C ? 0 : N - 3, tx < C ? 3 : N, wall, wall + 2, za, zb);
   }
 
-  // Gatehouse: two flanking towers and an arched opening in the south wall
-  for (const gx of [CX - 6, CX + 2]) {
-    fill(gx, gx + 4, 0, 10, F1 - 4, F1 + 1);
-    merlons(gx, gx + 4, F1 - 4, F1 + 1, 10);
-    clear(gx, gx + 4, WALL, WALL + 2, F1 - 3, F1);
+  // Gatehouse: two flanking towers and an arched opening
+  for (const gx of [C - 6, C + 2]) {
+    fill(gx, gx + 4, 0, TOWER, N - 4, N + 1);
+    merlons(gx, gx + 4, N - 4, N + 1, TOWER);
+    clear(gx, gx + 4, wall, wall + 2, N - 3, N);
   }
-  clear(CX - 2, CX + 2, 0, 4, F1 - 3, F1);
-  for (let z = F1 - 3; z < F1; z++) { set(CX - 2, 3, z); set(CX + 1, 3, z); }
+  clear(C - 2, C + 2, 0, 4, N - 3, N);
+  for (let z = N - 3; z < N; z++) { set(C - 2, 3, z, mat); set(C + 1, 3, z, mat); }
 
-  // Stairs up to the south wall walk, either side of the gate
-  for (let k = 1; k <= WALL; k++) {
-    fill(13 + k, 14 + k, 0, k, F1 - 5, F1 - 3);
-    fill(50 - k, 51 - k, 0, k, F1 - 5, F1 - 3);
+  // Stairs up to the gate-side wall walk, either side of the gate
+  for (let k = 1; k <= wall; k++) {
+    fill(5 + k, 6 + k, 0, k, N - 5, N - 3);
+    fill(N - 6 - k, N - 5 - k, 0, k, N - 5, N - 3);
   }
 
   // Keep in the courtyard: hollow, with a door and window slits
-  fill(26, 38, 0, 8, 18, 28);
-  clear(27, 37, 0, 7, 19, 27);
-  merlons(26, 38, 18, 28, 8);
-  clear(31, 33, 0, 3, 27, 28);
-  clear(26, 27, 3, 5, 22, 24); clear(37, 38, 3, 5, 22, 24);
-  clear(29, 30, 3, 5, 18, 19); clear(34, 35, 3, 5, 18, 19);
+  if (keep) {
+    fill(C - 6, C + 6, 0, 8, C - 14, C - 4);
+    clear(C - 5, C + 5, 0, 7, C - 13, C - 5);
+    merlons(C - 6, C + 6, C - 14, C - 4, 8);
+    clear(C - 1, C + 1, 0, 3, C - 5, C - 4);
+    clear(C - 6, C - 5, 3, 5, C - 10, C - 8); clear(C + 5, C + 6, 3, 5, C - 10, C - 8);
+    clear(C - 3, C - 2, 3, 5, C - 14, C - 13); clear(C + 2, C + 3, 3, 5, C - 14, C - 13);
+  }
+  for (const [x, y, z] of crates) set(x, y, z, WOOD);
 
-  // Crates
-  for (const [x, y, z] of [[15, 0, 15], [16, 0, 15], [15, 1, 15], [15, 0, 16], [46, 0, 40], [47, 0, 40], [46, 0, 41],
-                           [46, 1, 40], [20, 0, 38], [27, 0, 30], [28, 0, 30]]) set(x, y, z, WOOD);
+  const torches = [[N / 3, 3.4, 3.3], [2 * N / 3, 3.4, 3.3], [3.3, 3.4, C - 2], [N - 3.3, 3.4, C - 2],
+    [C - 2.5, 3.4, N + .3], [C + 2.5, 3.4, N + .3]];
+  if (keep) torches.push([C, 3.4, C - 3.7]);
+  const guards = [
+    { a: [6, wall, 1.5], b: [N - 6, wall, 1.5], speed: 1.3 },
+    { a: [8, 0, C + 6], b: [N - 8, 0, C + 6], speed: 1.2 },
+    { a: [C - 3.2, 0, N + 2], face: [0, 1] }, { a: [C + 3.2, 0, N + 2], face: [0, 1] },
+  ];
+  return { torches, guards };
+}
+
+// Watchtower: 7x7, spiral stairs inside up to a lookout platform at height h
+function buildTower(set, { mat, h }) {
+  const { fill, clear, merlons } = blockTools(set, mat);
+  clear(-2, 9, 0, h + 6, -2, 9);
+  fill(0, 7, 0, h + 1, 0, 7);
+  clear(1, 6, 0, h + 1, 1, 6);
+  merlons(0, 7, 0, 7, h + 1);
+  fill(2, 5, 0, h, 2, 5);                                // central pillar
+  const ring = [[1, 1], [2, 1], [3, 1], [4, 1], [5, 1], [5, 2], [5, 3], [5, 4], [5, 5], [4, 5], [3, 5], [2, 5], [1, 5], [1, 4], [1, 3], [1, 2]];
+  // Platform over the ring, open above the last few steps for headroom
+  ring.forEach(([x, z], i) => { if (i < h - 4 || i > h - 2) set(x, h - 1, z, mat); });
+  for (let k = 1; k < h; k++) { const [x, z] = ring[k - 1]; fill(x, x + 1, 0, k, z, z + 1); }
+  clear(0, 1, 0, 2, 2, 3);                               // door into the bottom of the spiral
+  for (const [x, z] of [[3, 0], [6, 3], [3, 6]]) clear(x, x + 1, 5, 7, z, z + 1);   // window slits
+  return {
+    torches: [[1.5, h + 1.3, 1.5], [5.5, h + 1.3, 5.5], [-.3, 2.6, 3.5]],
+    guards: [{ a: [3.5, h, 3.5], b: [3.5, h, 3.6], speed: 0, face: [1, 0] }],
+  };
+}
+
+// Ruins: a broken square of wall with a fallen corner tower, overgrown and scattered with rubble
+function buildRuins(set, { N, mat, rnd }) {
+  const { fill, clear } = blockTools(set, mat);
+  clear(-2, N + 2, 0, 12, -2, N + 2);
+  const phase = rnd() * 10, holes = [rnd() * N * 4 | 0, rnd() * N * 4 | 0];
+  for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
+    if (x > 1 && z > 1 && x < N - 2 && z < N - 2) continue;
+    const along = x + z;                                 // rough position around the perimeter
+    if (holes.some(hp => Math.abs(along - hp % (2 * N)) < 3)) continue;
+    const h = Math.max(0, Math.round(1 + 5.5 * (.5 + .5 * Math.sin(along * .45 + phase)) * (.5 + rnd() * .7)));
+    for (let y = 0; y < h; y++) if (rnd() > .1) set(x, y, z, mat);
+    if (h && rnd() < .25) set(x, h, z, LEAVES);           // overgrowth on top
+  }
+  const tx = rnd() < .5 ? -1 : N - 4, tz = rnd() < .5 ? -1 : N - 4, th = 5 + (rnd() * 4 | 0);
+  for (let y = 0; y < th; y++) for (let z = tz; z < tz + 5; z++) for (let x = tx; x < tx + 5; x++) {
+    const edge = x === tx || x === tx + 4 || z === tz || z === tz + 4;
+    if (edge && rnd() > .15 + y * .07) set(x, y, z, mat);
+  }
+  for (let i = 0; i < N * 2; i++) set(rnd() * (N + 6) - 3 | 0, 0, rnd() * (N + 6) - 3 | 0, mat);   // rubble
+  return { torches: [], guards: [] };
+}
+
+// The main fort at the start, on ground level G
+const MAIN_FORT = buildFort((x, y, z, v) => setEdit(x + F0, y + G, z + F0, v), {
+  N: F1 - F0, wall: WALL, mat: BRICK,
+  crates: [[7, 0, 7], [8, 0, 7], [7, 1, 7], [7, 0, 8], [38, 0, 32], [39, 0, 32], [38, 0, 33], [38, 1, 32], [12, 0, 30], [19, 0, 22], [20, 0, 22]],
+});
+
+// ---------------------------------------------------------------------------
+// Procedural structures: at most one per REGION x REGION area, placed so that its
+// footprint and the flattened ground around it stay inside the region
+// ---------------------------------------------------------------------------
+const REGION = 192;
+const FORT = 1, TOWER = 2, RUINS = 3;
+const STRUCT_NAMES = ['', 'fort', 'watchtower', 'ruins'];
+const regionOf = v => Math.floor(v / REGION);
+const plans = new Map();
+
+// Rotate a local point (in an S x S footprint) by rot quarter turns
+function rotateLocal(x, z, S, rot) {
+  return rot === 0 ? [x, z] : rot === 1 ? [S - z, x] : rot === 2 ? [S - x, S - z] : [z, S - x];
+}
+
+function planFor(rx, rz) {
+  const key = chunkKey(rx, rz);
+  if (plans.has(key)) return plans.get(key);
+  let plan = null;
+  if (rx !== 0 || rz !== 0) {                            // region (0, 0) holds the main fort
+    const rnd = mulberry32(Math.imul(rx, 73856093) ^ Math.imul(rz, 19349663) ^ SEED);
+    const r = rnd();
+    let type = r < .34 ? FORT : r < .64 ? TOWER : r < .9 ? RUINS : 0;
+    if (type) {
+      const N = type === FORT ? 40 + 4 * (rnd() * 3 | 0) : type === TOWER ? 7 : 16 + (rnd() * 10 | 0);
+      const ox = rx * REGION + 50 + Math.floor(rnd() * (REGION - 100 - N));
+      const oz = rz * REGION + 50 + Math.floor(rnd() * (REGION - 100 - N));
+      const pad = type === FORT ? 4 : 2, blend = type === FORT ? 14 : 9;
+      // Sample the natural ground over the footprint
+      let sum = 0, n = 0, lo = Infinity, hi = -Infinity;
+      for (let z = -pad; z <= N + pad; z += 4) for (let x = -pad; x <= N + pad; x += 4) {
+        const h = rawHeight(ox + x, oz + z); sum += h; n++; lo = Math.min(lo, h); hi = Math.max(hi, h);
+      }
+      const cl = climate(ox + N / 2, oz + N / 2), base = Math.round(sum / n);
+      if (lo <= SEA || base <= SEA + 1 || base > H - 24) type = 0;                 // no building in water
+      else if (type === FORT && hi - lo > 16) type = TOWER;                             // too rugged for a fort
+      if (type) plan = {
+        type, N, ox, oz, base, pad, blend, rot: rnd() * 4 | 0, seed: rnd() * 1e9 | 0,
+        mat: cl.desert > .5 ? SANDSTONE : BRICK, towerH: 11 + (rnd() * 4 | 0),
+        name: STRUCT_NAMES[type], cx: ox + N / 2, cz: oz + N / 2,
+        _edits: null, decor: null, edits() { return this._edits || buildPlan(this); },
+      };
+    }
+  }
+  plans.set(key, plan);
+  return plan;
+}
+
+// Build a plan's blocks (once) into per-chunk edit lists, and its torches/guards in world space
+function buildPlan(plan) {
+  const out = new Map(), S = plan.type === TOWER ? 7 : plan.N;
+  const set = (x, y, z, v) => {
+    const [lx, lz] = rotateLocal(x, z, S - 1, plan.rot), wx = plan.ox + lx, wz = plan.oz + lz, wy = plan.base + y;
+    if (wy < 0 || wy >= H) return;
+    const k = chunkKey(wx >> 4, wz >> 4);
+    if (!out.has(k)) out.set(k, []);
+    out.get(k).push((wx & 15) | (wz & 15) << 4 | wy << 8, v);
+  };
+  const rnd = mulberry32(plan.seed);
+  const extra = plan.type === FORT ? buildFort(set, { N: plan.N, wall: 6 + (rnd() * 2 | 0), mat: plan.mat, keep: plan.N >= 44,
+      crates: [[6, 0, 6], [7, 0, 6], [6, 1, 6], [plan.N - 8, 0, plan.N / 2], [plan.N - 8, 0, plan.N / 2 + 1]] })
+    : plan.type === TOWER ? buildTower(set, { mat: plan.mat, h: plan.towerH })
+    : buildRuins(set, { N: plan.N, mat: plan.mat, rnd });
+  const toWorld = ([x, y, z]) => { const [lx, lz] = rotateLocal(x, z, S, plan.rot); return [plan.ox + lx, plan.base + y, plan.oz + lz]; };
+  plan.decor = {
+    torches: extra.torches.map(toWorld),
+    guards: extra.guards.map(g => {
+      const a = toWorld(g.a), b = g.b ? toWorld(g.b) : null;
+      let face = null;
+      if (g.face) { const [fx, fz] = rotateLocal(g.face[0], g.face[1], 0, plan.rot); face = Math.atan2(fx, fz); }
+      return { a, b: g.speed ? b : null, speed: g.speed || 0, face };
+    }),
+  };
+  plan._edits = out;
+  return out;
+}
+
+// Flattening around a structure: weight 1 inside the padded footprint, fading over `blend` blocks
+function structureAt(x, z) {
+  const plan = planFor(regionOf(x), regionOf(z));
+  if (!plan) return null;
+  const S = plan.type === TOWER ? 7 : plan.N;
+  const dx = Math.max(plan.ox - plan.pad - x, 0, x - (plan.ox + S + plan.pad));
+  const dz = Math.max(plan.oz - plan.pad - z, 0, z - (plan.oz + S + plan.pad));
+  const d = Math.hypot(dx, dz);
+  return d >= plan.blend ? null : { plan, w: 1 - smoothstep(0, plan.blend, d), inside: d === 0 };
 }
 
 // ---------------------------------------------------------------------------
@@ -646,6 +799,7 @@ function streamChunks(px, pz, budgetMs) {
       const ddx = c.cx - pcx, ddz = c.cz - pcz, d2 = ddx * ddx + ddz * ddz;
       if (c.built && d2 > (VIEW + 2) ** 2) {
         for (const m of [c.mesh, c.water]) if (m) { scene.remove(m); m.geometry.dispose(); }
+        removeChunkDecor(c);
         c.mesh = c.water = null; c.built = false;
       }
       if (d2 > (VIEW + 4) ** 2) chunks.delete(k);
@@ -659,45 +813,46 @@ function streamChunks(px, pz, budgetMs) {
     c.mesh = meshChunk(c); c.water = meshChunk(c, true); c.built = true;
     if (c.mesh) scene.add(c.mesh);
     if (c.water) scene.add(c.water);
+    addChunkDecor(c);
   }
 }
 
-// Torches: a bracket, a flickering flame and a point light
+// Torches: a bracket and a flickering flame. A fixed pool of point lights follows the nearest
+// torches, so the number of lights (and so the shaders) never changes however many forts exist.
 const torches = [];
-{
-  const flameMat = new THREE.MeshBasicMaterial({ color: 0xffa040 });
-  const coreMat = new THREE.MeshBasicMaterial({ color: 0xfff0a0 });
-  const stickMat = new THREE.MeshLambertMaterial({ color: 0x2a1c10 });
-  const spots = [
-    [16, F0 + 3.3], [CX, F0 + 3.3], [48, F0 + 3.3],
-    [F0 + 3.3, 22], [F0 + 3.3, 40], [F1 - 3.3, 22], [F1 - 3.3, 40],
-    [23, F1 - 3.3], [41, F1 - 3.3],
-    [CX - 2.5, F1 + .3], [CX + 2.5, F1 + .3],
-    [30, 28.3], [34, 28.3], [CX, 22.5],
-  ];
-  for (const [x, z] of spots) {
-    const g = new THREE.Group();
-    g.position.set(x, G + 3.4, z);
-    const stick = new THREE.Mesh(new THREE.BoxGeometry(.12, .6, .12), stickMat);
-    stick.position.y = -.3;
-    const flame = new THREE.Mesh(new THREE.OctahedronGeometry(.22, 0), flameMat);
-    flame.scale.set(1, 1.7, 1);
-    const core = new THREE.Mesh(new THREE.OctahedronGeometry(.11, 0), coreMat);
-    core.position.y = -.05;
-    const light = new THREE.PointLight(0xff8a3d, 10, 18, 1.6);
-    light.position.y = .3;
-    g.add(stick, flame, core, light);
-    scene.add(g);
-    torches.push({ flame, light, seed: rand() * 100 });
-  }
+const TORCH_PARTS = {
+  stick: [new THREE.BoxGeometry(.12, .6, .12), new THREE.MeshLambertMaterial({ color: 0x2a1c10 })],
+  flame: [new THREE.OctahedronGeometry(.22, 0), new THREE.MeshBasicMaterial({ color: 0xffa040 })],
+  core: [new THREE.OctahedronGeometry(.11, 0), new THREE.MeshBasicMaterial({ color: 0xfff0a0 })],
+};
+function addTorch(x, y, z) {
+  const g = new THREE.Group(), part = n => new THREE.Mesh(...TORCH_PARTS[n]);
+  g.position.set(x, y, z);
+  const stick = part('stick'), flame = part('flame'), core = part('core');
+  stick.position.y = -.3; flame.scale.set(1, 1.7, 1); core.position.y = -.05;
+  g.add(stick, flame, core);
+  scene.add(g);
+  const t = { g, flame, seed: rand() * 100, f: 1, d: 0 };
+  torches.push(t);
+  return t;
 }
+function removeTorch(t) { scene.remove(t.g); torches.splice(torches.indexOf(t), 1); }
+const lightPool = Array.from({ length: 10 }, () => { const l = new THREE.PointLight(0xff8a3d, 0, 18, 1.6); scene.add(l); return l; });
 
-// Guards that patrol the walls and courtyard
+for (const [x, y, z] of MAIN_FORT.torches) addTorch(x + F0, y + G, z + F0);
+addTorch(CX, G + 3.4, 22.5);                             // inside the main keep
+
+// Guards: patrol between a and b, or stand still facing `face` (radians)
 const guards = [];
+const guardGeo = new Map(), guardMat = new Map();
 function makeGuard() {
   const g = new THREE.Group();
-  const mat = c => new THREE.MeshLambertMaterial({ color: c });
-  const box = (w, h, d, c, x, y, z) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(c)); m.position.set(x, y, z); return m; };
+  const box = (w, h, d, c, x, y, z) => {
+    const gk = `${w},${h},${d}`;
+    if (!guardGeo.has(gk)) guardGeo.set(gk, new THREE.BoxGeometry(w, h, d));
+    if (!guardMat.has(c)) guardMat.set(c, new THREE.MeshLambertMaterial({ color: c }));
+    const m = new THREE.Mesh(guardGeo.get(gk), guardMat.get(c)); m.position.set(x, y, z); return m;
+  };
   const legs = [-.12, .12].map(x => {
     const pivot = new THREE.Group(); pivot.position.set(x, .8, 0);
     pivot.add(box(.18, .8, .2, 0x3a2a1a, 0, -.4, 0)); g.add(pivot); return pivot;
@@ -710,6 +865,16 @@ function makeGuard() {
   scene.add(g);
   return { g, legs };
 }
+function addGuard(a, b, speed, face = 0) {
+  const guard = makeGuard();
+  guard.a = new THREE.Vector3(...a); guard.b = b && new THREE.Vector3(...b);
+  guard.speed = speed; guard.t = rand() * 10; guard.face = face;
+  guard.g.position.copy(guard.a);
+  guards.push(guard);
+  return guard;
+}
+function removeGuard(gd) { scene.remove(gd.g); guards.splice(guards.indexOf(gd), 1); }
+
 for (const [a, b, speed] of [
   [[14, 7, 9.5], [50, 7, 9.5], 1.4],
   [[54.5, 7, 15], [54.5, 7, 47], 1.2],
@@ -717,12 +882,21 @@ for (const [a, b, speed] of [
   [[19, 0, 33], [45, 0, 33], 1.3],
   [[CX - 3.2, 0, F1 + 2], null, 0],
   [[CX + 3.2, 0, F1 + 2], null, 0],
-]) {
-  const guard = makeGuard();
-  guard.a = new THREE.Vector3(a[0], a[1] + G, a[2]); guard.b = b && new THREE.Vector3(b[0], b[1] + G, b[2]);
-  guard.speed = speed; guard.t = rand() * 10;
-  guard.g.position.copy(guard.a);
-  guards.push(guard);
+]) addGuard([a[0], a[1] + G, a[2]], b && [b[0], b[1] + G, b[2]], speed);
+
+// Torches and guards of procedural structures live with the chunk they stand in
+function addChunkDecor(c) {
+  const plan = planFor(regionOf(c.cx * CHUNK), regionOf(c.cz * CHUNK));
+  c.decor = [];
+  if (!plan) return;
+  plan.edits();
+  const mine = (x, z) => Math.floor(x / CHUNK) === c.cx && Math.floor(z / CHUNK) === c.cz;
+  for (const [x, y, z] of plan.decor.torches) if (mine(x, z)) c.decor.push(['torch', addTorch(x, y, z)]);
+  for (const gd of plan.decor.guards) if (mine(gd.a[0], gd.a[2])) c.decor.push(['guard', addGuard(gd.a, gd.b, gd.speed, gd.face ?? 0)]);
+}
+function removeChunkDecor(c) {
+  for (const [kind, obj] of c.decor || []) kind === 'torch' ? removeTorch(obj) : removeGuard(obj);
+  c.decor = null;
 }
 
 // ---------------------------------------------------------------------------
@@ -963,7 +1137,7 @@ const MAP_COLORS = {
 };
 const LEGEND = [['Ocean', MAP_COLORS.shallow], ['Beach', MAP_COLORS.beach], ['Desert', MAP_COLORS[DESERT]],
   ['Plains', MAP_COLORS[PLAINS]], ['Forest', MAP_COLORS[FOREST]], ['Snow', MAP_COLORS[SNOWY]],
-  ['Rock', MAP_COLORS.rock], ['Fort', MAP_COLORS.fort]];
+  ['Rock', MAP_COLORS.rock]];
 
 function mapColor(x, z, h, biome, cl) {
   if (inCourtyard(x, z) || isRoad(x, z)) return MAP_COLORS.path;
@@ -1038,10 +1212,32 @@ class MapView {
     const [px, pz, w] = this.placement(cx, cz, scale, k);
     ctx.drawImage(this.base, px, pz, w, w);
     const toScreen = (x, z) => [(this.size / 2 + (x - cx) / scale) * k, (this.size / 2 + (z - cz) / scale) * k];
-    // Fort
-    const [fx, fz] = toScreen(CX, CX), fs = Math.max(5, 52 / scale * k);
-    ctx.strokeStyle = 'rgb(190,70,50)'; ctx.lineWidth = Math.max(1.5, k);
-    ctx.strokeRect(fx - fs / 2, fz - fs / 2, fs, fs);
+    // Structures: the main fort plus every procedural one whose plan has been worked out
+    // (rendering the map works plans out as it goes, so markers appear as the map fills in)
+    const half = this.size / 2 * scale + 64;
+    const marker = (type, x, z, size) => {
+      const [sx, sz] = toScreen(x, z);
+      if (sx < -20 || sz < -20 || sx > canvas.width + 20 || sz > canvas.height + 20) return;
+      ctx.lineWidth = Math.max(1.5, k * .75);
+      if (type === FORT) {
+        const fs = Math.max(6, size / scale * k);
+        ctx.fillStyle = 'rgba(190,70,50,.35)'; ctx.strokeStyle = 'rgb(220,80,55)';
+        ctx.fillRect(sx - fs / 2, sz - fs / 2, fs, fs); ctx.strokeRect(sx - fs / 2, sz - fs / 2, fs, fs);
+      } else if (type === TOWER) {
+        const r = 3.5 * k;
+        ctx.fillStyle = 'rgb(240,170,70)'; ctx.strokeStyle = '#05060d';
+        ctx.beginPath(); ctx.moveTo(sx, sz - r); ctx.lineTo(sx + r * .85, sz + r * .6); ctx.lineTo(sx - r * .85, sz + r * .6); ctx.closePath();
+        ctx.fill(); ctx.stroke();
+      } else {
+        const r = 2.5 * k;
+        ctx.strokeStyle = 'rgb(205,200,190)';
+        ctx.beginPath(); ctx.moveTo(sx - r, sz - r); ctx.lineTo(sx + r, sz + r); ctx.moveTo(sx + r, sz - r); ctx.lineTo(sx - r, sz + r); ctx.stroke();
+      }
+    };
+    for (const plan of plans.values()) {
+      if (plan && Math.abs(plan.cx - cx) < half && Math.abs(plan.cz - cz) < half) marker(plan.type, plan.cx, plan.cz, plan.N);
+    }
+    marker(FORT, CX, CX, 52);
     // Player arrow (north / -z is up)
     const [ppx, ppz] = toScreen(P.pos.x, P.pos.z), a = Math.atan2(-Math.sin(P.yaw), -Math.cos(P.yaw)), r = 4 * k + 3;
     ctx.save(); ctx.translate(ppx, ppz); ctx.rotate(a + Math.PI / 2);
@@ -1060,7 +1256,9 @@ const MINI_SCALE = 2;
 let mapOpen = false, miniOn = true;
 
 document.getElementById('mapLegend').innerHTML = LEGEND.map(([n, c]) =>
-  `<span><i style="background:rgb(${c})"></i>${n}</span>`).join('');
+  `<span><i style="background:rgb(${c})"></i>${n}</span>`).join('') +
+  '<span><i style="border:2px solid rgb(220,80,55);background:rgba(190,70,50,.35)"></i>Fort</span>' +
+  '<span><b style="color:rgb(240,170,70)">&#9650;</b> Watchtower</span><span><b style="color:rgb(205,200,190)">&#10005;</b> Ruins</span>';
 document.getElementById('mapSeed').value = SEED;
 
 function renderBigMap() { bigMap.request(mapState.cx, mapState.cz, MAP_SCALES[mapState.scaleIdx]); }
@@ -1171,17 +1369,23 @@ function update(dt, t) {
   camera.position.set(P.pos.x, P.eye + Math.sin(P.bob) * .05, P.pos.z);
   camera.rotation.set(P.pitch, P.yaw, 0);
 
-  // Torch flicker
+  // Torch flicker; the light pool moves to the nearest torches
   for (const tr of torches) {
     const f = .8 + .12 * Math.sin(t * 11 + tr.seed) + .08 * Math.sin(t * 23.7 + tr.seed * 2) + .05 * Math.sin(t * 37 + tr.seed);
-    tr.light.intensity = 10 * f;
+    tr.f = f;
+    tr.d = tr.g.position.distanceToSquared(camera.position);
     tr.flame.scale.set(.9 + .15 * f, 1.4 + .6 * f, .9 + .15 * f);
     tr.flame.rotation.y = t * 3 + tr.seed;
   }
+  const lit = torches.filter(tr => tr.d < 70 * 70).sort((a, b) => a.d - b.d);
+  lightPool.forEach((l, i) => {
+    const tr = lit[i];
+    if (tr) { l.position.copy(tr.g.position); l.position.y += .3; l.intensity = 10 * tr.f; } else l.intensity = 0;
+  });
 
   // Guards ping-pong along their patrol line
   for (const gd of guards) {
-    if (!gd.b) { gd.g.rotation.y = 0; continue; }
+    if (!gd.b) { gd.g.rotation.y = gd.face; continue; }
     gd.t += dt * gd.speed;
     const dist = gd.a.distanceTo(gd.b), phase = (gd.t / dist) % 2;
     const k = phase < 1 ? phase : 2 - phase;
@@ -1221,7 +1425,7 @@ P.pos.y = surfaceY(Math.floor(P.pos.x), Math.floor(P.pos.z));
 P.eye = P.pos.y + 1.6;
 streamChunks(P.pos.x, P.pos.z, Infinity);
 camera.position.set(P.pos.x, P.eye, P.pos.z);
-window.__fort = { toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
+window.__fort = { planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
 frame();
 </script>
 </body>

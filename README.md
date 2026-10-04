@@ -39,9 +39,20 @@ The world map (M) shows biomes, water depth and hill shading, with the fort and 
    - The area within about 300 blocks of the fort is kept temperate dry land.
    - Water is drawn as a separate see-through mesh with drifting ripples. Below the surface you swim slowly, hold jump to rise, and the fog turns murky blue.
 3. **Chunks.** The world is split into 16×16×64 chunks. Each chunk is generated purely from the seed, so any chunk can be built on demand, including neighbours that the mesher or collision needs. Chunks within 6 of the player are meshed nearest-first, within a few milliseconds per frame. Far chunks are unloaded.
-4. **Greedy meshing.** Each chunk becomes one mesh containing only the faces that touch air. Neighbouring faces of the same material are merged into larger rectangles, with one geometry group per material and world-space UVs so the textures still tile once per block.
-5. **The fort** is a list of block edits applied on top of the terrain. That makes it easy to turn into a reusable `buildFort()` and place more structures later.
-6. **Lighting.** Dim blue hemisphere and moon light, exponential fog that hides the edge of the loaded area, and flickering point lights at each torch.
-7. **ASCII pass.** The 3D scene is rendered into a low-resolution target, at 2× the character grid. A full-screen shader picks a character for each cell based on its brightness, then tints it with the scene colour. The glyph atlas is redrawn at the exact on-screen cell size, so small characters stay sharp.
+4. **Structures.** The world is divided into 192×192-block regions, and each holds at most one structure, picked from the seed:
+   - **Forts:** 40, 44 or 48 blocks across, with a gate on a random side, corner towers, wall walks, stairs, a keep in larger ones, torches and guards.
+   - **Watchtowers:** 7×7, with spiral stairs inside up to a lookout platform.
+   - **Ruins:** broken, overgrown walls with a fallen corner tower and rubble.
+   - Desert structures are built of sandstone.
+   - A structure's plan (type, size, rotation, ground level) is cheap to work out. Its blocks are only built when a nearby chunk needs them.
+   - The ground is flattened under each structure and blended into the surroundings, all within its own region, so chunks never need neighbouring regions.
+   - Sites in water or on very rugged ground are skipped, and forts on rough ground become watchtowers.
+   - All forts share one builder, including the starting fort, which comes out identical to the original hand-built version.
+   - Torches and guards appear with the chunk they stand in. A fixed pool of 10 point lights moves to the nearest torches, so more forts never add rendering cost.
+   - Structures appear on the world map: red squares are forts, triangles are watchtowers and crosses are ruins.
+5. **Greedy meshing.** Each chunk becomes one mesh containing only the faces that touch air. Neighbouring faces of the same material are merged into larger rectangles, with one geometry group per material and world-space UVs so the textures still tile once per block.
+6. **The starting fort** is built with the same `buildFort()` as the procedural forts, on flattened ground at the spawn, with a road leading to its gate.
+7. **Lighting.** Dim blue hemisphere and moon light, exponential fog that hides the edge of the loaded area, and torchlight from the light pool described above.
+8. **ASCII pass.** The 3D scene is rendered into a low-resolution target, at 2× the character grid. A full-screen shader picks a character for each cell based on its brightness, then tints it with the scene colour. The glyph atlas is redrawn at the exact on-screen cell size, so small characters stay sharp.
    - **FINE** (default): about 40 characters, sorted at startup by how much ink each covers, with some of the scene colour blended behind them. This gives smooth shading.
    - **CLASSIC**: the short ramp ` .,:-=+*o#%@` on a dark background.
