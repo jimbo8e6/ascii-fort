@@ -1250,6 +1250,32 @@ function planBridges(road, rx, rz) {
 }
 const bridgeDeck = road => road.deck;
 
+// Lanterns on stone bridge parapets: a pair at each end, then alternating sides every ~9 blocks.
+// Each joins the torch list, so the shared light pool lights the nearest ones.
+function addBridgeLanterns(b) {
+  const out = [], W = BRIDGE_W, L = b.len, th = Math.atan2(b.dirx, b.dirz), c = Math.cos(th), sn = Math.sin(th);
+  const spots = [[1, .7], [-1, .7], [1, L - .7], [-1, L - .7]];
+  const n = Math.floor((L - 2) / 9);
+  for (let i = 1; i <= n; i++) spots.push([i % 2 ? 1 : -1, .7 + i * (L - 1.4) / (n + 1)]);
+  for (const [side, z] of spots) {
+    const x = side * (W / 2 - .17), wx = b.ax + x * c + z * sn, wz = b.az - x * sn + z * c;
+    const g = new THREE.Group();
+    g.position.set(wx, b.deck + 1.75, wz);                       // the glow sits here; the light goes .3 above
+    part(g, .1, .85, .1, 0x2a2a2e, 0, -.4, 0);                   // iron post on the capstone
+    part(g, .36, .05, .36, 0x2a2a2e, 0, .04, 0);
+    for (const [px, pz] of [[.15, .15], [-.15, .15], [.15, -.15], [-.15, -.15]]) part(g, .04, .4, .04, 0x2a2a2e, px, .25, pz);
+    const glow = part(g, .26, .32, .26, 0xffd08a, 0, .24, 0);
+    glow.material = LANTERN_GLOW;
+    part(g, .4, .06, .4, 0x2a2a2e, 0, .46, 0);                   // little roof
+    part(g, .2, .08, .2, 0x2a2a2e, 0, .52, 0);
+    scene.add(g);
+    const t = { g, flame: glow, seed: hash2(Math.floor(wx * 3), Math.floor(wz * 3)) * 100, f: 1, d: 0, steady: true };
+    torches.push(t); out.push(t);
+  }
+  return out;
+}
+const LANTERN_GLOW = new THREE.MeshBasicMaterial({ color: 0xffd08a });
+
 // Bridges near the player get meshes (and collision); far ones are dropped
 const activeBridges = new Set();
 let bridgeScan = 0;
@@ -1261,12 +1287,17 @@ function updateBridges(dt) {
   for (let rz = rz0 - 1; rz <= rz0 + 1; rz++) for (let rx = rx0 - 1; rx <= rx0 + 1; rx++)
     for (const road of roadsForRegion(rx, rz)) for (const b of road.bridges)
       if (Math.hypot((b.ax + b.bx) / 2 - P.pos.x, (b.az + b.bz) / 2 - P.pos.z) < 160 + b.len / 2) want.add(b);
-  for (const b of activeBridges) if (!want.has(b)) { scene.remove(b.mesh); b.mesh = null; activeBridges.delete(b); }
+  for (const b of activeBridges) if (!want.has(b)) {
+    scene.remove(b.mesh); b.mesh = null; activeBridges.delete(b);
+    for (const l of b.lanterns || []) removeTorch(l);
+    b.lanterns = null;
+  }
   for (const b of want) if (!b.mesh) {
     b.mesh = b.type === 'stone' ? buildStoneBridge(b) : buildWoodBridge(b);
     b.mesh.position.set(b.ax, b.deck, b.az);
     b.mesh.rotation.y = Math.atan2(b.dirx, b.dirz);
     scene.add(b.mesh); activeBridges.add(b);
+    if (b.type === 'stone') b.lanterns = addBridgeLanterns(b);
   }
 }
 // Bridge collision for a player at (x, y, z): returns the deck top if standing in the deck slab,
@@ -2681,6 +2712,7 @@ function update(dt, t) {
     const f = .8 + .12 * Math.sin(t * 11 + tr.seed) + .08 * Math.sin(t * 23.7 + tr.seed * 2) + .05 * Math.sin(t * 37 + tr.seed);
     tr.f = f;
     tr.d = tr.g.position.distanceToSquared(camera.position);
+    if (tr.steady) continue;                                   // lanterns glow steadily
     tr.flame.scale.set(.9 + .15 * f, 1.4 + .6 * f, .9 + .15 * f);
     tr.flame.rotation.y = t * 3 + tr.seed;
   }
