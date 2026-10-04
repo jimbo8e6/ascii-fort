@@ -22,6 +22,15 @@ npx serve .        # or: python3 -m http.server
 | E: answer a guard's challenge | TALK button (appears when challenged) |
 | Esc: pause and free the mouse (top-right buttons stay clickable) | |
 
+## Caves
+
+Winding tunnels and big caverns run under the land, and in some areas they break through to the surface as entrances.
+
+- **Darkness:** underground it's genuinely dark. Each block face knows how much open sky it can see, and that only scales the sun, moon and sky light. Torches still light cave walls and fort interiors.
+- **Lantern:** you carry one that glows automatically whenever there's rock over your head. The minimap shows *underground*.
+- **Crystals:** glowing violet crystals grow on floors and ceilings deep down.
+- **Where they don't go:** caves never cut under the forts, the road or other structures, and they stay a few blocks below the sea bed.
+
 ## Guards
 
 Guards patrol the walls and courtyards and stand watch at the gates. They now notice you.
@@ -85,12 +94,17 @@ The world map (M) shows biomes, water depth and hill shading, with the fort and 
    - All forts share one builder, including the starting fort, which comes out identical to the original hand-built version.
    - Torches and guards appear with the chunk they stand in. A fixed pool of 10 point lights moves to the nearest torches, so more forts never add rendering cost.
    - Structures appear on the world map: red squares are forts, triangles are watchtowers and crosses are ruins.
-5. **Greedy meshing.** Each chunk becomes one mesh containing only the faces that touch air. Neighbouring faces of the same material are merged into larger rectangles, with one geometry group per material and world-space UVs so the textures still tile once per block.
+5. **Caves.** Three 3D Perlin noise fields are sampled every 4 blocks and blended between grid points, which keeps it cheap. Tunnels form where two fields are both near zero, giving long winding tubes, and caverns form where the third is high, deeper down.
+   - A slow 2D noise decides where tunnels may reach the surface.
+   - Crystals are placed using a hash on cave floors and ceilings.
+6. **Greedy meshing.** Each chunk becomes one mesh containing only the faces that touch air. Neighbouring faces of the same material are merged into larger rectangles, with one geometry group per material and world-space UVs so the textures still tile once per block.
    - **Ambient occlusion:** each face corner is darkened by how many of the three blocks around it are solid, from fully open down to tucked into a corner. The result is stored as vertex colours.
    - This shades inside corners, the base of walls and the creases of terraced hills, which gives the ASCII view much more depth.
+   - **Sky light:** each face also stores how much open sky the air in front of it can see. There are four levels: open, under an overhang, sheltered, and deep underground, with light leaking in sideways and leaves letting it through.
+   - A small patch to the Lambert shader scales only the sun/moon and sky light by that value, leaving point lights (torches, lantern) untouched.
    - Faces only merge when their corner shading matches. Each quad is split along the diagonal that keeps a dark corner from smearing across it.
-6. **The starting fort** is built with the same `buildFort()` as the procedural forts, on flattened ground at the spawn, with a road leading to its gate.
-7. **Lighting.** Hemisphere sky light and a sun/moon directional light driven by the day/night cycle, exponential fog that hides the edge of the loaded area, and torchlight from the light pool described above.
-8. **ASCII pass.** The 3D scene is rendered into a low-resolution target, at 2× the character grid. A full-screen shader picks a character for each cell based on its brightness, then tints it with the scene colour. The glyph atlas is redrawn at the exact on-screen cell size, so small characters stay sharp.
+7. **The starting fort** is built with the same `buildFort()` as the procedural forts, on flattened ground at the spawn, with a road leading to its gate.
+8. **Lighting.** Hemisphere sky light and a sun/moon directional light driven by the day/night cycle, exponential fog that hides the edge of the loaded area, and torchlight from the light pool described above.
+9. **ASCII pass.** The 3D scene is rendered into a low-resolution target, at 2× the character grid. A full-screen shader picks a character for each cell based on its brightness, then tints it with the scene colour. The glyph atlas is redrawn at the exact on-screen cell size, so small characters stay sharp.
    - **FINE** (default): about 40 characters, sorted at startup by how much ink each covers, with some of the scene colour blended behind them. This gives smooth shading.
    - **CLASSIC**: the short ramp ` .,:-=+*o#%@` on a dark background.
