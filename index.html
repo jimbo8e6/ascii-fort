@@ -15,7 +15,8 @@
   #start p { margin: 0; font-size: 14px; line-height: 1.7; opacity: .85; }
   #start .go { margin-top: 8px; padding: 10px 22px; border: 1px solid #ffb347; color: #ffb347; }
   #hud { position: fixed; left: 12px; bottom: 12px; font-size: 12px; opacity: .7; pointer-events: none; z-index: 2; line-height: 1.6; }
-  #buttons { position: fixed; top: max(12px, env(safe-area-inset-top)); right: 12px; display: flex; gap: 8px; z-index: 6; }
+  #buttons { position: fixed; top: max(12px, env(safe-area-inset-top)); right: 12px; display: flex; flex-wrap: wrap; justify-content: flex-end;
+    gap: 8px; z-index: 6; max-width: calc(100vw - 170px); }
   .btn { background: rgba(10, 12, 24, .6); border: 1px solid rgba(255, 179, 71, .6); color: #ffb347;
     font: inherit; font-size: 12px; padding: 6px 10px; cursor: pointer; }
   #jump { position: fixed; right: 24px; bottom: 32px; width: 64px; height: 64px; border-radius: 50%; display: none; z-index: 3;
@@ -53,11 +54,11 @@
 <div id="start">
   <h1>ASCII FORT</h1>
   <p class="keys">WASD / arrows: move &middot; mouse: look &middot; shift: run &middot; space: jump<br>
-     T: toggle ASCII &middot; G: style &middot; [ ]: character size &middot; M: map &middot; N: minimap &middot; esc: pause</p>
+     T: toggle ASCII &middot; G: style &middot; [ ]: character size &middot; M: map &middot; N: minimap &middot; K: time speed &middot; esc: pause</p>
   <p class="touchhelp">Left thumb: move &middot; right thumb: look &middot; button: jump</p>
   <div class="go" id="go">click / tap to enter</div>
 </div>
-<div id="hud"><span class="keys">T ascii &middot; G style &middot; [ ] size &middot; M map &middot; N minimap</span></div>
+<div id="hud"><span class="keys">T ascii &middot; G style &middot; [ ] size &middot; M map &middot; N minimap &middot; K time</span></div>
 <div id="mini"><canvas id="miniCanvas" width="192" height="192"></canvas><div id="miniWhere"></div></div>
 <div id="map" hidden>
   <div class="panel">
@@ -81,6 +82,7 @@
   <button class="btn" id="btnStyle">STYLE: FINE</button>
   <button class="btn" id="btnCell">SIZE</button>
   <button class="btn" id="btnMap">MAP</button>
+  <button class="btn" id="btnTime">TIME</button>
 </div>
 <button class="btn" id="jump">JUMP</button>
 <div id="stick"><div id="knob"></div></div>
@@ -669,7 +671,7 @@ const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'h
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 document.body.prepend(renderer.domElement);
 
-const SKY = 0x0b0f24;
+const SKY = 0x0b0f24;                     // night horizon colour
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(SKY);
 scene.fog = new THREE.FogExp2(SKY, 0.018);
@@ -677,17 +679,36 @@ scene.fog = new THREE.FogExp2(SKY, 0.018);
 const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 400);
 camera.rotation.order = 'YXZ';
 
-scene.add(new THREE.HemisphereLight(0x6677bb, 0x2a2010, 1.8));
-const moonLight = new THREE.DirectionalLight(0x99aaff, 1.2);
-moonLight.position.set(-120, 90, -200);
-scene.add(moonLight);
+const hemi = new THREE.HemisphereLight(0x6677bb, 0x2a2010, 1.8);
+const celestial = new THREE.DirectionalLight(0x99aaff, 1.2);   // the sun by day, the moon by night
+scene.add(hemi, celestial, celestial.target);
 
-// Moon and stars follow the camera so they always look infinitely far away; they ignore fog
+// Sky dome, sun, moon and stars follow the camera so they look infinitely far away; they ignore fog
 const sky = new THREE.Group();
 scene.add(sky);
+const skyMat = new THREE.ShaderMaterial({
+  uniforms: { top: { value: new THREE.Color() }, horizon: { value: new THREE.Color() },
+    sunDir: { value: new THREE.Vector3() }, glow: { value: new THREE.Color() } },
+  vertexShader: `varying vec3 vDir; void main() { vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `
+    uniform vec3 top, horizon, sunDir, glow;
+    varying vec3 vDir;
+    void main() {
+      vec3 d = normalize(vDir);
+      vec3 col = mix(horizon, top, pow(clamp(d.y, 0.0, 1.0), 0.55));
+      col = mix(col, horizon * 0.7, clamp(-d.y * 3.0, 0.0, 1.0));              // below the horizon
+      float s = max(dot(d, sunDir), 0.0);
+      col += glow * (pow(s, 6.0) * 0.35 + pow(s, 60.0) * 0.6);                // glow around the sun
+      gl_FragColor = vec4(col, 1.0);
+    }`,
+  side: THREE.BackSide, depthWrite: false, depthTest: false, fog: false,
+});
+const skyDome = new THREE.Mesh(new THREE.SphereGeometry(320, 24, 16), skyMat);
+skyDome.renderOrder = -1;
+const sunMesh = new THREE.Mesh(new THREE.SphereGeometry(11, 16, 12), new THREE.MeshBasicMaterial({ color: 0xfff1c8, fog: false }));
+const moonMesh = new THREE.Mesh(new THREE.SphereGeometry(7, 16, 12), new THREE.MeshBasicMaterial({ color: 0xdfe4ff, fog: false }));
+const starMat = new THREE.PointsMaterial({ color: 0x6a7498, size: 1, sizeAttenuation: false, fog: false, transparent: true });
 {
-  const moon = new THREE.Mesh(new THREE.SphereGeometry(7, 16, 12), new THREE.MeshBasicMaterial({ color: 0xdfe4ff, fog: false }));
-  moon.position.copy(moonLight.position);
   const n = 600, pos = new Float32Array(n * 3);
   for (let i = 0; i < n; i++) {
     const th = rand() * Math.PI * 2, ph = rand() * Math.PI * .45, r = 300;
@@ -695,8 +716,64 @@ scene.add(sky);
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  sky.add(moon, new THREE.Points(g, new THREE.PointsMaterial({ color: 0x6a7498, size: 1, sizeAttenuation: false, fog: false })));
+  sky.add(skyDome, sunMesh, moonMesh, new THREE.Points(g, starMat));
 }
+
+// ---------------------------------------------------------------------------
+// Day / night cycle. time runs 0..24 (hours); a full day lasts DAY_SECONDS of real time.
+// ---------------------------------------------------------------------------
+const DAY_SECONDS = 600;
+const TIME_SPEEDS = [1, 20, 0];               // normal, fast, frozen
+const env = {
+  time: (() => { const t = parseFloat(new URLSearchParams(location.search).get('time')); return isNaN(t) ? 18.5 : ((t % 24) + 24) % 24; })(),
+  day: 1, speedIdx: 0, daylight: 0, horizon: new THREE.Color(SKY),
+};
+const C = hex => new THREE.Color(hex);
+const PAL = {
+  nightTop: C(0x03040c), nightHorizon: C(SKY), dayTop: C(0x2f6fc4), dayHorizon: C(0x9fc0e2),
+  duskTop: C(0x2c3566), duskHorizon: C(0xd9784a), sunLow: C(0xff9a55), sunHigh: C(0xfff0d8), moon: C(0x99aaff),
+  hemiNight: C(0x6677bb), hemiDay: C(0xbcd2f5), groundNight: C(0x2a2010), groundDay: C(0x6b5a3a),
+};
+const sunDir = new THREE.Vector3(), tmpColor = new THREE.Color();
+
+function updateSky(dt) {
+  env.time += dt * 24 / DAY_SECONDS * TIME_SPEEDS[env.speedIdx];
+  if (env.time >= 24) { env.time -= 24; env.day++; }
+  // Sun rises in the east (+x) at 6:00, peaks to the south (+z) at noon, sets in the west at 18:00
+  const a = (env.time / 24 - .25) * Math.PI * 2;
+  sunDir.set(Math.cos(a), Math.sin(a) * .9, Math.sin(a) * .42).normalize();
+  const elev = sunDir.y;
+  const day = smoothstep(-.12, .22, elev);                       // 0 at night, 1 in full day
+  const dusk = Math.max(0, 1 - Math.abs(elev + .02) / .28);      // strongest right at the horizon
+  env.daylight = day;
+
+  const top = skyMat.uniforms.top.value, hor = skyMat.uniforms.horizon.value;
+  top.copy(PAL.nightTop).lerp(PAL.dayTop, day).lerp(PAL.duskTop, dusk * .55);
+  hor.copy(PAL.nightHorizon).lerp(PAL.dayHorizon, day).lerp(PAL.duskHorizon, dusk * .75);
+  skyMat.uniforms.sunDir.value.copy(sunDir);
+  skyMat.uniforms.glow.value.copy(PAL.sunLow).multiplyScalar(Math.max(0, 1 - Math.abs(elev) * 3) * .9 + day * .25);
+  env.horizon.copy(hor);
+
+  sunMesh.position.copy(sunDir).multiplyScalar(260);
+  moonMesh.position.copy(sunDir).multiplyScalar(-260);
+  sunMesh.visible = elev > -.06;
+  moonMesh.visible = -elev > -.06;
+  sunMesh.material.color.copy(PAL.sunLow).lerp(PAL.sunHigh, smoothstep(0, .4, elev));
+  starMat.opacity = 1 - smoothstep(-.2, .05, elev);
+
+  // The directional light follows whichever of sun and moon is up, fading through the horizon
+  const sunUp = elev > 0;
+  celestial.position.copy(sunDir).multiplyScalar(sunUp ? 200 : -200);
+  celestial.color.copy(sunUp ? tmpColor.copy(PAL.sunLow).lerp(PAL.sunHigh, smoothstep(0, .35, elev)) : PAL.moon);
+  celestial.intensity = sunUp ? 2.6 * smoothstep(0, .2, elev) : 1.2 * smoothstep(0, .2, -elev);
+  hemi.color.copy(PAL.hemiNight).lerp(PAL.hemiDay, day);
+  hemi.groundColor.copy(PAL.groundNight).lerp(PAL.groundDay, day);
+  hemi.intensity = 1.8 + day * .6;
+}
+const clockText = () => {
+  const h = Math.floor(env.time), m = Math.floor((env.time - h) * 60);
+  return `day ${env.day} ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}${TIME_SPEEDS[env.speedIdx] === 1 ? '' : TIME_SPEEDS[env.speedIdx] ? ' »' : ' ||'}`;
+};
 
 // ---------------------------------------------------------------------------
 // Chunk meshing: greedy merge of visible faces into one mesh per chunk,
@@ -1078,6 +1155,7 @@ addEventListener('keydown', e => {
   if (e.code === 'BracketRight') cycleCell(1);
   if (e.code === 'KeyM') toggleMap();
   if (e.code === 'KeyN') toggleMini();
+  if (e.code === 'KeyK') cycleTime();
   if (e.code === 'Escape' && mapOpen) toggleMap(false, false);
   if (mapOpen && (e.code === 'Equal' || e.code === 'NumpadAdd')) zoomMap(-1);
   if (mapOpen && (e.code === 'Minus' || e.code === 'NumpadSubtract')) zoomMap(1);
@@ -1282,6 +1360,11 @@ function toggleMap(open = !mapOpen, relock = true) {
 }
 function toggleMini() { miniOn = !miniOn; miniEl.hidden = mapOpen || !miniOn; }
 
+function cycleTime() {
+  env.speedIdx = (env.speedIdx + 1) % TIME_SPEEDS.length;
+  document.getElementById('btnTime').textContent = ['TIME', 'TIME \u00bb', 'TIME ||'][env.speedIdx];
+}
+document.getElementById('btnTime').addEventListener('click', e => { e.stopPropagation(); cycleTime(); });
 document.getElementById('btnMap').addEventListener('click', e => { e.stopPropagation(); toggleMap(); });
 document.getElementById('mapClose').addEventListener('click', () => toggleMap(false));
 document.getElementById('mapIn').addEventListener('click', () => zoomMap(-1));
@@ -1310,12 +1393,12 @@ function updateMaps() {
   if (mapOpen) {
     bigMap.step(10);
     bigMap.draw(mapCanvas, mapState.cx, mapState.cz, MAP_SCALES[mapState.scaleIdx]);
-    document.getElementById('mapWhere').textContent = `you: ${where}`;
+    document.getElementById('mapWhere').textContent = `you: ${where} \u00b7 ${clockText()}`;
   } else if (miniOn) {
     if (!miniMap.job && Math.hypot(P.pos.x - miniMap.bx, P.pos.z - miniMap.bz) > 24 || miniMap.bscale !== MINI_SCALE) miniMap.request(P.pos.x, P.pos.z, MINI_SCALE);
     miniMap.step(3);
     miniMap.draw(miniCanvas, P.pos.x, P.pos.z, MINI_SCALE);
-    document.getElementById('miniWhere').textContent = where;
+    document.getElementById('miniWhere').textContent = `${where} \u00b7 ${clockText()}`;
   }
 }
 
@@ -1380,7 +1463,7 @@ function update(dt, t) {
   const lit = torches.filter(tr => tr.d < 70 * 70).sort((a, b) => a.d - b.d);
   lightPool.forEach((l, i) => {
     const tr = lit[i];
-    if (tr) { l.position.copy(tr.g.position); l.position.y += .3; l.intensity = 10 * tr.f; } else l.intensity = 0;
+    if (tr) { l.position.copy(tr.g.position); l.position.y += .3; l.intensity = 10 * tr.f * (1 - env.daylight * .65); } else l.intensity = 0;
   });
 
   // Guards ping-pong along their patrol line
@@ -1407,9 +1490,12 @@ function frame() {
   // Water: drifting ripples, and murky blue fog with the camera under the surface
   TEX.water.offset.set(clock.elapsedTime * .05, Math.sin(clock.elapsedTime * .4) * .1);
   const under = get(Math.floor(camera.position.x), Math.floor(camera.position.y + .15), Math.floor(camera.position.z)) === WATER;
-  scene.fog.color.setHex(under ? 0x0d2e52 : SKY);
-  scene.fog.density = under ? .09 : .018;
-  scene.background.setHex(under ? 0x0d2e52 : SKY);
+  updateSky(started && !mapOpen ? dt : 0);
+  if (under) scene.fog.color.setHex(0x0d2e52).lerp(env.horizon, .25); else scene.fog.color.copy(env.horizon);
+  scene.fog.density = under ? .09 : .018 - env.daylight * .002;
+  scene.background.copy(scene.fog.color);
+  skyDome.visible = !under;
+  asciiMat.uniforms.exposure.value = 2.0 - env.daylight * .95;      // daylight is much brighter: don't saturate the characters
   if (asciiOn) {
     renderer.setRenderTarget(sceneRT);
     renderer.render(scene, camera);
@@ -1425,7 +1511,7 @@ P.pos.y = surfaceY(Math.floor(P.pos.x), Math.floor(P.pos.z));
 P.eye = P.pos.y + 1.6;
 streamChunks(P.pos.x, P.pos.z, Infinity);
 camera.position.set(P.pos.x, P.eye, P.pos.z);
-window.__fort = { planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
+window.__fort = { env, planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
 frame();
 </script>
 </body>

@@ -18,7 +18,18 @@ npx serve .        # or: python3 -m http.server
 | Shift: run, Space: jump (hold to swim up) | right thumb: look, JUMP button (hold to swim up) |
 | T: toggle ASCII, G: style, `[` `]`: character size | ASCII / STYLE / SIZE buttons |
 | M: world map, N: minimap | MAP button |
+| K: time speed (normal / 20× / paused) | TIME button |
 | Esc: pause and free the mouse (top-right buttons stay clickable) | |
+
+## Day and night
+
+A full day lasts 10 minutes. The game starts at 18:30, just after sunset. Add `?time=` to the URL to start at another hour, e.g. `index.html?time=12` for noon. The clock and day number show under the minimap and on the world map.
+
+- **Sky:** a gradient dome with a glow around the sun. Dawn and dusk are pink and orange, noon is blue, and stars fade in at night.
+- **Sun and moon:** the sun rises in the east, peaks to the south and sets in the west, and the moon is always opposite it.
+- **Lighting:** one directional light follows whichever of the two is up, and the sky light, ground light and fog colour all follow the time of day.
+- **ASCII view:** the shader's brightness drops in daylight so bright scenes don't saturate into solid `@`.
+- **Torches** dim during the day.
 
 ## World seed and map
 
@@ -52,7 +63,7 @@ The world map (M) shows biomes, water depth and hill shading, with the fort and 
    - Structures appear on the world map: red squares are forts, triangles are watchtowers and crosses are ruins.
 5. **Greedy meshing.** Each chunk becomes one mesh containing only the faces that touch air. Neighbouring faces of the same material are merged into larger rectangles, with one geometry group per material and world-space UVs so the textures still tile once per block.
 6. **The starting fort** is built with the same `buildFort()` as the procedural forts, on flattened ground at the spawn, with a road leading to its gate.
-7. **Lighting.** Dim blue hemisphere and moon light, exponential fog that hides the edge of the loaded area, and torchlight from the light pool described above.
+7. **Lighting.** Hemisphere sky light and a sun/moon directional light driven by the day/night cycle, exponential fog that hides the edge of the loaded area, and torchlight from the light pool described above.
 8. **ASCII pass.** The 3D scene is rendered into a low-resolution target, at 2× the character grid. A full-screen shader picks a character for each cell based on its brightness, then tints it with the scene colour. The glyph atlas is redrawn at the exact on-screen cell size, so small characters stay sharp.
    - **FINE** (default): about 40 characters, sorted at startup by how much ink each covers, with some of the scene colour blended behind them. This gives smooth shading.
    - **CLASSIC**: the short ramp ` .,:-=+*o#%@` on a dark background.
