@@ -79,7 +79,13 @@ Villages sit on the road network. The roads meet at a village square with a ston
   - A village with no mill starts its bakery with flour, and the baker says a merchant brings it from the nearest village with a mill.
 - **More to ask:** the baker's *How's business?* (stock, sales today, where the flour comes from), the miller's *Who buys your flour?*, and everyone else's *Where do you get your bread?*
 - **Groundwork for trade:** a goods catalogue (wheat seed, wheat, flour, bread, each with a value and source) and per-household stock. Farming, milling, baking and trading will build on this.
-- **Simulation scope:** only villages near you are fully simulated. When you arrive, everyone starts wherever their routine has them at that hour.
+- **Job outfits:** each job has its own look, so you can tell who's who at a glance:
+  - **Baker:** white apron and cap.
+  - **Miller:** flour-dusted smock and flat cap.
+  - **Farmer:** straw hat and pitchfork.
+  - **Homemaker:** headscarf.
+- **Villages remember:** the first time a village comes to life, its roster is recorded: names, jobs, homes, household stock and coins, field progress, the mill's store and the bakery. From then on it's reused rather than worked out again, so jobs are never reassigned. The memory is kept when you leave and come back, and it's saved with your world.
+- **Simulation scope:** only villages near you are fully simulated. When you arrive, everyone starts wherever their routine has them at that hour, and crops keep growing while you're away.
 - **On the map:** villages show as a little house marker once discovered.
 
 ## Windmills, carts and boats

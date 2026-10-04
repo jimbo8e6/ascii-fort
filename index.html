@@ -1716,7 +1716,7 @@ addTorch(CX, G + 3.4, 22.5);                             // inside the main keep
 // Guards: patrol between a and b, or stand still facing `face` (radians)
 const guards = [];
 const guardGeo = new Map(), guardMat = new Map();
-function makeGuard(kind = 'guard', color = 0x3c6e8a) {
+function makeGuard(kind = 'guard', color = 0x3c6e8a, job = null) {
   const g = new THREE.Group();
   let sack = null;
   const box = (w, h, d, c, x, y, z) => {
@@ -1731,9 +1731,23 @@ function makeGuard(kind = 'guard', color = 0x3c6e8a) {
   });
   g.add(box(.3, .3, .3, 0xc89a70, 0, 1.65, 0));             // head
   if (kind === 'villager') {
-    g.add(box(.5, .7, .3, color, 0, 1.15, 0));              // tunic
-    g.add(box(.44, .06, .44, 0xc8b070, 0, 1.82, 0));        // straw hat
-    g.add(box(.26, .12, .26, 0xc8b070, 0, 1.88, 0));
+    // Each job has its own look, so you can tell who does what at a glance
+    g.add(box(.5, .7, .3, job === 'miller' ? 0xd2c8b4 : color, 0, 1.15, 0));      // tunic (a miller's is dusted with flour)
+    if (job === 'baker') {
+      g.add(box(.42, .58, .04, 0xf2efe6, 0, 1.08, .16));                          // apron
+      g.add(box(.32, .14, .32, 0xf2efe6, 0, 1.86, 0)); g.add(box(.38, .12, .38, 0xf2efe6, 0, 1.97, 0));   // baker's cap
+    } else if (job === 'miller') {
+      g.add(box(.36, .09, .36, 0x5a4632, 0, 1.84, 0)); g.add(box(.36, .03, .16, 0x5a4632, 0, 1.8, .22));  // flat cap with peak
+      g.add(box(.12, .12, .04, 0xeeeae0, .1, 1.3, .16));                          // flour on the smock
+    } else if (job === 'farmer') {
+      g.add(box(.44, .06, .44, 0xc8b070, 0, 1.82, 0)); g.add(box(.26, .12, .26, 0xc8b070, 0, 1.88, 0));   // straw hat
+      g.add(box(.05, 1.9, .05, 0x7a5a34, .36, 1.05, .12));                        // pitchfork
+      g.add(box(.2, .04, .04, 0x5a5a60, .36, 2, .12));
+      for (const x of [-.08, 0, .08]) g.add(box(.025, .22, .025, 0x5a5a60, .36 + x, 2.12, .12));
+    } else {
+      g.add(box(.34, .16, .34, (color & 0xfefefe) >> 1 | 0x404040, 0, 1.77, -.01));   // headscarf
+      g.add(box(.1, .1, .08, (color & 0xfefefe) >> 1 | 0x404040, 0, 1.7, -.2));
+    }
     sack = box(.42, .5, .3, 0xc8a860, 0, 1.25, -.3); sack.visible = false; g.add(sack);   // a sack carried on the back
   } else {
     g.add(box(.5, .7, .3, 0x8a2020, 0, 1.15, 0));           // tabard
@@ -1745,7 +1759,7 @@ function makeGuard(kind = 'guard', color = 0x3c6e8a) {
   return { g, legs, sack };
 }
 function addGuard(a, b, speed, face = 0, home = null) {
-  const guard = makeGuard(home?.kind, home?.color);
+  const guard = makeGuard(home?.kind, home?.color, home?.person?.job);
   guard.a = new THREE.Vector3(...a); guard.b = b && new THREE.Vector3(...b);
   guard.speed = speed; guard.t = rand() * 10; guard.face = face; guard.home = home;
   guard.g.position.copy(guard.a);
@@ -2377,6 +2391,16 @@ function cottagePlan(m) {
     stairX0: ix0, stairZ0: iz1 - .9, RUN: 3, tx: two ? (ix0 + 1 + fx0) / 2 + .1 : (partX + fx0) / 2 };
 }
 
+const villageMemory = new Map();
+function snapshotVillage(V) {
+  return {
+    houses: V.houses.map(h => ({ seed: h.m.seed, coins: h.coins, stock: { ...h.stock }, boughtDay: h.boughtDay, ateDay: h.ateDay,
+      field: h.field && { stage: h.field.stage, sownAt: h.field.sownAt, work: h.field.work, stubble: h.field.stubble },
+      people: h.people.map(p => ({ name: p.name, job: p.job, jitter: p.jitter, firstUp: p.firstUp, color: p.color, carrying: p.carrying || 0, carryKind: p.carryKind || null })) })),
+    millStock: { ...V.millStock }, grind: V.grind,
+    bakery: V.bakery && { flour: V.bakery.flour, bread: V.bakery.bread, batch: V.bakery.batch, soldToday: V.bakery.soldToday, soldDay: V.bakery.soldDay },
+  };
+}
 function startVillage(plan) {
   const info = plan.decor.village, rnd = mulberry32(plan.seed ^ 0x51ab1e), [Cx, base, Cz] = info.centre;
   const V = { plan, nodes: [], houses: [], people: [], ring: [], mill: null };
@@ -2471,14 +2495,36 @@ function startVillage(plan) {
   }
   const rest = V.houses.filter(h => h !== bh && h.people[0].job === 'homemaker');
   rest.forEach((h, i) => { if (i < Math.max(1, Math.ceil(rest.length / 2))) { h.people[0].job = 'farmer'; h.stock.wheatSeed = 2 + (rnd() * 4 | 0); } });
-  // Fields for the farming households, each at some point in its season; the mill's store
+  V.millStock = { wheat: rnd() * 3 | 0, flour: 1 + (rnd() * 4 | 0) }; V.grind = 0;
+  // A village you've been to before is remembered: its people, jobs, homes, stock, coins and fields
+  // come back exactly as they were, rather than being worked out again
+  const mem = villageMemory.get(placeKey(plan)), savedFields = new Map();
+  if (mem) {
+    V.people = [];
+    for (const h of V.houses) {
+      const mh = mem.houses.find(x => x.seed === h.m.seed);
+      if (mh) {
+        Object.assign(h, { coins: mh.coins, stock: { ...mh.stock }, boughtDay: mh.boughtDay, ateDay: mh.ateDay });
+        h.people = mh.people.map(q => ({ ...q, house: h, village: V }));
+        if (mh.field) savedFields.set(h, mh.field);
+      }
+      for (const p of h.people) { p.idx = V.people.length; V.people.push(p); }
+    }
+    Object.assign(V.millStock, mem.millStock); V.grind = mem.grind || 0;
+    if (V.bakery) {
+      V.bakery.baker = bh.people.find(q => q.job === 'baker') || Object.assign(bh.people[0], { job: 'baker' });
+      if (mem.bakery) Object.assign(V.bakery, mem.bakery);
+    }
+  }
+  // Fields for the farming households, each at some point in its season (or as you left them)
   const T = gameHours();
   V.fields = [];
   for (const h of V.houses) if (h.people.some(p => p.job === 'farmer' || p.job === 'miller')) {
-    const r = rnd(), f = { stage: r < .45 ? 'growing' : r < .7 ? 'ripe' : 'empty', sownAt: T - rnd() * (GROW_HOURS - 2), work: 0, stubble: rnd() < .5 };
+    const r = rnd(), f = savedFields.get(h) ? { ...savedFields.get(h) }
+      : { stage: r < .45 ? 'growing' : r < .7 ? 'ripe' : 'empty', sownAt: T - rnd() * (GROW_HOURS - 2), work: 0, stubble: rnd() < .5 };
     f.view = makeField(h.m); h.field = f; V.fields.push(f); showField(f);
   }
-  V.millStock = { wheat: rnd() * 3 | 0, flour: 1 + (rnd() * 4 | 0) }; V.grind = 0;
+  villageMemory.set(placeKey(plan), snapshotVillage(V));
   if (info.mill) V.piles = makeMillPiles(V, info.mill);
   // Bring everyone in at wherever their routine has them right now
   for (const p of V.people) {
@@ -2493,6 +2539,7 @@ function startVillage(plan) {
   return V;
 }
 function stopVillage(V) {
+  villageMemory.set(placeKey(V.plan), snapshotVillage(V));
   for (const p of V.people) removeGuard(p.gd);
   for (const h of V.houses) { activeHouses.delete(h.m.seed); houseAwake.delete(h.m.seed); }
   if (V.millKey) millBusy.delete(V.millKey);
@@ -3742,7 +3789,9 @@ function saveSettings() {
 }
 function saveGame() {
   if (savingOff) return;
+  for (const V of villages) villageMemory.set(placeKey(V.plan), snapshotVillage(V));
   const save = { v: 1, seed: SEED, x: P.pos.x, y: P.pos.y, z: P.pos.z, yaw: P.yaw, pitch: P.pitch, discovered: [...discovered],
+    villages: Object.fromEntries(villageMemory),
     time: env.time, day: env.day, savedAt: Date.now() };
   if (!store.set('world:' + SEED, save)) return;
   store.set('lastSeed', SEED);
@@ -3770,6 +3819,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) saveG
 
 // Restore this world's save, or start at the fort
 const saved = store.get('world:' + SEED);
+if (saved?.villages && typeof saved.villages === 'object') for (const [k, v] of Object.entries(saved.villages)) if (Array.isArray(v?.houses)) villageMemory.set(k, v);
 if (Array.isArray(saved?.discovered)) for (const k of saved.discovered) {
   discovered.add(k);
   const [rx, rz] = String(k).split(',').map(Number);
@@ -3817,7 +3867,7 @@ function simulate(seconds) {
   for (let t = 0; t < seconds; t += .05) { updateSky(.05); updateVillages(); updateGuards(.05); updateCottages(.05); }
   env.speedIdx = keep;
 }
-window.__fort = { gameHours, millBusy, simulate, villages, activityFor, cottages, colliderGrid, solids, activeBridges, roadInfo, boatSpot, carts, animated, shapeOf, collides, roadsAtNode, linksOf, discovered, roadAt, roadBetween, rawHeight, dlg, describeArea, MAIN_TITLE, lantern, guards, talk, saveGame, store, env, planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
+window.__fort = { villageMemory, gameHours, millBusy, simulate, villages, activityFor, cottages, colliderGrid, solids, activeBridges, roadInfo, boatSpot, carts, animated, shapeOf, collides, roadsAtNode, linksOf, discovered, roadAt, roadBetween, rawHeight, dlg, describeArea, MAIN_TITLE, lantern, guards, talk, saveGame, store, env, planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
 frame();
 </script>
 </body>
