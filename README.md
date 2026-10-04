@@ -40,6 +40,18 @@ Villages sit on the road network. The roads meet at a village square with a ston
 - **On the map:** villages show as a little house marker once discovered.
 - **Isolated villages:** a village with no road gets a street of its own.
 
+## Windmills, carts and boats
+
+These are placed by the seed like everything else:
+
+- **Windmills:** about half of all villages have one at the edge. It's a stone-based plank tower with a pyramid roof and a door facing the square. Its four canvas sails turn steadily.
+- **Carts:** horse-drawn carts with a driver travel about half of all roads, back and forth.
+  - The wheels turn with the distance covered, the horse's legs move, and the cart follows the ground, including over bridges.
+  - They turn round just short of village squares and fort gates.
+  - Only carts within about 120 blocks are drawn.
+- **Boats:** about 7% of chunks with open water have a moored boat bobbing on the surface: rowboats with oars on rivers and lakes, and sailboats at sea.
+- These are 3D models built from boxes and cylinders, not blocks, so they can move and turn freely.
+
 ## Caves
 
 Winding tunnels and big caverns run under the land, and in some areas they break through to the surface as entrances.

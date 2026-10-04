@@ -849,7 +849,30 @@ function buildVillage(set, plan, rnd) {
       guards.push({ a: [sx, 0, sz], b: [sx + ux * 4, 0, sz + uz * 4], speed: .5 + rnd() * .3, kind: 'villager', color: tunics[rnd() * tunics.length | 0] });
     }
   }
-  return { torches, guards };
+  // A windmill at the edge of about half of all villages: block tower with a pyramid roof; the sails are a model
+  const models = [];
+  if (rnd() < .5) for (let k = 0, a0 = rnd() * Math.PI * 2; k < 16; k++) {
+    const a = a0 + k * Math.PI / 8, cx = Math.round(C + Math.cos(a) * (C - 9)), cz = Math.round(C + Math.sin(a) * (C - 9));
+    const x0 = cx - 2, z0 = cz - 2;
+    if (!free(x0, x0 + 4, z0, z0 + 4)) continue;
+    for (let z = z0 - 1; z <= z0 + 5; z++) for (let x = x0 - 1; x <= x0 + 5; x++) used[x + z * N] = 1;
+    for (let y = 0; y < 9; y++) for (let z = z0; z <= z0 + 4; z++) for (let x = x0; x <= x0 + 4; x++) {
+      const ex = x === x0 || x === x0 + 4, ez = z === z0 || z === z0 + 4;
+      if (ex || ez) set(x, y, z, y < 2 ? ROCK : ex && ez ? LOG : PLANK);
+    }
+    // Pyramid roof of wedges rising towards the middle, capped with a tile block
+    for (const [r, y] of [[2, 9], [1, 10]]) for (let z = cz - r; z <= cz + r; z++) for (let x = cx - r; x <= cx + r; x++) {
+      if (Math.max(Math.abs(x - cx), Math.abs(z - cz)) === r) set(x, y, z, wedgeOf(dirFromVec(cx - x, cz - z)));
+    }
+    set(cx, 11, cz, ROOF);
+    // Door facing the square; sails on the opposite face
+    const ix = C - cx, iz = C - cz, inward = dirFromVec(ix, iz), [dx, dz] = DIR_VEC[inward];
+    set(cx + dx * 2, 0, cz + dz * 2, AIR); set(cx + dx * 2, 1, cz + dz * 2, AIR);
+    torches.push([cx + .5 + dx * 2.8 + (dz ? 1 : 0), 2.6, cz + .5 + dz * 2.8 + (dx ? 1 : 0)]);
+    models.push({ kind: 'windmill', x: cx + .5 - dx * 2.85, y: 7.5, z: cz + .5 - dz * 2.85, angle: Math.atan2(-dx, -dz) });
+    break;
+  }
+  return { torches, guards, models };
 }
 
 // A cottage: plank walls with log corners, windows, and a gabled tiled roof along its longer side
@@ -964,6 +987,7 @@ function buildPlan(plan) {
   const toWorld = ([x, y, z]) => { const [lx, lz] = rotateLocal(x, z, S, plan.rot); return [plan.ox + lx, plan.base + y, plan.oz + lz]; };
   plan.decor = {
     torches: extra.torches.map(toWorld),
+    models: (extra.models || []).map(m => ({ ...m, pos: toWorld([m.x, m.y, m.z]) })),
     guards: extra.guards.map(g => {
       const a = toWorld(g.a), b = g.b ? toWorld(g.b) : null;
       let face = null;
@@ -1018,7 +1042,7 @@ function roadBetween(ax, az, bx, bz) {
     if (maxWet <= 6) {                                   // bridges over rivers, never across the sea
       let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
       for (let i = 0; i < pts.length; i += 2) { x0 = Math.min(x0, pts[i]); x1 = Math.max(x1, pts[i]); z0 = Math.min(z0, pts[i + 1]); z1 = Math.max(z1, pts[i + 1]); }
-      road = { pts, box: [x0 - 3, z0 - 3, x1 + 3, z1 + 3] };
+      road = { pts, box: [x0 - 3, z0 - 3, x1 + 3, z1 + 3], seed: hash2(ax * 7919 + bx * 31, az * 104729 + bz * 17) };
     }
   }
   roadCache.set(key, road);
@@ -1553,18 +1577,157 @@ for (const [a, b, speed] of [
   [[CX + 3.2, 0, F1 + 2], null, 0],
 ]) addGuard([a[0], a[1] + G, a[2]], b && [b[0], b[1] + G, b[2]], speed, 0, { title: MAIN_TITLE });
 
+// ---------------------------------------------------------------------------
+// Models: windmill sails, boats and carts, built from boxes and cylinders
+// ---------------------------------------------------------------------------
+const partGeo = new Map(), partMat = new Map();
+const matOf = c => { if (!partMat.has(c)) partMat.set(c, new THREE.MeshLambertMaterial({ color: c })); return partMat.get(c); };
+function part(parent, w, h, d, c, x, y, z) {
+  const k = `b${w},${h},${d}`;
+  if (!partGeo.has(k)) partGeo.set(k, new THREE.BoxGeometry(w, h, d));
+  const m = new THREE.Mesh(partGeo.get(k), matOf(c)); m.position.set(x, y, z); parent.add(m); return m;
+}
+function wheel(parent, r, x, y, z) {
+  const k = `w${r}`;
+  if (!partGeo.has(k)) partGeo.set(k, new THREE.CylinderGeometry(r, r, .12, 10));
+  const w = new THREE.Mesh(partGeo.get(k), matOf(0x4a3420)); w.rotation.z = Math.PI / 2; w.position.set(x, y, z);
+  part(w, .1, .14, r * 1.9, 0x2e2010, 0, 0, 0);           // spokes, so the turning shows
+  part(w, r * 1.9, .14, .1, 0x2e2010, 0, 0, 0);
+  parent.add(w); return w;
+}
+const animated = new Set();
+
+function makeWindmill(m) {
+  const g = new THREE.Group(), sails = new THREE.Group();
+  g.position.set(...m.pos); g.rotation.y = m.angle;
+  part(g, .5, .5, .5, 0x4a3420, 0, 0, 0);
+  for (let i = 0; i < 4; i++) {
+    const arm = new THREE.Group(); arm.rotation.z = i * Math.PI / 2;
+    part(arm, .16, 4.4, .12, 0x5a4028, 0, 2.2, .1);
+    part(arm, .9, 3.2, .05, 0xd8d0b8, .55, 2.6, .12);      // canvas
+    sails.add(arm);
+  }
+  g.add(sails); scene.add(g);
+  const obj = { g, tick: (dt) => { sails.rotation.z -= dt * .9; } };
+  animated.add(obj); return obj;
+}
+
+function makeBoat(x, z, sea, seed) {
+  const g = new THREE.Group(), hull = sea ? 0x6a2a20 : 0x6a4a2a;
+  if (sea) {                                                // sailboat
+    part(g, 4, .4, 1.5, hull, 0, .1, 0); part(g, 4, .4, .14, hull, 0, .45, .7); part(g, 4, .4, .14, hull, 0, .45, -.7);
+    part(g, .9, .5, 1.1, hull, 2, .3, 0); part(g, .14, 4.2, .14, 0x4a3420, .3, 2.3, 0);
+    part(g, 2.4, .1, .1, 0x4a3420, -.8, .9, 0); part(g, 2.3, 3, .05, 0xd8d0b8, -.85, 2.45, 0);
+  } else {                                                  // rowboat with oars
+    part(g, 2.6, .22, 1, hull, 0, 0, 0); part(g, 2.6, .35, .12, hull, 0, .25, .5); part(g, 2.6, .35, .12, hull, 0, .25, -.5);
+    part(g, .12, .35, 1, hull, 1.3, .25, 0); part(g, .12, .35, 1, hull, -1.3, .25, 0); part(g, .3, .08, .9, 0x8a6a40, 0, .32, 0);
+    for (const s of [1, -1]) { const oar = part(g, .1, .06, 1.8, 0x8a6a40, .1, .35, s * .95); oar.rotation.x = s * .3; }
+  }
+  const base = SEA - .2;
+  g.position.set(x, base, z); g.rotation.y = seed * Math.PI * 2; scene.add(g);
+  const obj = { g, tick: (dt, t) => { g.position.y = base + Math.sin(t * 1.2 + seed * 9) * .06; g.rotation.z = Math.sin(t * .9 + seed * 5) * .05; } };
+  animated.add(obj); return obj;
+}
+function removeModel(obj) { scene.remove(obj.g); animated.delete(obj); }
+
+// Moored boats: a few chunks with open water get one, on rivers and lakes a rowboat, at sea a sailboat
+function boatSpot(c) {
+  const r = hash2(c.cx * 7 + 3, c.cz * 13 + 1);
+  if (r > .07) return null;
+  for (let i = 0; i < 24; i++) {
+    const lx = 2 + (hash2(c.cx + i * 31, c.cz - i * 17) * 12 | 0), lz = 2 + (hash2(c.cz + i * 7, c.cx + i * 3) * 12 | 0);
+    const x = c.cx * CHUNK + lx, z = c.cz * CHUNK + lz;
+    let ok = true;
+    for (let dz = -2; dz <= 2 && ok; dz++) for (let dx = -2; dx <= 2 && ok; dx++) ok = get(x + dx, SEA - 1, z + dz) === WATER && get(x + dx, SEA - 2, z + dz) === WATER;
+    if (ok) return { x: x + .5, z: z + .5, sea: climate(x, z).e < 0 };
+  }
+  return null;
+}
+
+// Carts travel back and forth along about half of all roads; only those near the player exist
+const carts = new Map();
+let cartScan = 0, cartTime = 0;
+function makeCart(color) {
+  const g = new THREE.Group(), legs = [];
+  part(g, 1.2, .25, 1.8, 0x7a5a34, 0, .75, 0);                  // bed
+  for (const s of [1, -1]) { part(g, .1, .4, 1.8, 0x6a4a2a, s * .6, 1.05, 0); part(g, .06, .06, 1.5, 0x4a3420, s * .32, .8, 1.5); }
+  part(g, 1.2, .4, .1, 0x6a4a2a, 0, 1.05, -.9);
+  part(g, .5, .35, .5, 0x8a6a40, -.2, 1.05, -.3); part(g, .4, .3, .4, 0x9a8a5a, .25, 1.05, .2);   // sacks
+  const wheels = [wheel(g, .45, .7, .45, 0), wheel(g, .45, -.7, .45, 0)];
+  // Horse
+  part(g, .5, .6, 1.3, 0x5a3a24, 0, 1.15, 2.1); part(g, .28, .55, .3, 0x5a3a24, 0, 1.55, 2.75);
+  part(g, .26, .3, .55, 0x5a3a24, 0, 1.75, 3.05); part(g, .08, .4, .5, 0x2a1a10, 0, 1.7, 2.6);
+  for (const [x, z] of [[.17, 1.65], [-.17, 1.65], [.17, 2.55], [-.17, 2.55]]) {
+    const p = new THREE.Group(); p.position.set(x, .85, z); part(p, .14, .85, .14, 0x4a2a18, 0, -.42, 0); g.add(p); legs.push(p);
+  }
+  // Driver
+  part(g, .4, .5, .3, color, 0, 1.45, .6); part(g, .26, .26, .26, 0xc89a70, 0, 1.85, .6); part(g, .36, .05, .36, 0xc8b070, 0, 2, .6);
+  scene.add(g);
+  return { g, wheels, legs, y: null, s: 0 };
+}
+function groundAt(x, z) {
+  const fx = Math.floor(x), fz = Math.floor(z);
+  let h = terrainHeight(fx, fz);
+  const c = chunks.get(chunkKey(fx >> 4, fz >> 4));
+  if (c && shapeOf(c.data[(fx & 15) + (fz & 15) * CHUNK + h * 256])?.shape === 'slab') h += .5;
+  return Math.max(h, SEA);                                   // bridges sit at water level
+}
+function updateCarts(dt) {
+  cartTime += dt;
+  cartScan -= dt;
+  if (cartScan <= 0) {                                      // which roads near the player carry a cart
+    cartScan = 1;
+    const want = new Set(), rx0 = regionOf(P.pos.x), rz0 = regionOf(P.pos.z);
+    for (let rz = rz0 - 1; rz <= rz0 + 1; rz++) for (let rx = rx0 - 1; rx <= rx0 + 1; rx++)
+      for (const road of roadsForRegion(rx, rz)) if (road.seed < .5 && road.pts.length > 8) want.add(road);
+    for (const [road, cart] of carts) if (!want.has(road)) { scene.remove(cart.g); carts.delete(road); }
+    for (const road of want) if (!carts.has(road)) {
+      if (!road.cum) { road.cum = [0]; for (let i = 2; i < road.pts.length; i += 2) road.cum.push(road.cum.at(-1) + Math.hypot(road.pts[i] - road.pts[i - 2], road.pts[i + 1] - road.pts[i - 1])); }
+      carts.set(road, makeCart([0x3c6e8a, 0x6a8a3c, 0x8a6a3c, 0x7a4a6a][road.seed * 8 & 3]));
+    }
+  }
+  for (const [road, cart] of carts) {
+    // Turn round 9 blocks short of each end, clear of village squares and gates
+    const E = 9, L = road.cum.at(-1) - 2 * E, raw = (cartTime * 2 + road.seed * 9000) % (2 * L), fwd = raw < L, s = E + (fwd ? raw : 2 * L - raw);
+    let i = 1; while (i < road.cum.length - 1 && road.cum[i] < s) i++;
+    const t = (s - road.cum[i - 1]) / (road.cum[i] - road.cum[i - 1] || 1), p = road.pts;
+    const ax = p[i * 2 - 2], az = p[i * 2 - 1], bx = p[i * 2], bz = p[i * 2 + 1];
+    const x = ax + (bx - ax) * t, z = az + (bz - az) * t;
+    const far = Math.hypot(x - P.pos.x, z - P.pos.z) > 120;
+    cart.g.visible = !far;
+    if (far) { cart.y = null; continue; }
+    const y = groundAt(x, z);
+    cart.y = cart.y == null ? y : cart.y + (y - cart.y) * Math.min(1, dt * 8);
+    cart.g.position.set(x, cart.y, z);
+    const yaw = Math.atan2(bx - ax, bz - az) + (fwd ? 0 : Math.PI);
+    let dy = yaw - cart.g.rotation.y; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+    cart.g.rotation.y += dy * Math.min(1, dt * 5);
+    const moved = Math.abs(s - cart.s); cart.s = s;
+    for (const w of cart.wheels) w.rotation.x += moved / .45;
+    const swing = Math.sin(cartTime * 6) * .45;
+    cart.legs.forEach((l, k) => { l.rotation.x = k === 0 || k === 3 ? swing : -swing; });
+  }
+}
+function updateModels(dt) {
+  for (const m of animated) m.tick(dt, clock.elapsedTime);
+  updateCarts(dt);
+}
+
 // Torches and guards of procedural structures live with the chunk they stand in
 function addChunkDecor(c) {
   const plan = planFor(regionOf(c.cx * CHUNK), regionOf(c.cz * CHUNK));
   c.decor = [];
+  const boat = boatSpot(c);
+  if (boat) c.decor.push(['model', makeBoat(boat.x, boat.z, boat.sea, hash2(c.cx, c.cz * 3))]);
   if (!plan) return;
   plan.edits();
   const mine = (x, z) => Math.floor(x / CHUNK) === c.cx && Math.floor(z / CHUNK) === c.cz;
   for (const [x, y, z] of plan.decor.torches) if (mine(x, z)) c.decor.push(['torch', addTorch(x, y, z)]);
+  for (const m of plan.decor.models) if (mine(m.pos[0], m.pos[2])) c.decor.push(['model', makeWindmill(m)]);
   for (const gd of plan.decor.guards) if (mine(gd.a[0], gd.a[2])) c.decor.push(['guard', addGuard(gd.a, gd.b, gd.speed, gd.face ?? 0, { title: plan.title, plan, kind: gd.kind, color: gd.color })]);
 }
 function removeChunkDecor(c) {
-  for (const [kind, obj] of c.decor || []) kind === 'torch' ? removeTorch(obj) : removeGuard(obj);
+  for (const [kind, obj] of c.decor || []) kind === 'torch' ? removeTorch(obj) : kind === 'model' ? removeModel(obj) : removeGuard(obj);
   c.decor = null;
 }
 
@@ -2359,6 +2522,7 @@ function update(dt, t) {
   updateGuards(dt);
   updateLantern(dt);
   checkDiscoveries(dt);
+  updateModels(dt);
 }
 
 function frame() {
@@ -2468,7 +2632,7 @@ streamChunks(P.pos.x, P.pos.z, Infinity);
 // If the world changed under a saved position (e.g. a newer version of the generator), step out on top
 if (collides(P.pos.x, P.pos.y, P.pos.z)) { P.pos.y = surfaceY(Math.floor(P.pos.x), Math.floor(P.pos.z)); P.eye = P.pos.y + 1.6; }
 camera.position.set(P.pos.x, P.eye, P.pos.z);
-window.__fort = { shapeOf, collides, roadsAtNode, linksOf, discovered, roadAt, roadBetween, rawHeight, dlg, describeArea, MAIN_TITLE, lantern, guards, talk, saveGame, store, env, planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
+window.__fort = { boatSpot, carts, animated, shapeOf, collides, roadsAtNode, linksOf, discovered, roadAt, roadBetween, rawHeight, dlg, describeArea, MAIN_TITLE, lantern, guards, talk, saveGame, store, env, planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
 frame();
 </script>
 </body>
