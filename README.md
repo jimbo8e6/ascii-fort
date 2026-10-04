@@ -96,6 +96,13 @@ Villages sit on the road network. The roads meet at a village square with a ston
   - **Farmer:** straw hat and pitchfork.
   - **Homemaker:** headscarf.
 - **Villages remember:** the first time a village comes to life, its roster is recorded: names, jobs, homes, household stock and coins, field progress, the mill's store and the bakery. From then on it's reused rather than worked out again, so jobs are never reassigned. The memory is kept when you leave and come back, and it's saved with your world.
+- **Time passes while you're away:** each remembered village notes when you last saw it. When you come back, its life is replayed hour by hour for the time you were gone, up to 40 days:
+  - crops ripen, are harvested (a sack kept back as seed) and resown;
+  - wheat goes to the mill and is paid for, and the mill grinds it;
+  - the baker bakes, households eat breakfast and buy bread at midday, and the miller supplies the bakery;
+  - merchants visit on market days.
+  
+  The first villager to see you says "Welcome back! You've been away 3 days.", and anyone will answer *What's been happening?* with a summary.
 - **Simulation scope:** only villages near you are fully simulated. When you arrive, everyone starts wherever their routine has them at that hour, and crops keep growing while you're away.
 - **On the map:** villages show as a little house marker once discovered.
 

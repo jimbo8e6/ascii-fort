@@ -2402,6 +2402,7 @@ function cottagePlan(m) {
 const villageMemory = new Map();
 function snapshotVillage(V) {
   return {
+    at: gameHours(),
     houses: V.houses.map(h => ({ seed: h.m.seed, coins: h.coins, stock: { ...h.stock }, boughtDay: h.boughtDay, ateDay: h.ateDay,
       field: h.field && { stage: h.field.stage, sownAt: h.field.sownAt, work: h.field.work, stubble: h.field.stubble },
       people: h.people.map(p => ({ name: p.name, job: p.job, jitter: p.jitter, firstUp: p.firstUp, color: p.color, carrying: p.carrying || 0, carryKind: p.carryKind || null })) })),
@@ -2513,6 +2514,7 @@ function startVillage(plan) {
   // come back exactly as they were, rather than being worked out again
   const mem = villageMemory.get(placeKey(plan)), savedFields = new Map();
   if (mem) {
+    V.news = catchUp(V, mem, gameHours());       // time has passed while you were away
     V.people = [];
     for (const h of V.houses) {
       const mh = mem.houses.find(x => x.seed === h.m.seed);
@@ -2982,6 +2984,72 @@ function merchantAbout(p) {
 function merchantNews(p) {
   const M = p.village.merchant, done = M?.report?.length ? `This morning I ${M.report.join(', ')}.` : 'Quiet morning so far.';
   return `${done} I'll be here until about four, then it's back on the road.`;
+}
+
+// ---- Catch-up: a village's life while you were away ----
+// Replays the remembered village hour by hour from when it was last seen (up to 40 days): crops ripen
+// and are harvested and resown, the mill grinds, the baker bakes, households eat and buy bread, the
+// miller supplies the bakery, and merchants visit on market days. Returns what happened.
+function catchUp(V, mem, now) {
+  if (!Number.isFinite(mem.at) || now - mem.at < 1) return null;
+  const houses = mem.houses, has = (H, job) => H.people.some(p => p.job === job);
+  const millH = houses.find(H => has(H, 'miller')), bakH = houses.find(H => has(H, 'baker'));
+  const M = mem.millStock, B = bakH ? mem.bakery : null, mill = !!V.mill;
+  const news = { hours: now - mem.at, harvests: 0, wheat: 0, milled: 0, baked: 0, sold: 0, flour: 0, merchants: 0, seed: 0 };
+  const pay = (from, to, n) => { n = Math.min(n, from.coins); from.coins -= n; to.coins += n; return n; };
+  const end = Math.min(now, mem.at + 24 * 40);
+  for (let t = Math.ceil(mem.at); t < end; t++) {
+    const day = Math.floor(t / 24), h = t - day * 24;
+    // Fields
+    for (const H of houses) {
+      const f = H.field;
+      if (!f) continue;
+      if (f.stage === 'growing' && t - f.sownAt >= GROW_HOURS) f.stage = 'ripe';
+      if (h < 8 || h >= 17) continue;
+      if (f.stage === 'ripe') {
+        const sacks = 4;                                            // 5 harvested, one kept back as seed
+        Object.assign(f, { stage: 'empty', stubble: true, work: 0 });
+        H.stock.wheatSeed = (H.stock.wheatSeed || 0) + 1; news.harvests++; news.wheat += sacks;
+        if (mill) { M.wheat += sacks; if (millH && millH !== H) pay(millH, H, sacks * ITEMS.wheat.value); }
+        else H.stock.wheat = (H.stock.wheat || 0) + sacks;
+      } else if (f.stage === 'empty' && (H.stock.wheatSeed || 0) > 0) {
+        H.stock.wheatSeed--; Object.assign(f, { stage: 'growing', sownAt: t, stubble: false });
+      }
+    }
+    // The mill and the bakery
+    if (mill && h >= 7 && h < 17 && M.wheat > 0 && (mem.grind = (mem.grind || 0) + 1) >= GRIND_HOURS) { mem.grind -= GRIND_HOURS; M.wheat--; M.flour++; news.milled++; }
+    if (B && h >= 5 && h < 15 && (B.batch || B.flour > 0 && B.bread < 12)) {
+      if (!B.batch) { B.flour--; B.batch = 1e-6; }
+      if ((B.batch += 1) >= BAKE_HOURS) { B.batch = 0; B.bread += LOAVES_PER_SACK; news.baked += LOAVES_PER_SACK; }
+    }
+    if (h === 7) for (const H of houses) if ((H.stock.bread || 0) > 0) H.stock.bread--;                        // breakfast
+    if (B && h === 12) for (const H of houses) if (H !== bakH && B.bread > 0 && H.coins >= ITEMS.bread.value) { // the midday stall
+      pay(H, bakH, ITEMS.bread.value); B.bread--; H.stock.bread = (H.stock.bread || 0) + 1; news.sold++;
+    }
+    if (B && mill && millH && h === 14 && B.flour < 3 && M.flour > 0) {                                          // the miller's flour run
+      const n = Math.min(3, M.flour); M.flour -= n; B.flour += n; pay(bakH, millH, n * ITEMS.flour.value); news.flour += n;
+    }
+    // Market day: the merchant supplies what's short and buys up what's spare
+    if (h === 10 && V.merchantRoute && isMarketDay(V, day)) {
+      news.merchants++;
+      const merchant = { coins: 1e6 };
+      for (const H of houses) if (H.field && !(H.stock.wheatSeed > 0) && H.coins >= 10) { pay(H, merchant, 10); H.stock.wheatSeed = 2; news.seed += 2; }
+      if (B && !mill && B.flour < 4) { const n = Math.min(6, Math.floor(bakH.coins / 8)); pay(bakH, merchant, n * 8); B.flour += n; }
+      if (mill && millH && M.flour > 4) { pay(merchant, millH, (M.flour - 4) * 6); M.flour = 4; }
+      if (B && B.bread > 12) { pay(merchant, bakH, B.bread - 12); B.bread = 12; }
+    }
+  }
+  return news;
+}
+function villageNews(V) {
+  const n = V.news, d = n.hours / 24;
+  const when = d < 1 ? `It's been about ${Math.round(n.hours)} hours since you were last here.` : `It's been ${d < 1.5 ? 'a day' : `about ${Math.round(d)} days`} since you were last here.`;
+  const bits = [];
+  if (n.harvests) bits.push(`${n.harvests === 1 ? 'one field was' : `${n.harvests} fields were`} harvested, ${n.wheat} sacks of wheat in all`);
+  if (n.milled) bits.push(`the mill ground ${n.milled} ${n.milled === 1 ? 'sack' : 'sacks'} of flour`);
+  if (n.baked) bits.push(`the bakery baked ${n.baked} loaves and sold ${n.sold} on the square`);
+  if (n.merchants) bits.push(`the merchant came ${n.merchants === 1 ? 'once' : `${n.merchants} times`}${n.seed ? `, selling ${n.seed} sacks of seed` : ''}`);
+  return bits.length ? `${when} Since then ${bits.join('; ')}.` : `${when} Nothing much has happened.`;
 }
 
 // Conversation pieces for villagers
@@ -3633,7 +3701,13 @@ function updateGuards(dt) {
 
     // Greet once per encounter when you come near; forget you a few seconds after you've gone
     if (sees && dist < 7 && !gd.greeted && now - gd.lastSay > 2) {
-      const v = gd.home?.kind === 'villager';
+      const v = gd.home?.kind === 'villager', V = gd.home?.person?.village;
+      if (V?.news?.hours >= 6 && !V.welcomed && gd.home.person.job !== 'merchant') {
+        V.welcomed = true; gd.greeted = true;
+        const d = V.news.hours / 24;
+        say(gd, `Welcome back! You've been away ${d < 1 ? 'a while' : d < 1.5 ? 'a day' : `${Math.round(d)} days`}.`, 4);
+        continue;
+      }
       say(gd, pick(v ? (night ? LINES.villagerNight : LINES.villager) : night ? LINES.greetNight : LINES.greet)); gd.greeted = true;
     }
     if (gd.lostT > 5) gd.greeted = false;
@@ -3699,6 +3773,7 @@ function showDialogue(text) {
     opts.push(["What's the news?", () => showDialogue(merchantNews(p))]);
   } else if (p) {
     opts.push(["Let's trade.", () => showTrade(p)]);
+    if (p.village.news?.hours >= 6) opts.push(["What's been happening?", () => showDialogue(villageNews(p.village))]);
     opts.push(['Who are you?', () => showDialogue(villagerAbout(p))]);
     opts.push(['What are you doing?', () => showDialogue(villagerDoing(p))]);
     if (p.house.field) opts.push(['How are the crops?', () => showDialogue(villagerCrops(p))]);
