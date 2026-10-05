@@ -118,6 +118,18 @@ Villages sit on the road network. The roads meet at a village square with a ston
 - **Simulation scope:** only villages near you are fully simulated. When you arrive, everyone starts wherever their routine has them at that hour, and crops keep growing while you're away.
 - **On the map:** villages show as a little house marker once discovered.
 
+## Wildlife
+
+The countryside has docile animals for now. Nothing attacks you, and you can't hunt them yet.
+
+- **Deer** graze in small herds in plains and forests. The herd has a stag with antlers and a few does. Get too close and the whole herd bolts.
+- **Rabbits** nibble the grass and sit up now and then. Their colour suits the land: brown, white in the snow, or sandy in the desert. They zig-zag away if you come near.
+- **Squirrels** live where there are trees. When startled they run for the nearest trunk and climb it, then come back down once you've moved on.
+- **Songbirds** (sparrows, robins and blackbirds) hop and peck on the ground and fly off in an arc when you approach.
+- **Hawks** circle high over open country during the day.
+
+Animals spawn with the chunks around you, so each patch of land always has the same sort of wildlife. They're quieter at night: most of them rest, and they let you get a little closer before they run.
+
 ## Windmills, carts and boats
 
 These are placed by the seed like everything else:
@@ -231,3 +243,4 @@ The world map (M) shows biomes, water depth and hill shading, with the fort and 
 10. **ASCII pass.** The 3D scene is rendered into a low-resolution target, at 2× the character grid. A full-screen shader picks a character for each cell based on its brightness, then tints it with the scene colour. The glyph atlas is redrawn at the exact on-screen cell size, so small characters stay sharp.
    - **FINE** (default): about 40 characters, sorted at startup by how much ink each covers, with some of the scene colour blended behind them. This gives smooth shading.
    - **CLASSIC**: the short ramp ` .,:-=+*o#%@` on a dark background.
+11. **Animals.** Each animal is a small model made of boxes, with jointed legs, neck, tail or wings. A simple state machine (idle, walk, flee, climb, fly) moves it over the terrain heightmap, keeping it off roads and out of buildings. Animals only update within about 90 blocks of you.

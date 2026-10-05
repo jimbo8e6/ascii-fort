@@ -3416,10 +3416,224 @@ function villagerSeed(p) {
     (other ? `If a harvest fails, we buy seed from the merchant who comes over from ${other.title}.` : 'If a harvest fails, we have to wait for a merchant to come by with seed.');
 }
 
+// ---------------------------------------------------------------------------
+// Wildlife: docile animals that wander, graze and rest, and run (or fly, or climb) from you.
+// Spawned from the seed per chunk to suit the biome, never in villages, forts or water.
+// ---------------------------------------------------------------------------
+const animals = new Set();
+const ANIMAL = {
+  deer: { walk: 1.1, run: 7.5, flee: 13, fleeDist: 30, roam: 14 },
+  rabbit: { walk: 1.4, run: 6.5, flee: 6, fleeDist: 12, roam: 7 },
+  squirrel: { walk: 1.6, run: 5, flee: 5, fleeDist: 0, roam: 5 },
+  bird: { walk: .9, run: 9, flee: 5.5, fleeDist: 22, roam: 4 },
+};
+const okGround = (x, z) => { const h = terrainHeight(Math.floor(x), Math.floor(z)); return h > SEA + .5 && !structureAt(Math.floor(x), Math.floor(z)) && !roadAt(Math.floor(x), Math.floor(z)) ? h : null; };
+
+function animalModel(kind, look) {
+  const g = new THREE.Group(), body = new THREE.Group(), legs = [], extra = {};
+  g.add(body);
+  const leg = (x, y, z, w, h, c) => { const p = new THREE.Group(); p.position.set(x, y, z); part(p, w, h, w, c, 0, -h / 2, 0); body.add(p); legs.push(p); return p; };
+  if (kind === 'deer') {
+    const c = 0x8a5a34;
+    part(body, .5, .5, 1.15, c, 0, 1.05, 0); part(body, .44, .12, 1, 0xd8c8a8, 0, .78, 0);     // body, pale belly
+    for (const [x, z] of [[.16, .4], [-.16, .4], [.16, -.42], [-.16, -.42]]) leg(x, .9, z, .1, .9, 0x6a4428);
+    const neck = new THREE.Group(); neck.position.set(0, 1.2, .5); body.add(neck); extra.neck = neck;
+    part(neck, .2, .55, .2, c, 0, .25, .08).rotation.x = .35;
+    part(neck, .2, .22, .4, c, 0, .52, .26); part(neck, .1, .08, .08, 0x1a1210, 0, .5, .48);   // head, nose
+    for (const s of [1, -1]) part(neck, .05, .14, .1, c, s * .1, .68, .18);                      // ears
+    if (look === 'stag') for (const s of [1, -1]) {                                              // antlers
+      const a = new THREE.Group(); a.position.set(s * .07, .65, .2); a.rotation.z = -s * .35; neck.add(a);
+      part(a, .04, .5, .04, 0xd8c8a0, 0, .25, 0); part(a, .04, .22, .04, 0xd8c8a0, 0, .3, .1).rotation.x = .7; part(a, .04, .2, .04, 0xd8c8a0, 0, .45, -.06).rotation.x = -.6;
+    }
+    part(body, .12, .14, .06, 0xf2eee6, 0, 1.18, -.6);                                          // white tail
+  } else if (kind === 'rabbit') {
+    const c = look === 'snow' ? 0xeeeef2 : look === 'sand' ? 0xb8996a : 0x8a6a4a;
+    part(body, .26, .24, .38, c, 0, .2, 0); part(body, .2, .19, .2, c, 0, .32, .2);
+    for (const s of [1, -1]) part(body, .05, .2, .04, c, s * .05, .5, .16).rotation.x = -.25; // ears
+    part(body, .09, .09, .07, 0xf6f4f0, 0, .26, -.21);                                        // tail
+    for (const s of [1, -1]) leg(s * .09, .1, -.1, .07, .1, c);
+  } else if (kind === 'squirrel') {
+    const c = 0x9a4a24;
+    part(body, .13, .14, .26, c, 0, .12, 0); part(body, .11, .11, .12, c, 0, .2, .15);
+    const tail = new THREE.Group(); tail.position.set(0, .14, -.12); body.add(tail); extra.tail = tail;
+    part(tail, .12, .32, .1, 0xaa5a30, 0, .15, -.05).rotation.x = -.35;
+    for (const s of [1, -1]) leg(s * .05, .06, .04, .04, .06, c);
+  } else {                                                                                     // songbird
+    const [c, chest] = look === 'robin' ? [0x6a5a48, 0xc8562a] : look === 'blackbird' ? [0x1e1e22, 0x1e1e22] : [0x7a5a3a, 0xb09a7a];
+    part(body, .1, .1, .18, c, 0, .1, 0); part(body, .08, .07, .06, chest, 0, .09, .07);
+    part(body, .07, .07, .07, c, 0, .16, .1); part(body, .03, .02, .05, look === 'blackbird' ? 0xe0a020 : 0x3a3020, 0, .15, .15);
+    for (const s of [1, -1]) { const w = new THREE.Group(); w.position.set(s * .05, .13, 0); body.add(w); part(w, .14, .015, .11, c, s * .07, 0, 0); legs.push(w); }
+  }
+  scene.add(g);
+  return { g, body, legs, ...extra };
+}
+
+function addAnimal(kind, x, z, opts = {}) {
+  const y = okGround(x, z);
+  if (y === null) return null;
+  const a = { kind, x, z, y, home: [x, z], heading: Math.random() * 6.28, state: 'idle', t: Math.random() * 4, target: null, herd: opts.herd, tree: opts.tree,
+    ...animalModel(kind, opts.look), phase: Math.random() * 10, climb: 0 };
+  a.g.position.set(x, y, z);
+  animals.add(a);
+  return a;
+}
+function removeAnimal(a) { scene.remove(a.g); animals.delete(a); }
+
+// Soaring hawks: circle high over the land, purely for the sky
+function addHawk(x, z) {
+  const g = new THREE.Group(), wings = [];
+  part(g, .18, .14, .5, 0x3a2a1e, 0, 0, 0); part(g, .1, .1, .12, 0x3a2a1e, 0, .03, .3);
+  for (const s of [1, -1]) { const w = new THREE.Group(); w.position.x = s * .08; g.add(w); part(w, .7, .03, .3, 0x4a3424, s * .35, 0, 0); wings.push(w); }
+  scene.add(g);
+  const a = { kind: 'hawk', g, wings, cx: x, cz: z, r: 14 + Math.random() * 12, alt: 26 + Math.random() * 10, phase: Math.random() * 6.28, speed: .18 + Math.random() * .1 };
+  animals.add(a);
+  return a;
+}
+
+// What lives in a chunk, by biome
+function spawnAnimals(c) {
+  const out = [], ox = c.cx * CHUNK, oz = c.cz * CHUNK, r = mulberry32(Math.imul(c.cx, 92821) ^ Math.imul(c.cz, 68917) ^ SEED ^ 0xa11);
+  const mx = ox + 8, mz = oz + 8, cl = climate(mx, mz), h = terrainHeight(mx, mz), biome = biomeOf(cl, h);
+  if (biome === OCEAN || structureAt(mx, mz) || flatness(mx, mz) > .05) return out;
+  const near = (n) => [ox + 2 + r() * 12, oz + 2 + r() * 12];
+  const put = (kind, x, z, o) => { const a = addAnimal(kind, x, z, o); if (a) out.push(a); };
+  const odds = { [FOREST]: { deer: .07, rabbit: .08, squirrel: .3, bird: .1 }, [PLAINS]: { deer: .06, rabbit: .16, squirrel: .05, bird: .14 },
+    [SNOWY]: { deer: .05, rabbit: .09, squirrel: .03, bird: .03 }, [DESERT]: { deer: 0, rabbit: .05, squirrel: 0, bird: .03 } }[biome];
+  if (r() < odds.deer) {                                                         // a herd: a stag and some does
+    const [x, z] = near(), herd = { id: r() };
+    put('deer', x, z, { herd, look: 'stag' });
+    for (let i = 0, n = 1 + (r() * 3 | 0); i < n; i++) put('deer', x + (r() - .5) * 6, z + (r() - .5) * 6, { herd, look: 'doe' });
+  }
+  if (r() < odds.rabbit) {
+    const [x, z] = near(), look = biome === SNOWY ? 'snow' : biome === DESERT ? 'sand' : 'brown';
+    for (let i = 0, n = 1 + (r() * 3 | 0); i < n; i++) put('rabbit', x + (r() - .5) * 4, z + (r() - .5) * 4, { look });
+  }
+  if (r() < odds.squirrel) {                                                     // squirrels live by a tree trunk
+    const trunks = [];
+    for (let i = 0; i < 60 && trunks.length < 6; i++) {
+      const lx = r() * 16 | 0, lz = r() * 16 | 0, gh = terrainHeight(ox + lx, oz + lz);
+      if (gh < H - 2 && c.data[lx + lz * CHUNK + gh * 256] === LOG) trunks.push([ox + lx + .5, oz + lz + .5, gh]);
+    }
+    for (const t of trunks.slice(0, 1 + (r() * 2 | 0))) put('squirrel', t[0] + 1.2, t[1] + .4, { tree: t });
+  }
+  if (r() < odds.bird) {
+    const [x, z] = near(), look = ['sparrow', 'robin', 'blackbird'][r() * 3 | 0], herd = { id: r() };
+    for (let i = 0, n = 3 + (r() * 3 | 0); i < n; i++) put('bird', x + (r() - .5) * 3, z + (r() - .5) * 3, { look, herd });
+  }
+  if (r() < .03) out.push(addHawk(mx, mz));
+  return out;
+}
+
+// Pick somewhere to go: a wander within the home range, or away from the player when fleeing
+function pickTarget(a, fromPlayer) {
+  const spec = ANIMAL[a.kind];
+  for (let k = 0; k < 8; k++) {
+    let x, z;
+    if (fromPlayer) {
+      const ang = Math.atan2(a.x - P.pos.x, a.z - P.pos.z) + (Math.random() - .5) * 1.2, d = spec.fleeDist * (.7 + Math.random() * .5);
+      x = a.x + Math.sin(ang) * d; z = a.z + Math.cos(ang) * d;
+    } else { const ang = Math.random() * 6.28, d = Math.random() * spec.roam; x = a.home[0] + Math.sin(ang) * d; z = a.home[1] + Math.cos(ang) * d; }
+    if (okGround(x, z) !== null) return [x, z];
+  }
+  return null;
+}
+function startle(a) {
+  const group = a.herd ? [...animals].filter(b => b.herd === a.herd) : [a];
+  for (const b of group) {
+    if (b.state === 'flee' || b.state === 'fly' || b.state === 'up') continue;
+    if (b.kind === 'squirrel' && b.tree) { b.state = 'toTree'; b.target = [b.tree[0] + .3, b.tree[1]]; continue; }
+    const t = pickTarget(b, true);
+    if (!t) continue;
+    b.target = t; b.state = b.kind === 'bird' ? 'fly' : 'flee'; b.from = [b.x, b.y, b.z]; b.flyT = 0;
+    if (b.kind === 'bird') b.home = t;                                  // they settle where they land
+  }
+}
+
+let animalSpin = 0;
+function updateAnimals(dt) {
+  if (!dt) return;
+  const night = env.daylight < .15, t = clock.elapsedTime;
+  for (const a of animals) {
+    if (a.kind === 'hawk') {                                            // circling high up
+      a.phase += dt * a.speed;
+      const x = a.cx + Math.cos(a.phase) * a.r, z = a.cz + Math.sin(a.phase) * a.r;
+      a.g.position.set(x, terrainHeight(Math.floor(a.cx), Math.floor(a.cz)) + a.alt, z);
+      a.g.rotation.set(0, -a.phase, 0); a.g.rotation.z = -.25;
+      a.wings.forEach((w, i) => { w.rotation.z = (i ? -1 : 1) * Math.sin(t * 1.5 + a.phase) * .08; });
+      a.g.visible = !night;
+      continue;
+    }
+    const d = Math.hypot(a.x - P.pos.x, a.z - P.pos.z);
+    a.g.visible = d < 120;
+    if (d > 90) continue;
+    const spec = ANIMAL[a.kind];
+    if (d < spec.flee * (night ? .6 : 1) && Math.abs(P.pos.y - a.y) < 6 && ['idle', 'walk', 'down'].includes(a.state)) startle(a);
+    let speed = 0, bob = 0;
+    if (a.state === 'idle') {
+      a.t -= dt;
+      if (a.t <= 0) {
+        const tgt = !night || Math.random() < .2 ? pickTarget(a, false) : null;
+        if (tgt) { a.target = tgt; a.state = 'walk'; } else a.t = night ? 8 + Math.random() * 10 : 2 + Math.random() * 5;
+      }
+    }
+    if (a.state === 'walk' || a.state === 'flee' || a.state === 'toTree') {
+      speed = a.state === 'walk' ? spec.walk : spec.run;
+      const dx = a.target[0] - a.x, dz = a.target[1] - a.z, dist = Math.hypot(dx, dz);
+      if (dist < .3) {
+        if (a.state === 'toTree') { a.state = 'up'; a.climb = 0; }
+        else { a.t = a.state === 'flee' ? 1 : 2 + Math.random() * 6; a.state = 'idle'; }
+        speed = 0;
+      } else {
+        const want = Math.atan2(dx, dz); let dh = Math.atan2(Math.sin(want - a.heading), Math.cos(want - a.heading));
+        a.heading += dh * Math.min(1, dt * (a.state === 'walk' ? 3 : 8));
+        if (a.kind === 'rabbit' && a.state === 'flee') a.heading += Math.sin(t * 9 + a.phase) * dt * 4;    // zig-zag
+        const step = Math.min(dist, speed * dt), nx = a.x + Math.sin(a.heading) * step, nz = a.z + Math.cos(a.heading) * step, ny = okGround(nx, nz);
+        if (ny === null || Math.abs(ny - a.y) > (a.state === 'walk' ? 1.1 : 1.6)) { a.state = 'idle'; a.t = .5; speed = 0; }
+        else { a.x = nx; a.z = nz; a.y += (ny - a.y) * Math.min(1, dt * 10); }
+      }
+    } else if (a.state === 'fly') {                                     // an arc through the air to somewhere new
+      const [fx, fy, fz] = a.from, dist = Math.hypot(a.target[0] - fx, a.target[1] - fz);
+      a.flyT = Math.min(1, a.flyT + dt * spec.run / Math.max(4, dist));
+      const k = a.flyT, ty = okGround(a.target[0], a.target[1]) ?? fy;
+      a.x = fx + (a.target[0] - fx) * k; a.z = fz + (a.target[1] - fz) * k; a.y = fy + (ty - fy) * k + Math.sin(Math.PI * k) * (4 + dist * .25);
+      a.heading = Math.atan2(a.target[0] - fx, a.target[1] - fz);
+      if (k >= 1) { a.state = 'idle'; a.t = 3 + Math.random() * 4; }
+    } else if (a.state === 'up' || a.state === 'down') {                // the squirrel up its tree, and back down when you've gone
+      a.climb = Math.max(0, Math.min(1, a.climb + (a.state === 'up' ? dt : -dt) * .8));
+      a.y = a.tree[2] + a.climb * 3.4; a.x = a.tree[0] + .3; a.z = a.tree[1];
+      if (a.state === 'up' && a.climb >= 1 && d > 12) a.state = 'down';
+      if (a.state === 'down' && a.climb <= 0) { a.state = 'idle'; a.t = 2; }
+    }
+    // Pose and animation
+    a.g.position.set(a.x, a.y, a.z);
+    a.g.rotation.set(0, a.heading, 0);
+    const moving = speed > 0, gait = t * (a.state === 'flee' ? 14 : 7) + a.phase;
+    if (a.kind === 'deer') {
+      a.legs.forEach((l, i) => { l.rotation.x = moving ? Math.sin(gait + (i % 2 ? Math.PI : 0) + (i > 1 ? 1.5 : 0)) * (a.state === 'flee' ? .7 : .35) : 0; });
+      const grazing = a.state === 'idle' && !night && Math.sin(t * .3 + a.phase) > 0;
+      a.neck.rotation.x += ((grazing ? 1.2 : 0) - a.neck.rotation.x) * Math.min(1, dt * 2);
+      a.body.position.y = a.state === 'flee' ? Math.abs(Math.sin(gait * .5)) * .3 : 0;
+    } else if (a.kind === 'rabbit') {
+      bob = moving ? Math.abs(Math.sin(gait * .8)) * (a.state === 'flee' ? .35 : .18) : 0;
+      a.body.position.y = bob; a.body.rotation.x = moving ? -.15 : (Math.sin(t * .5 + a.phase) > .6 ? -.5 : 0);   // sits up now and then
+    } else if (a.kind === 'squirrel') {
+      a.body.position.y = moving ? Math.abs(Math.sin(gait)) * .08 : 0;
+      a.body.rotation.x = a.state === 'up' || a.state === 'down' ? -Math.PI / 2 * Math.min(1, a.climb * 5 + .2) : 0;
+      a.tail.rotation.x = Math.sin(t * 3 + a.phase) * .2;
+    } else {
+      const flying = a.state === 'fly';
+      a.legs.forEach((w, i) => { w.rotation.z = flying ? (i ? -1 : 1) * Math.sin(t * 30 + a.phase) * .9 : 0; });
+      a.body.position.y = !flying && moving ? Math.abs(Math.sin(gait * 1.5)) * .06 : 0;
+      a.body.rotation.x = !flying && a.state === 'idle' && Math.sin(t * 2 + a.phase * 3) > .7 ? .6 : 0;       // pecking
+    }
+  }
+}
+
 // Torches and guards of procedural structures live with the chunk they stand in
 function addChunkDecor(c) {
   const plan = planFor(regionOf(c.cx * CHUNK), regionOf(c.cz * CHUNK));
   c.decor = [];
+  for (const a of spawnAnimals(c)) c.decor.push(['animal', a]);
   const boat = boatSpot(c);
   if (boat) c.decor.push(['model', makeBoat(boat.x, boat.z, boat.sea, hash2(c.cx, c.cz * 3))]);
   if (!plan) return;
@@ -3436,7 +3650,7 @@ function addChunkDecor(c) {
   for (const gd of plan.decor.guards) if (mine(gd.a[0], gd.a[2])) c.decor.push(['guard', addGuard(gd.a, gd.b, gd.speed, gd.face ?? 0, { title: plan.title, plan, kind: gd.kind, color: gd.color })]);
 }
 function removeChunkDecor(c) {
-  for (const [kind, obj] of c.decor || []) kind === 'torch' ? removeTorch(obj) : kind === 'model' ? removeModel(obj) : kind === 'building' ? removeBuilding(obj) : kind === 'village' ? stopVillage(obj) : removeGuard(obj);
+  for (const [kind, obj] of c.decor || []) kind === 'animal' ? removeAnimal(obj) : kind === 'torch' ? removeTorch(obj) : kind === 'model' ? removeModel(obj) : kind === 'building' ? removeBuilding(obj) : kind === 'village' ? stopVillage(obj) : removeGuard(obj);
   c.decor = null;
 }
 
@@ -4273,6 +4487,7 @@ function update(dt, t) {
   updateVillages();
   processRuns(dt);
   updateModels(dt);
+  updateAnimals(dt);
   updateCottages(dt);
   if (dt) pushFromSolids();
   updateBridges(dt);
@@ -4396,7 +4611,7 @@ function simulate(seconds) {
   env.speedIdx = keep;
 }
 updatePurse();
-window.__fort = { rosterFor, tradeRun, stateOf, runs, tradeCarts, isTradeDay, isMarketDay, player, villageMemory, gameHours, millBusy, simulate, villages, activityFor, cottages, colliderGrid, solids, activeBridges, roadInfo, boatSpot, carts, animated, shapeOf, collides, roadsAtNode, linksOf, discovered, roadAt, roadBetween, rawHeight, dlg, describeArea, MAIN_TITLE, lantern, guards, talk, saveGame, store, env, planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
+window.__fort = { animals, rosterFor, tradeRun, stateOf, runs, tradeCarts, isTradeDay, isMarketDay, player, villageMemory, gameHours, millBusy, simulate, villages, activityFor, cottages, colliderGrid, solids, activeBridges, roadInfo, boatSpot, carts, animated, shapeOf, collides, roadsAtNode, linksOf, discovered, roadAt, roadBetween, rawHeight, dlg, describeArea, MAIN_TITLE, lantern, guards, talk, saveGame, store, env, planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
 frame();
 </script>
 </body>
