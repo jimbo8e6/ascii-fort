@@ -1721,7 +1721,7 @@ const guards = [];
 const guardGeo = new Map(), guardMat = new Map();
 function makeGuard(kind = 'guard', color = 0x3c6e8a, job = null) {
   const g = new THREE.Group();
-  let sack = null;
+  let sack = null, bow = null;
   const box = (w, h, d, c, x, y, z) => {
     const gk = `${w},${h},${d}`;
     if (!guardGeo.has(gk)) guardGeo.set(gk, new THREE.BoxGeometry(w, h, d));
@@ -1752,7 +1752,7 @@ function makeGuard(kind = 'guard', color = 0x3c6e8a, job = null) {
     } else if (job === 'hunter') {
       g.add(box(.53, .72, .33, 0x3e5a2e, 0, 1.15, 0));                                                             // green tunic
       g.add(box(.36, .26, .36, 0x2e4a24, 0, 1.75, -.02)); g.add(box(.2, .2, .1, 0x2e4a24, 0, 1.62, -.2));       // hood
-      g.add(box(.04, 1.1, .04, 0x6a4a2a, -.05, 1.2, -.2)); g.add(box(.12, .5, .12, 0x6a4a2a, .14, 1.3, -.2));   // bow and quiver
+      g.add(bow = box(.04, 1.1, .04, 0x6a4a2a, -.05, 1.2, -.2)); g.add(box(.12, .5, .12, 0x6a4a2a, .14, 1.3, -.2));   // bow and quiver
     } else if (job === 'baker') {
       g.add(box(.42, .58, .04, 0xf2efe6, 0, 1.08, .16));                          // apron
       g.add(box(.32, .14, .32, 0xf2efe6, 0, 1.86, 0)); g.add(box(.38, .12, .38, 0xf2efe6, 0, 1.97, 0));   // baker's cap
@@ -1776,7 +1776,7 @@ function makeGuard(kind = 'guard', color = 0x3c6e8a, job = null) {
     g.add(box(.1, .25, .1, 0xaaaaaa, .35, 2.5, .1));
   }
   scene.add(g);
-  return { g, legs, sack };
+  return { g, legs, sack, bow };
 }
 function addGuard(a, b, speed, face = 0, home = null) {
   const guard = makeGuard(home?.kind, home?.color, home?.person?.job);
@@ -2540,6 +2540,7 @@ function startVillage(plan) {
   if (info.mill) V.piles = makeMillPiles(V, info.mill);
   // Bring everyone in at wherever their routine has them right now
   for (const p of V.people) {
+    if (p.job === 'hunter') p.house.stock.arrows ??= MAX_ARROWS;
     p.act = activityFor(p, env.time);
     const n = targetNode(p, p.act);
     p.gd = addGuard([n.x, n.y, n.z], null, 0, n.face ?? 0, { title: plan.title, plan, kind: 'villager', color: p.color, person: p });
@@ -2552,6 +2553,7 @@ function startVillage(plan) {
 }
 function stopVillage(V) {
   if (V.merchant) removeMerchant(V);
+  for (const p of V.people) if (p.hunt || p.game?.length) { butcher(p.house, p.game); if (p.hunt) { hunters.delete(p); p.hunt = null; } }   // home with whatever they had
   villageMemory.set(placeKey(V.plan), snapshotVillage(V));
   for (const p of V.people) removeGuard(p.gd);
   for (const h of V.houses) { activeHouses.delete(h.m.seed); houseAwake.delete(h.m.seed); }
@@ -2574,7 +2576,7 @@ function activityFor(p, h) {
   if (p.job === 'miller') return millerTask(p);
   if (p.job === 'farmer') return farmTask(p);
   if (p.job === 'woodcutter') return 'chop';
-  if (p.job === 'hunter') return HUNT_GOOD(p.village.plan, env.day) ? (h < 15.5 ? 'hunt' : 'rack') : 'rack';
+  if (p.job === 'hunter') return p.hunt || !p.game?.length && HUNT_GOOD(p.village.plan, env.day) && (p.house.stock.arrows ?? MAX_ARROWS) > 0 && h < 15.5 ? 'hunt' : 'rack';   // home to the rack with whatever they've caught
   return Math.floor(h) % 2 ? 'chores' : 'well';
 }
 function targetNode(p, act) {
@@ -2600,7 +2602,9 @@ function pose(gd, n, lying) {
 }
 // Walk towards the current goal; re-plan when the schedule moves on
 function stepAgent(gd, dt) {
-  const A = gd.agent, p = gd.home.person, want = activityFor(p, env.time);
+  const A = gd.agent, p = gd.home.person;
+  if (p.hunt) { huntStep(gd, p, dt); return; }
+  const want = activityFor(p, env.time);
   if (want !== p.act || p.retarget) {
     p.retarget = false; p.act = want; A.goal = targetNode(p, want); A.path = route(A.node, A.goal);
     gd.g.rotation.x = 0; A.asleep = false;
@@ -2616,6 +2620,8 @@ function stepAgent(gd, dt) {
       gd.legs[0].rotation.x = swing; gd.legs[1].rotation.x = -swing;
     }
     if (!A.path.length) { pose(gd, A.goal, p.act === 'sleep'); A.asleep = p.act === 'sleep'; A.pause = 1.5 + Math.random() * 2; }
+  } else if (p.act === 'hunt' && A.node === p.village.edge) {
+    tryHunt(p);
   } else if (FIELD_TASKS.has(p.act) && (A.pause -= dt) <= 0) {      // work along the rows, end to end
     const h = p.house; A.goal = A.node === h.fieldA ? h.fieldB : h.fieldA; A.path = route(A.node, A.goal);
   }
@@ -2726,13 +2732,19 @@ function workVillage(V, dh) {
       H.work = (H.work || 0) + dh;
       if (H.work >= 2) { H.work = 0; if ((H.stock.lumber || 0) < 12) H.stock.lumber = (H.stock.lumber || 0) + 1; }
     }
-    if (p.job === 'hunter') {                                           // out of sight while hunting; back with meat and a hide
-      p.gd.g.visible = !(p.act === 'hunt' && !A.path.length && A.node === V.edge);
-      if (p.act === 'rack' && atField && HUNT_GOOD(V.plan, env.day) && H.huntDay !== env.day) {
-        H.huntDay = env.day; H.stock.meat = Math.min(10, (H.stock.meat || 0) + 2 + (Math.random() * 2 | 0)); H.stock.hide = Math.min(6, (H.stock.hide || 0) + 1);
+    if (p.job === 'hunter') {
+      // With game about they hunt in plain sight (see huntStep); otherwise they go further afield, out of sight
+      p.gd.g.visible = !(p.act === 'hunt' && !p.hunt && !A.path.length && A.node === V.edge);
+      if (p.act === 'rack' && atField) {
+        if (p.game?.length) { butcher(H, p.game); H.huntDay = env.day; }
+        else if (HUNT_GOOD(V.plan, env.day) && H.huntDay !== env.day && p.liveDay !== env.day) {
+          H.huntDay = env.day; H.stock.meat = Math.min(12, (H.stock.meat || 0) + 2 + (Math.random() * 2 | 0)); H.stock.hide = Math.min(6, (H.stock.hide || 0) + 1);
+        }
+        H.fletch = (H.fletch || 0) + dh;                                // and fletches arrows, one an hour
+        if (H.fletch >= 1) { H.fletch = 0; H.stock.arrows = Math.min(MAX_ARROWS, (H.stock.arrows ?? MAX_ARROWS) + 1); }
       }
     }
-    if (p.gd.sack) { p.gd.sack.visible = !!p.carrying; p.gd.sack.material = p.carryKind === 'flour' ? SACK_FLOUR : SACK_WHEAT; }
+    if (p.gd.sack && !p.hunt) { p.gd.sack.visible = !!p.carrying; p.gd.sack.material = p.carryKind === 'flour' ? SACK_FLOUR : SACK_WHEAT; }
   }
   if (V.bakery) workBakery(V, dh);
   // Breakfast: a household eats a loaf a day if it has one, or else a cut of meat
@@ -2763,6 +2775,7 @@ function makeMillPiles(V, m) {
 // Coins move along the grain chain: villagers buy bread from the baker, the baker buys flour from the
 // miller, and the miller pays the farmers for their wheat.
 const BAKE_HOURS = 1.5, LOAVES_PER_SACK = 8;
+const SACK_GAME = new THREE.MeshLambertMaterial({ color: 0x7a5236 });
 const SACK_WHEAT = new THREE.MeshLambertMaterial({ color: 0xc8a860 }), SACK_FLOUR = new THREE.MeshLambertMaterial({ color: 0xe8e2d0 });
 const stalls = new Map();
 // Loaves for a counter or stall: a group in the building's frame; shown up to the stock on hand
@@ -3063,7 +3076,8 @@ function catchUp(V, mem, now) {
     const cutter = houses.find(H => has(H, 'woodcutter')), hunter = houses.find(H => has(H, 'hunter'));
     if (cutter && h >= 8 && h < 17 && h !== 12 && (cutter.work = (cutter.work || 0) + 1) >= 2) { cutter.work = 0; if ((cutter.stock.lumber || 0) < 12) { cutter.stock.lumber = (cutter.stock.lumber || 0) + 1; news.lumber++; } }
     if (hunter && h === 16 && HUNT_GOOD(V.plan, day) && hunter.huntDay !== day) {
-      hunter.huntDay = day; hunter.stock.meat = Math.min(10, (hunter.stock.meat || 0) + 3); hunter.stock.hide = Math.min(6, (hunter.stock.hide || 0) + 1); news.hunts++;
+      hunter.huntDay = day; hunter.stock.meat = Math.min(12, (hunter.stock.meat || 0) + 3); hunter.stock.hide = Math.min(6, (hunter.stock.hide || 0) + 1); news.hunts++;
+      hunter.stock.arrows = Math.min(MAX_ARROWS, (hunter.stock.arrows ?? MAX_ARROWS) + 3);
     }
     if (B && h === 12) for (const H of houses) if (H !== bakH && B.bread > 0 && H.coins >= ITEMS.bread.value) { // the midday stall
       pay(H, bakH, ITEMS.bread.value); B.bread--; H.stock.bread = (H.stock.bread || 0) + 1; news.sold++;
@@ -3127,7 +3141,7 @@ function rosterFor(plan) {
   } else {
     // A forest village: a woodcutter and a hunter, and no way of growing grain
     if (houses[0]) { houses[0].people[0].job = 'woodcutter'; houses[0].stock.lumber = 3 + (rnd() * 4 | 0); }
-    if (houses[1]) { houses[1].people[0].job = 'hunter'; houses[1].stock.meat = 2 + (rnd() * 3 | 0); houses[1].stock.hide = 1 + (rnd() * 2 | 0); }
+    if (houses[1]) { houses[1].people[0].job = 'hunter'; houses[1].stock.meat = 2 + (rnd() * 3 | 0); houses[1].stock.hide = 1 + (rnd() * 2 | 0); houses[1].stock.arrows = MAX_ARROWS; }
   }
   for (const h of houses) {
     if (h.people.some(p => p.job === 'farmer' || p.job === 'miller')) { const r = rnd(); h.field = { stage: r < .45 ? 'growing' : r < .7 ? 'ripe' : 'empty', sownAt: T - rnd() * (GROW_HOURS - 2), work: 0, stubble: rnd() < .5 }; }
@@ -3338,11 +3352,19 @@ function villagerDoing(p) {
     counter: 'Minding the shop.' + (p.village.bakery?.flour ? '' : " We're out of flour, so there's no baking until the miller comes by."),
     stall: 'Selling bread on the square. Two coins a loaf.',
     chop: 'Splitting logs. Lumber keeps, and the cart takes all I can spare.',
-    hunt: 'Off to the woods. Wish me luck.',
-    rack: HUNT_GOOD(p.village.plan, env.day) ? 'Hanging the hides to dry. Good hunting today.' : 'Mending the rack. Nothing worth chasing today.',
+    hunt: huntLine(p),
+    rack: rackLine(p),
     sellFlour: p.carrying ? `Taking ${p.carrying} ${p.carrying === 1 ? 'sack' : 'sacks'} of flour to the bakery.` : "Fetching flour from the mill. The baker's running low.",
     deliver: `Taking ${p.carrying} ${p.carrying === 1 ? 'sack' : 'sacks'} of wheat up to the mill.`,
   }[p.act] || 'Nothing much.';
+}
+function rackLine(p) {
+  const H = p.house, bag = H.lastBag?.day === env.day ? H.lastBag.game : null, arrows = H.stock.arrows ?? MAX_ARROWS;
+  if (bag) return `Dressing what I brought home: ${bagWords(bag)}. The hide goes on the rack to dry.`;
+  if (env.time > 12 && p.liveDay === env.day) return 'Came home empty-handed. It happens. ' + (arrows < MAX_ARROWS ? 'Fletching a few arrows to replace the ones I lost.' : '');
+  if (arrows <= 0) return "Out of arrows, so there's no hunting until I've fletched some more.";
+  if (arrows < 6) return `Fletching arrows. I'm down to ${arrows}.`;
+  return HUNT_GOOD(p.village.plan, env.day) ? 'Hanging the hides to dry. Good hunting today.' : 'Mending the rack. Nothing worth chasing today.';
 }
 function villagerCrops(p) {
   const f = p.house.field, seed = p.house.stock.wheatSeed || 0;
@@ -3429,8 +3451,18 @@ const ANIMAL = {
 };
 const okGround = (x, z) => { const h = terrainHeight(Math.floor(x), Math.floor(z)); return h > SEA + .5 && !structureAt(Math.floor(x), Math.floor(z)) && !roadAt(Math.floor(x), Math.floor(z)) ? h : null; };
 
+// Invisible boxes that arrows are tested against. A deer's heart sits low in the chest, behind the
+// foreleg; the small animals get a box a little bigger than they look, so an arrow can find them.
+const HIT_MAT = new THREE.MeshBasicMaterial({ visible: false });
+function hitBox(parent, w, h, d, x, y, z, zone) {
+  const k = `h${w},${h},${d}`;
+  if (!partGeo.has(k)) partGeo.set(k, new THREE.BoxGeometry(w, h, d));
+  const m = new THREE.Mesh(partGeo.get(k), HIT_MAT); m.position.set(x, y, z); m.userData.zone = zone; parent.add(m); return m;
+}
+const tagZone = (obj, zone) => obj.traverse(o => { if (o.isMesh && !o.userData.zone) o.userData.zone = zone; });
+
 function animalModel(kind, look) {
-  const g = new THREE.Group(), body = new THREE.Group(), legs = [], extra = {};
+  const g = new THREE.Group(), body = new THREE.Group(), legs = [], extra = {}, zones = {};
   g.add(body);
   const leg = (x, y, z, w, h, c) => { const p = new THREE.Group(); p.position.set(x, y, z); part(p, w, h, w, c, 0, -h / 2, 0); body.add(p); legs.push(p); return p; };
   if (kind === 'deer') {
@@ -3446,26 +3478,36 @@ function animalModel(kind, look) {
       part(a, .04, .5, .04, 0xd8c8a0, 0, .25, 0); part(a, .04, .22, .04, 0xd8c8a0, 0, .3, .1).rotation.x = .7; part(a, .04, .2, .04, 0xd8c8a0, 0, .45, -.06).rotation.x = -.6;
     }
     part(body, .12, .14, .06, 0xf2eee6, 0, 1.18, -.6);                                          // white tail
+    zones.heart = hitBox(body, .26, .2, .26, 0, .93, .3, 'heart');
+    legs.forEach(l => tagZone(l, 'leg'));
+    neck.children[0].userData.zone = 'body';                                                     // the neck itself
+    tagZone(neck, 'head'); tagZone(body, 'body');
+    zones.head = neck.children[1]; zones.body = body.children[0]; zones.leg = legs[0].children[0];
   } else if (kind === 'rabbit') {
     const c = look === 'snow' ? 0xeeeef2 : look === 'sand' ? 0xb8996a : 0x8a6a4a;
     part(body, .26, .24, .38, c, 0, .2, 0); part(body, .2, .19, .2, c, 0, .32, .2);
     for (const s of [1, -1]) part(body, .05, .2, .04, c, s * .05, .5, .16).rotation.x = -.25; // ears
     part(body, .09, .09, .07, 0xf6f4f0, 0, .26, -.21);                                        // tail
     for (const s of [1, -1]) leg(s * .09, .1, -.1, .07, .1, c);
+    zones.body = hitBox(body, .4, .48, .6, 0, .25, .03, 'body');
   } else if (kind === 'squirrel') {
     const c = 0x9a4a24;
     part(body, .13, .14, .26, c, 0, .12, 0); part(body, .11, .11, .12, c, 0, .2, .15);
     const tail = new THREE.Group(); tail.position.set(0, .14, -.12); body.add(tail); extra.tail = tail;
     part(tail, .12, .32, .1, 0xaa5a30, 0, .15, -.05).rotation.x = -.35;
     for (const s of [1, -1]) leg(s * .05, .06, .04, .04, .06, c);
+    zones.body = hitBox(body, .3, .32, .45, 0, .15, 0, 'body');
   } else {                                                                                     // songbird
     const [c, chest] = look === 'robin' ? [0x6a5a48, 0xc8562a] : look === 'blackbird' ? [0x1e1e22, 0x1e1e22] : [0x7a5a3a, 0xb09a7a];
     part(body, .1, .1, .18, c, 0, .1, 0); part(body, .08, .07, .06, chest, 0, .09, .07);
     part(body, .07, .07, .07, c, 0, .16, .1); part(body, .03, .02, .05, look === 'blackbird' ? 0xe0a020 : 0x3a3020, 0, .15, .15);
     for (const s of [1, -1]) { const w = new THREE.Group(); w.position.set(s * .05, .13, 0); body.add(w); part(w, .14, .015, .11, c, s * .07, 0, 0); legs.push(w); }
+    zones.body = hitBox(body, .3, .28, .34, 0, .12, .02, 'body');
   }
+  tagZone(body, 'body');
+  const hit = []; g.traverse(o => { if (o.isMesh) hit.push(o); });
   scene.add(g);
-  return { g, body, legs, ...extra };
+  return { g, body, legs, zones, hit, ...extra };
 }
 
 function addAnimal(kind, x, z, opts = {}) {
@@ -3477,7 +3519,7 @@ function addAnimal(kind, x, z, opts = {}) {
   animals.add(a);
   return a;
 }
-function removeAnimal(a) { scene.remove(a.g); animals.delete(a); }
+function removeAnimal(a) { scene.remove(a.g); animals.delete(a); for (const ar of a.arrows || []) arrows.delete(ar); }
 
 // Soaring hawks: circle high over the land, purely for the sky
 function addHawk(x, z) {
@@ -3525,26 +3567,26 @@ function spawnAnimals(c) {
 }
 
 // Pick somewhere to go: a wander within the home range, or away from the player when fleeing
-function pickTarget(a, fromPlayer) {
+function pickTarget(a, from) {
   const spec = ANIMAL[a.kind];
   for (let k = 0; k < 8; k++) {
     let x, z;
-    if (fromPlayer) {
-      const ang = Math.atan2(a.x - P.pos.x, a.z - P.pos.z) + (Math.random() - .5) * 1.2, d = spec.fleeDist * (.7 + Math.random() * .5);
+    if (from) {
+      const ang = Math.atan2(a.x - from.x, a.z - from.z) + (Math.random() - .5) * 1.2, d = spec.fleeDist * (.7 + Math.random() * .5);
       x = a.x + Math.sin(ang) * d; z = a.z + Math.cos(ang) * d;
     } else { const ang = Math.random() * 6.28, d = Math.random() * spec.roam; x = a.home[0] + Math.sin(ang) * d; z = a.home[1] + Math.cos(ang) * d; }
     if (okGround(x, z) !== null) return [x, z];
   }
   return null;
 }
-function startle(a) {
+function startle(a, from = P.pos) {
   const group = a.herd ? [...animals].filter(b => b.herd === a.herd) : [a];
   for (const b of group) {
-    if (b.state === 'flee' || b.state === 'fly' || b.state === 'up') continue;
+    if (b.state === 'flee' || b.state === 'fly' || b.state === 'up' || b.state === 'dead' || b.state === 'fall') continue;
     if (b.kind === 'squirrel' && b.tree) { b.state = 'toTree'; b.target = [b.tree[0] + .3, b.tree[1]]; continue; }
-    const t = pickTarget(b, true);
+    const t = pickTarget(b, from);
     if (!t) continue;
-    b.target = t; b.state = b.kind === 'bird' ? 'fly' : 'flee'; b.from = [b.x, b.y, b.z]; b.flyT = 0;
+    b.target = t; b.state = b.kind === 'bird' ? 'fly' : 'flee'; b.from = [b.x, b.y, b.z]; b.flyT = 0; b.fleeFrom = { x: from.x, z: from.z };
     if (b.kind === 'bird') b.home = t;                                  // they settle where they land
   }
 }
@@ -3565,9 +3607,27 @@ function updateAnimals(dt) {
     }
     const d = Math.hypot(a.x - P.pos.x, a.z - P.pos.z);
     a.g.visible = d < 120;
-    if (d > 90) continue;
+    if (a.wounded && a.state !== 'dead') {                              // a body shot: it runs, and bleeds as it goes
+      a.wounded.left -= dt; a.wounded.drip -= dt * (a.state === 'flee' ? 2.5 : 1);
+      if (a.wounded.drip <= 0) { a.wounded.drip = 1; addBlood(a.x, a.y, a.z); }
+      if (a.wounded.left <= 0) killAnimal(a);
+    }
+    if (a.state === 'dead') continue;
+    if (a.state === 'fall') {                                           // shot out of a tree or out of the air
+      a.vy -= 20 * dt; a.y += a.vy * dt;
+      const gy = terrainHeight(Math.floor(a.x), Math.floor(a.z));
+      if (a.y <= gy) { a.y = gy; layDead(a); } else a.g.position.y = a.y;
+      continue;
+    }
+    let hunter = null;
+    for (const p of hunters) { const hp = p.gd.g.position; if (Math.hypot(a.x - hp.x, a.z - hp.z) < 50) { hunter = p; break; } }
+    if (d > 90 && !hunter) continue;
     const spec = ANIMAL[a.kind];
     if (d < spec.flee * (night ? .6 : 1) && Math.abs(P.pos.y - a.y) < 6 && ['idle', 'walk', 'down'].includes(a.state)) startle(a);
+    else if (hunter && hunter.hunt.state !== 'return' && ['idle', 'walk', 'down'].includes(a.state)) {   // a careful hunter gets closer than you would
+      const hp = hunter.gd.g.position;
+      if (Math.hypot(a.x - hp.x, a.z - hp.z) < spec.flee * .5) startle(a, hp);
+    }
     let speed = 0, bob = 0;
     if (a.state === 'idle') {
       a.t -= dt;
@@ -3581,6 +3641,7 @@ function updateAnimals(dt) {
       const dx = a.target[0] - a.x, dz = a.target[1] - a.z, dist = Math.hypot(dx, dz);
       if (dist < .3) {
         if (a.state === 'toTree') { a.state = 'up'; a.climb = 0; }
+        else if (a.wounded && a.state === 'flee' && Math.random() < .6) { const t2 = pickTarget(a, a.fleeFrom); if (t2) a.target = t2; else a.state = 'idle'; }   // keeps running
         else { a.t = a.state === 'flee' ? 1 : 2 + Math.random() * 6; a.state = 'idle'; }
         speed = 0;
       } else {
@@ -3627,6 +3688,296 @@ function updateAnimals(dt) {
       a.body.rotation.x = !flying && a.state === 'idle' && Math.sin(t * 2 + a.phase * 3) > .7 ? .6 : 0;       // pecking
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Bows and arrows
+// ---------------------------------------------------------------------------
+// An arrow is a real projectile: it flies on a ballistic arc and is tested each frame against the
+// terrain and against the hit boxes of any animal near its path. Where it lands decides what happens.
+// Rabbits, squirrels and birds go down to any hit. A deer drops on the spot to a head or heart shot,
+// runs off and bleeds out from any other body shot, and just runs from an arrow in the leg.
+const ARROW_SPEED = 30, ARROW_G = 9.8;
+const arrows = new Set(), blood = [];
+const ray = new THREE.Raycaster(), _v = new THREE.Vector3(), _q = new THREE.Quaternion();
+function makeArrow() {
+  const g = new THREE.Group();
+  part(g, .025, .025, .75, 0x8a6a44, 0, 0, 0);                     // shaft
+  part(g, .05, .05, .1, 0x6a6a70, 0, 0, .4);                        // head
+  part(g, .08, .005, .14, 0xe8e0d0, 0, 0, -.32); part(g, .005, .08, .14, 0xe8e0d0, 0, 0, -.32);   // fletching
+  scene.add(g);
+  return g;
+}
+function shootArrow(from, vel, owner = null) {
+  const ar = { g: makeArrow(), pos: from.clone(), vel: vel.clone(), from: from.clone(), owner, state: 'fly', life: 0, result: null };
+  ar.g.position.copy(ar.pos); ar.g.lookAt(_v.copy(ar.pos).add(ar.vel));
+  arrows.add(ar);
+  return ar;
+}
+// The launch velocity that lands on `to` (the flatter of the two arcs), or null when out of reach
+function aimVelocity(from, to, speed = ARROW_SPEED) {
+  const dx = to.x - from.x, dz = to.z - from.z, dy = to.y - from.y, D = Math.hypot(dx, dz), v2 = speed * speed;
+  const disc = v2 * v2 - ARROW_G * (ARROW_G * D * D + 2 * dy * v2);
+  if (disc < 0 || D < .01) return null;
+  const pitch = Math.atan2(v2 - Math.sqrt(disc), ARROW_G * D), yaw = Math.atan2(dx, dz);
+  return { yaw, pitch };
+}
+const velFrom = (yaw, pitch, speed = ARROW_SPEED) => new THREE.Vector3(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch)).multiplyScalar(speed);
+const gauss = () => (Math.random() + Math.random() + Math.random() - 1.5) * 1.41;
+
+function updateArrows(dt) {
+  if (!dt) return;
+  for (const ar of arrows) {
+    ar.life += dt;
+    if (ar.state === 'stuck') {                                         // left in the ground for a while
+      if (ar.life > 45) { scene.remove(ar.g); arrows.delete(ar); }
+      continue;
+    }
+    if (ar.state === 'in') {                                            // an arrow in a leg works loose
+      if (ar.zone === 'leg' && ar.life > 5) { ar.g.parent?.remove(ar.g); arrows.delete(ar); }
+      continue;
+    }
+    const a0 = ar.pos.clone(), a1 = a0.clone().addScaledVector(ar.vel, dt);   // exact for a constant pull of gravity
+    a1.y -= ARROW_G * dt * dt / 2; ar.vel.y -= ARROW_G * dt;
+    const len = a0.distanceTo(a1);
+    // The ground or a tree in the way
+    let groundT = null;
+    for (let k = 0, n = Math.ceil(len / .2); k <= n; k++) {
+      _v.lerpVectors(a0, a1, k / n);
+      if (solid(get(Math.floor(_v.x), Math.floor(_v.y), Math.floor(_v.z)))) { groundT = k / n * len; break; }
+    }
+    // Any animal on the way
+    let best = null;
+    ray.set(a0, _v.subVectors(a1, a0).normalize()); ray.far = len + .05;
+    const mx = (a0.x + a1.x) / 2, mz = (a0.z + a1.z) / 2;
+    for (const a of animals) {
+      if (a.kind === 'hawk' || a.state === 'dead' || Math.hypot(a.x - mx, a.z - mz) > len / 2 + 2.5) continue;
+      a.g.updateMatrixWorld(true);
+      const hits = ray.intersectObjects(a.hit, false);
+      if (!hits.length) continue;
+      let zone = hits[0].object.userData.zone;
+      if (zone === 'body' && hits.some(h => h.object.userData.zone === 'heart' && h.distance - hits[0].distance < .8)) zone = 'heart';
+      if (!best || hits[0].distance < best.distance) best = { a, zone, distance: hits[0].distance, point: hits[0].point };
+    }
+    if (best && (groundT === null || best.distance < groundT)) {
+      arrowHits(ar, best.a, best.zone, best.point);
+      continue;
+    }
+    if (groundT !== null) {
+      ar.pos.copy(a0).addScaledVector(_v.subVectors(a1, a0).normalize(), groundT + .15);
+      ar.g.position.copy(ar.pos); ar.state = 'stuck'; ar.life = 0; ar.result ??= 'miss';
+      continue;
+    }
+    ar.pos.copy(a1); ar.g.position.copy(a1); ar.g.lookAt(_v.copy(a1).add(ar.vel));
+    if (ar.life > 6 || ar.pos.y < 0) { scene.remove(ar.g); arrows.delete(ar); ar.result ??= 'miss'; }
+  }
+  for (let i = blood.length - 1; i >= 0; i--) if ((blood[i].life -= dt) <= 0) { scene.remove(blood[i]); blood.splice(i, 1); }
+}
+// The arrow stays in the animal, at the spot and angle it went in
+function arrowHits(ar, a, zone, point) {
+  ar.g.getWorldQuaternion(_q);
+  a.g.attach(ar.g);
+  ar.g.position.copy(a.g.worldToLocal(_v.copy(point).addScaledVector(ar.vel.clone().normalize(), -.25)));   // the head just buried
+  ar.state = 'in'; ar.zone = zone; ar.life = 0; ar.in = a;
+  (a.arrows ||= []).push(ar);
+  const from = { x: ar.from.x, z: ar.from.z };
+  if (a.kind !== 'deer' || zone === 'head' || zone === 'heart') { ar.result = 'kill'; killAnimal(a, from); }
+  else if (zone === 'body') { ar.result = 'wound'; a.wounded ||= { left: 20 + Math.random() * 25, drip: 0 }; addBlood(a.x, a.y, a.z); startle(a, from); }
+  else { ar.result = 'leg'; startle(a, from); }
+}
+function killAnimal(a, from) {
+  if (a.state === 'dead' || a.state === 'fall') return;
+  const inAir = a.state === 'fly' || a.state === 'up' || a.state === 'down' || a.y > terrainHeight(Math.floor(a.x), Math.floor(a.z)) + .3;
+  if (inAir) { a.state = 'fall'; a.vy = 0; if (a.kind === 'squirrel') { a.x += .4; a.body.rotation.x = 0; } }
+  else layDead(a);
+  if (from && a.herd) startle(a, from);                               // the rest of the herd scatters
+}
+function layDead(a) {
+  a.state = 'dead'; a.wounded = null;
+  a.legs.forEach(l => { l.rotation.set(0, 0, 0); });
+  a.body.position.y = 0; a.body.rotation.x = 0;
+  if (a.neck) a.neck.rotation.x = .3;
+  a.g.position.set(a.x, a.y + { deer: .25, rabbit: .13, squirrel: .07, bird: .05 }[a.kind], a.z);
+  a.g.rotation.set(0, a.heading, Math.PI / 2);                          // on its side
+  if (a.kind === 'deer') addBlood(a.x, a.y, a.z, 1.2);
+}
+const BLOOD_MAT = new THREE.MeshLambertMaterial({ color: 0x5a0e0a });
+function addBlood(x, y, z, size = .35) {
+  const gy = terrainHeight(Math.floor(x), Math.floor(z));
+  const m = new THREE.Mesh(partGeo.get('b1,1,1') || (partGeo.set('b1,1,1', new THREE.BoxGeometry(1, 1, 1)), partGeo.get('b1,1,1')), BLOOD_MAT);
+  m.scale.set(size * (.6 + Math.random() * .6), .02, size * (.6 + Math.random() * .6));
+  m.position.set(x + (Math.random() - .5) * .4, gy + .02, z + (Math.random() - .5) * .4); m.rotation.y = Math.random() * 3;
+  m.life = 120; scene.add(m); blood.push(m);
+  if (blood.length > 160) scene.remove(blood.shift());
+}
+
+// ---------------------------------------------------------------------------
+// The hunter
+// ---------------------------------------------------------------------------
+// On a good day the hunter walks out past the edge of the village and looks for game within reach.
+// They stalk it to within bow range, draw, and loose an arrow, which can miss or hit anywhere the aim
+// takes it. A wounded deer is followed until it drops; whatever is killed is carried home, gutted,
+// and the meat and hide go into the household's stock. Arrows that hit are pulled out and kept;
+// misses are lost, and the hunter fletches new ones at the rack. With no game nearby they go
+// further afield, out of sight, as before.
+const hunters = new Set();
+const QUARRY = { deer: { range: 20, meat: 4, hide: 1 }, rabbit: { range: 12, meat: 1 }, squirrel: { range: 11, meat: 1 }, bird: { range: 12, meat: 1 } };
+const MAX_ARROWS = 12;
+function findQuarry(p, home) {
+  const hp = p.gd.g.position;
+  let best = null, score = 1e9;
+  for (const a of animals) {
+    if (!QUARRY[a.kind] || a.state === 'dead' || a.state === 'fall' || a.state === 'up' || a.state === 'fly' || a.state === 'toTree') continue;
+    if (Math.hypot(a.x - home.x, a.z - home.z) > 60) continue;
+    const sc = Math.hypot(a.x - hp.x, a.z - hp.z) - (a.kind === 'deer' ? 20 : 0);
+    if (sc < score) { score = sc; best = a; }
+  }
+  return best;
+}
+function tryHunt(p) {
+  const H = p.house;
+  if (performance.now() < (p.huntCheck || 0) || (H.stock.arrows ?? MAX_ARROWS) <= 0) return;
+  const pos = p.gd.g.position, q = findQuarry(p, pos);
+  if (!q) { p.huntCheck = performance.now() + 15000; return; }
+  p.hunt = { state: 'stalk', q, home: pos.clone(), t: 0, fails: 0 };
+  p.game ||= []; p.liveDay = env.day;
+  hunters.add(p);
+}
+function clearShot(a, b) {
+  const n = Math.ceil(a.distanceTo(b) / .25);
+  for (let k = 1; k < n - 1; k++) {
+    const t = k / n;
+    if (solid(get(Math.floor(a.x + (b.x - a.x) * t), Math.floor(a.y + (b.y - a.y) * t), Math.floor(a.z + (b.z - a.z) * t)))) return false;
+  }
+  return true;
+}
+function hunterWalk(gd, x, z, speed, dt) {
+  const pos = gd.g.position, dx = x - pos.x, dz = z - pos.z, d = Math.hypot(dx, dz);
+  if (d < .05) return 0;
+  const step = Math.min(d, speed * dt);
+  pos.x += dx / d * step; pos.z += dz / d * step;
+  pos.y += (terrainHeight(Math.floor(pos.x), Math.floor(pos.z)) - pos.y) * Math.min(1, dt * 8);
+  turnTowards(gd, Math.atan2(dx, dz), dt * 2);
+  const swing = Math.sin(clock.elapsedTime * speed * 4.5) * .5;
+  gd.legs[0].rotation.x = swing; gd.legs[1].rotation.x = -swing;
+  return d - step;
+}
+function drawBow(gd, up) {
+  if (!gd.bow) return;
+  if (up) { gd.bow.position.set(.08, 1.4, .38); gd.bow.rotation.set(0, 0, .25); }
+  else { gd.bow.position.set(-.05, 1.2, -.2); gd.bow.rotation.set(0, 0, 0); }
+}
+function endHunt(p) { drawBow(p.gd, false); p.gd.g.scale.y = 1; p.hunt = null; hunters.delete(p); p.retarget = true; p.huntCheck = performance.now() + 20000; }
+function huntStep(gd, p, dt) {
+  const S = p.hunt, H = p.house, pos = gd.g.position, q = S.q;
+  const stillHunting = activityFor(p, env.time) === 'hunt';
+  if (S.state !== 'return' && S.state !== 'fetch' && (!stillHunting || p.game.length >= 3)) { S.state = 'return'; drawBow(gd, false); }
+  const lost = q && !animals.has(q), dist = q ? Math.hypot(q.x - pos.x, q.z - pos.z) : 0, range = q ? QUARRY[q.kind].range : 0;
+  const face = () => turnTowards(gd, Math.atan2(q.x - pos.x, q.z - pos.z), dt * 3);
+  const still = () => { gd.legs[0].rotation.x = gd.legs[1].rotation.x = 0; };
+  gd.g.scale.y = S.state === 'stalk' || S.state === 'aim' ? .9 : 1;    // crouched while stalking
+  switch (S.state) {
+    case 'search': {
+      S.q = findQuarry(p, S.home); S.blocked = false;
+      if (S.q) S.state = 'stalk';
+      else if (++S.fails > 3) S.state = 'return';
+      else { S.state = 'wait'; S.t = 8; }
+      break;
+    }
+    case 'wait': still(); if ((S.t -= dt) <= 0) S.state = 'search'; break;
+    case 'stalk':
+    case 'track': {
+      if (lost) { S.state = 'search'; break; }
+      if (q.state === 'dead' || q.state === 'fall') { S.state = 'fetch'; break; }
+      if (S.state === 'stalk' && (q.state === 'flee' || q.state === 'up' || q.state === 'fly' || q.state === 'toTree') && !q.wounded) { S.state = 'wait'; S.t = 3; S.q = null; break; }
+      if (dist <= range * (S.blocked ? .45 : 1) && (q.state === 'idle' || q.state === 'walk')) { S.state = 'aim'; S.t = 1.2 + Math.random() * .6; drawBow(gd, true); still(); break; }
+      if (dist > 70) { S.state = 'search'; S.q = null; break; }
+      if (S.state === 'track' && dist < range * .6) { still(); face(); break; }   // close enough: wait for it to stop
+      hunterWalk(gd, q.x, q.z, S.state === 'track' ? 2.2 : 1.2, dt);
+      break;
+    }
+    case 'aim': {
+      if (lost) { S.state = 'search'; drawBow(gd, false); break; }
+      face(); still();
+      if (q.state === 'flee' || q.state === 'fly' || q.state === 'up' || dist > range * 1.3) { drawBow(gd, false); S.state = q.wounded ? 'track' : 'wait'; S.t = 3; break; }
+      if ((S.t -= dt) > 0) break;
+      const from = new THREE.Vector3(pos.x, pos.y + 1.45, pos.z), yaw0 = gd.g.rotation.y;
+      from.x += Math.sin(yaw0) * .45; from.z += Math.cos(yaw0) * .45;
+      const aimAt = (q.zones.heart || q.zones.body).getWorldPosition(new THREE.Vector3());
+      const sol = aimVelocity(from, aimAt);
+      if (!sol || !clearShot(from, aimAt)) {                            // a tree or a rise in the way: get closer, or find something else
+        drawBow(gd, false);
+        if (dist < 4 || S.blocked) { S.q = null; S.state = 'wait'; S.t = 2; } else { S.blocked = true; S.state = q.wounded ? 'track' : 'stalk'; }
+        break;
+      }
+      const sd = .008 + dist * .0006;                                   // the further the shot, the wider it strays
+      S.arrow = shootArrow(from, velFrom(sol.yaw + gauss() * sd, sol.pitch + gauss() * sd), p);
+      H.stock.arrows = (H.stock.arrows ?? MAX_ARROWS) - 1;
+      S.state = 'watch'; S.t = 2.5;
+      break;
+    }
+    case 'watch': {
+      still();
+      if (!S.arrow.result && (S.t -= dt) > 0) break;
+      drawBow(gd, false);
+      const res = S.arrow.result;
+      (p.tally ||= {})[res || 'miss'] = (p.tally[res || 'miss'] || 0) + 1;
+      if (res === 'kill' || q?.state === 'dead' || q?.state === 'fall') S.state = 'fetch';
+      else if (q?.wounded && !lost) S.state = 'track';
+      else { S.q = null; S.state = H.stock.arrows > 0 ? 'wait' : 'return'; S.t = 4; }
+      p.shots = (p.shots || 0) + 1; p.lastShot = res;
+      break;
+    }
+    case 'fetch': {
+      if (lost) { S.state = 'search'; break; }
+      if (q.state === 'fall') { still(); break; }
+      if (hunterWalk(gd, q.x, q.z, 1.8, dt) > 1) break;
+      still();
+      if ((S.kneel = (S.kneel || 0) + dt) < 1.5) { gd.g.scale.y = .75; break; }
+      S.kneel = 0;
+      H.stock.arrows = Math.min(MAX_ARROWS, (H.stock.arrows || 0) + (q.arrows || []).filter(ar => ar.zone !== 'leg').length);   // pulled out to use again
+      removeAnimal(q); p.game.push(q.kind); S.q = null;
+      S.state = q.kind === 'deer' || p.game.length >= 3 || !stillHunting ? 'return' : 'search'; S.fails = 0;
+      break;
+    }
+    case 'return': {
+      if (hunterWalk(gd, S.home.x, S.home.z, 1.6, dt) > 0) break;
+      pos.copy(S.home); gd.agent.node = p.village.edge; gd.agent.path = [];
+      endHunt(p);
+      break;
+    }
+  }
+  if (gd.sack) { gd.sack.visible = p.game.length > 0; gd.sack.material = SACK_GAME; }
+}
+// Back at the rack: the game is dressed, the meat salted and the hide stretched
+function butcher(H, game) {
+  if (!game?.length) return;
+  for (const k of game) {
+    H.stock.meat = Math.min(12, (H.stock.meat || 0) + QUARRY[k].meat);
+    if (QUARRY[k].hide) H.stock.hide = Math.min(6, (H.stock.hide || 0) + QUARRY[k].hide);
+  }
+  H.lastBag = { day: env.day, game: [...game] };
+  game.length = 0;
+}
+function bagWords(game) {
+  const n = {}; for (const k of game) n[k] = (n[k] || 0) + 1;
+  const names = { deer: ['a deer', 'deer'], rabbit: ['a rabbit', 'rabbits'], squirrel: ['a squirrel', 'squirrels'], bird: ['a bird', 'birds'] };
+  const bits = Object.entries(n).map(([k, c]) => c === 1 ? names[k][0] : `${['', '', 'two', 'three', 'four'][c] || c} ${names[k][1]}`);
+  return bits.length > 1 ? bits.slice(0, -1).join(', ') + ' and ' + bits.at(-1) : bits[0];
+}
+function huntLine(p) {
+  const S = p.hunt, H = p.house;
+  if (!S) return p.gd.agent.path.length ? 'Off to the woods. Wish me luck.' : 'Off to the woods. Wish me luck.';
+  const what = S.q ? { deer: 'a deer', rabbit: 'a rabbit', squirrel: 'a squirrel', bird: 'a bird' }[S.q.kind] : 'something';
+  return {
+    stalk: `Keep your voice down. There's ${what} just over there.`,
+    aim: 'Shh...',
+    watch: 'Shh...',
+    track: "Hit it, but not cleanly. It won't get far. I'm following the blood.",
+    fetch: `Got ${what}. Clean shot.`,
+    search: 'Looking for tracks.', wait: 'Looking for tracks. They were here not long ago.',
+    return: p.game.length ? `Heading home with ${bagWords(p.game)}.` : (H.stock.arrows ?? 1) > 0 ? 'Nothing doing. Heading home.' : "Out of arrows. That's me done for today.",
+  }[S.state];
 }
 
 // Torches and guards of procedural structures live with the chunk they stand in
@@ -4488,6 +4839,7 @@ function update(dt, t) {
   processRuns(dt);
   updateModels(dt);
   updateAnimals(dt);
+  updateArrows(dt);
   updateCottages(dt);
   if (dt) pushFromSolids();
   updateBridges(dt);
@@ -4607,11 +4959,11 @@ camera.position.set(P.pos.x, P.eye, P.pos.z);
 // Debug hook for tests: run village life for `seconds` of game play without rendering
 function simulate(seconds) {
   const keep = env.speedIdx; env.speedIdx = 0;                 // the clock runs at normal speed
-  for (let t = 0; t < seconds; t += .05) { updateSky(.05); updateVillages(); processRuns(.05); updateGuards(.05); updateCottages(.05); }
+  for (let t = 0; t < seconds; t += .05) { updateSky(.05); updateVillages(); processRuns(.05); updateGuards(.05); updateAnimals(.05); updateArrows(.05); updateCottages(.05); }
   env.speedIdx = keep;
 }
 updatePurse();
-window.__fort = { animals, rosterFor, tradeRun, stateOf, runs, tradeCarts, isTradeDay, isMarketDay, player, villageMemory, gameHours, millBusy, simulate, villages, activityFor, cottages, colliderGrid, solids, activeBridges, roadInfo, boatSpot, carts, animated, shapeOf, collides, roadsAtNode, linksOf, discovered, roadAt, roadBetween, rawHeight, dlg, describeArea, MAIN_TITLE, lantern, guards, talk, saveGame, store, env, planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
+window.__fort = { solid, arrows, hunters, shootArrow, aimVelocity, velFrom, killAnimal, startle, animals, rosterFor, tradeRun, stateOf, runs, tradeCarts, isTradeDay, isMarketDay, player, villageMemory, gameHours, millBusy, simulate, villages, activityFor, cottages, colliderGrid, solids, activeBridges, roadInfo, boatSpot, carts, animated, shapeOf, collides, roadsAtNode, linksOf, discovered, roadAt, roadBetween, rawHeight, dlg, describeArea, MAIN_TITLE, lantern, guards, talk, saveGame, store, env, planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
 frame();
 </script>
 </body>

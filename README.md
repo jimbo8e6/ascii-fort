@@ -93,7 +93,7 @@ Villages sit on the road network. The roads meet at a village square with a ston
   - **Farming villages** have a windmill: farmers, a miller and a bakery.
   - **Forest villages** have no mill, no fields and no bakery, so they can't make bread. Instead they have:
     - **a woodcutter** (red jerkin, axe on the shoulder), who splits lumber at a chopping block behind the house; the log stack shows the stock;
-    - **a hunter** (green hood, bow and quiver), who heads off into the woods each morning, out of sight, and comes back in the afternoon with meat and a hide on good hunting days, hanging the hides on a drying rack behind the house.
+    - **a hunter** (green hood, bow and quiver), who goes out hunting on good days and hangs the hides on a drying rack behind the house. See *Hunting* below.
   - Households eat bread if they have it, otherwise meat.
 - **Trade runs between villages:** each farming village's bakery is paired with a neighbouring forest village linked by road.
   - **Out:** every other day at 8:00 the bakery loads its spare bread onto a cart. A carter from the baker's household (leather jerkin, flat cap, whip) drives it along the road to the forest village, arriving around 9:30.
@@ -120,7 +120,7 @@ Villages sit on the road network. The roads meet at a village square with a ston
 
 ## Wildlife
 
-The countryside has docile animals for now. Nothing attacks you, and you can't hunt them yet.
+The countryside has docile animals for now. Nothing attacks you, but the forest villages' hunters hunt them (see *Hunting*).
 
 - **Deer** graze in small herds in plains and forests. The herd has a stag with antlers and a few does. Get too close and the whole herd bolts.
 - **Rabbits** nibble the grass and sit up now and then. Their colour suits the land: brown, white in the snow, or sandy in the desert. They zig-zag away if you come near.
@@ -129,6 +129,22 @@ The countryside has docile animals for now. Nothing attacks you, and you can't h
 - **Hawks** circle high over open country during the day.
 
 Animals spawn with the chunks around you, so each patch of land always has the same sort of wildlife. They're quieter at night: most of them rest, and they let you get a little closer before they run.
+
+## Hunting
+
+The hunter in a forest village hunts real animals with a bow and arrows.
+
+- **Going out:** on good hunting days the hunter walks to the edge of the village and looks for game within about 60 blocks. Deer come first; otherwise rabbits, squirrels or birds. If there's nothing nearby, they head further afield, out of sight, as before.
+- **Stalking:** the hunter crouches and creeps in to bow range: about 20 blocks for a deer, 12 for small game. Animals let a careful hunter get closer than they'd let you. If a tree or a rise is in the way, the hunter moves closer for a clear shot.
+- **The shot:** the arrow is a real projectile. It flies on an arc, can miss, and hits wherever it actually lands. Longer shots stray more.
+  - **Rabbits, squirrels and birds** go down to any hit. A squirrel shot on its tree or a bird shot in the air falls to the ground.
+  - **Deer:** a **head or heart** shot drops it where it stands. A **body** shot anywhere else sends it running and bleeding, leaving a trail of blood, until it collapses. The hunter follows the trail, and takes a finishing shot if the deer stops within range. An arrow in the **leg** only sends it running, and the arrow soon works loose.
+  - The rest of the herd scatters at the shot.
+- **Bringing it home:** the hunter carries the kill home on their back. A deer is a full load; otherwise they'll take up to three small animals. At the rack they gut it and put the meat and hide into the household's stock:
+  - a deer gives 4 cuts of meat and a hide;
+  - anything smaller gives 1 cut of meat.
+- **Arrows:** the hunter carries up to 12. Arrows pulled out of a kill are kept; misses are lost and stay stuck in the ground for a while. They fletch new arrows at the rack, one an hour, and with none left they don't hunt.
+- **Asking about it:** talk to the hunter while they're out ("Keep your voice down. There's a deer just over there.") or at the rack afterwards, where they'll tell you what they brought home.
 
 ## Windmills, carts and boats
 
@@ -244,3 +260,4 @@ The world map (M) shows biomes, water depth and hill shading, with the fort and 
    - **FINE** (default): about 40 characters, sorted at startup by how much ink each covers, with some of the scene colour blended behind them. This gives smooth shading.
    - **CLASSIC**: the short ramp ` .,:-=+*o#%@` on a dark background.
 11. **Animals.** Each animal is a small model made of boxes, with jointed legs, neck, tail or wings. A simple state machine (idle, walk, flee, climb, fly) moves it over the terrain heightmap, keeping it off roads and out of buildings. Animals only update within about 90 blocks of you.
+12. **Arrows.** Each arrow is moved along an exact ballistic arc every frame. The path is tested against the blocks it passes through, and raycast against the hit boxes of nearby animals. A deer has a hidden heart box low in its chest: an arrow that reaches it within 0.8 blocks of entering the body counts as a heart shot.
