@@ -22,9 +22,23 @@ npx serve .        # or: python3 -m http.server
 | E: talk to a guard nearby; 1–2 or click to choose, Esc to leave | TALK button (appears near a guard) |
 | Esc: pause and free the mouse (top-right buttons stay clickable) | |
 
+## The world
+
+The world is hand-made: one continent, translated from a painted map (`map/painted-map.jpg`). Each pixel of the painting is 6 blocks, so the whole map is about 8,700 × 6,500 blocks with roughly 37 km² of land, about the size of Skyrim. Open sea surrounds it. −z is north.
+
+- **The Greyspine:** snow-capped mountains along the whole north coast, with a smaller range in the north-west.
+- **The Wenmere:** old forest filling the west, with the Mistwater lake at its heart.
+- **The Hollow:** open grassland in the middle, where the Vael comes down out of the mountains.
+- **The Rustwaste:** a red plateau in the east, cut into flat-topped mesas with sheer banded cliffs of red rock.
+- **The south:** a sand desert, and big red dunes along the south coast.
+- **The marshes:** low ground in the south-west, pocked with pools and channels.
+- **Fort Greyhold** stands at Greyhold Pass, on the west bank of the Vael where it leaves the Greyspine. That's where every world starts.
+
 ## Rivers, roads and discovery
 
-- **Rivers:** long meandering rivers wind across the continents, roughly 8–12 blocks wide. Each sits in a wide grassy valley with sandy banks and a channel cut just below sea level, so it fills with water and runs out to the coast. They freeze over in the far north and are rarer and thinner in deserts.
+- **Rivers:** the rivers are traced by hand from the painting. Each sits in a valley sloping down to a channel cut just below sea level, so it fills with water. Valleys are much wider in the mountains, so a river leaves the Greyspine down a broad gorge.
+  - **The Vael** rises in a mountain tarn in the Greyspine and runs south through Greyhold Pass and the Hollow, gathering tributaries. One of them flows out of the Mistwater. The Vael splits into a delta above the desert and reaches the sea on the south-west coast. It grows from about 5 blocks wide at its source to 13 at its mouth.
+  - **The delta's side channels** fan out south and east and run dry in the sand.
 - **Roads:** every fort, watchtower and village links to its two nearest neighbours within two regions (about 450 blocks), and the starting fort joins in too. The roads wind gently between them.
   - **Bridges:** where a road crosses a river it runs straight over a bridge model, with clean straight edges at any angle. The deck is level with the higher bank and carries on level until it meets ground, so you never step down more than one block. The seed picks one of two kinds:
     - **Wooden:** a slatted deck on stringer beams, posted handrails with top and middle rails, and braced piles down to the riverbed.
@@ -210,20 +224,21 @@ A full day lasts an hour of real time, or 3 minutes at 20× fast-forward (K). Th
 
 ## World seed and map
 
-The terrain is generated from a seed. Add `?seed=` to the URL to get a different world, e.g. `index.html?seed=42`. The same seed always produces the same world. The default is 1337. The world map also has a seed box and a NEW WORLD button.
+The shape of the land comes from the painted map and is the same in every world. The seed decides the small-scale detail (hills, trees, caves) and where the forts, watchtowers, ruins and villages stand. Add `?seed=` to the URL to get a different one, e.g. `index.html?seed=42`. The default is 1337. The world map also has a seed box and a NEW WORLD button.
 
-The world map (M) shows biomes, water depth and hill shading, with the fort and your position and facing marked. Drag to pan, scroll or use +/− to zoom, from 256 to about 65,000 blocks across (enough to see whole continents). Structure markers thin out when zoomed far out, and an N marker shows north, and CENTRE ON ME to jump back to yourself. A minimap in the top-left corner (N) follows you and shows the biome and coordinates you're at. Both are drawn from the same climate and height functions as the 3D world, a few rows per frame so the game never stalls.
+The world map (M) shows biomes, water depth and hill shading, with the fort and your position and facing marked. Drag to pan, scroll or use +/− to zoom, from 256 to about 10,000 blocks across (the whole continent). Structure markers thin out when zoomed far out, and an N marker shows north, and CENTRE ON ME to jump back to yourself. A minimap in the top-left corner (N) follows you and shows the biome and coordinates you're at. Both are drawn from the same climate and height functions as the 3D world, a few rows per frame so the game never stalls.
 
 ## How it works
 
 1. **Terrain.** Height comes from layered 2D simplex noise: broad hills, smaller bumps, and occasional mountains from a second noise layer. The ground is flattened around the fort and the start of the road. Columns are rock underneath, dirt near the top, and grass on top; steep or high ground is bare rock. Pine trees are placed using a forest-density noise and a per-column hash.
-2. **Continents, climate and biomes.** The world is shaped loosely like the real one:
-   - **Continents:** a very slow, domain-warped noise field decides land and sea. You get a few continents, each roughly 10,000 blocks across, with wide oceans between them, irregular coastlines and scattered islands. About 40% of the world is land. A home continent is always raised under the start.
-   - **Shape of the land:** it rises from beaches at the coast to hills inland. Mountain ranges run through occasional mountain regions, with snow on the high peaks. Lakes are rare, and only in wet lowlands. Offshore, a continental shelf drops away to deep sea.
-   - **Latitude:** −z is north. Temperature falls going north and rises going south, with large-scale wobble so the climate lines meander, and it also cools with altitude.
-   - **The bands:** polar snowfields and frozen seas roughly 7,000+ blocks north, temperate grassland and forest around the start, and hot country roughly 6,000+ blocks south.
-   - **Rainfall:** wetter along coasts, drier deep inland and in the hot south. Deserts form where it's hot and dry, forests where it's temperate and wet, grassland in between.
-   - **Biome mix by band:** the far north is about 100% snow; the middle is about 58% grassland, 34% forest and a little snow or desert; the south is about 70% desert and 30% grassland.
+2. **The painted map.** `map/build.py` (Python, with numpy, scipy and Pillow) measures the painting and writes the result into the page.
+   - **What it measures:** the sea, the lakes, and how mountainous, snowy, wooded, marshy, sandy, mesa-like and dune-covered each spot is, all judged from the paint colours.
+   - **What it stores:** a grid of 24-block cells, holding the signed distance to the sea and to the lakes plus those seven amounts. That's about 140 KB, compressed, in a `<script id="mapData">` block.
+   - **In the game:** the page unpacks the grid when it loads and samples it smoothly. The lookup point is wobbled with noise so coasts and borders aren't smooth blobs.
+   - **Height:** it rises from beaches to hills inland, and wooded country is hillier. The Greyspine is lifted with sharp ridges on top, the Rustwaste is stepped into mesas, the south gets dune ridges, the marshes sit just about at water level, and lakes are dug out to below sea level.
+   - **Rivers:** they're polylines in image pixels (`RIVERS` in `index.html`), smoothed into curves and bucketed in a coarse grid so each lookup only checks nearby segments.
+   - **Biomes:** snow where the painting is snowy or the ground is high, desert where it's sandy or red (with red rock and red sand in the Rustwaste and the dunes), forest where it's wooded or marshy, and grassland elsewhere.
+   - **Changing the map:** paint over `map/painted-map.jpg` and run `python3 map/build.py`, or edit `RIVERS`.
    - **Blocks:** beaches form where land meets the sea, and steep slopes are bare rock. Underwater is sand, and empty space below sea level fills with water.
    - **Swimming:** water is a separate see-through mesh with drifting ripples. Below the surface you swim slowly and hold jump to rise, and the fog turns murky blue.
 3. **Chunks.** The world is split into 16×16×64 chunks. Each chunk is generated purely from the seed, so any chunk can be built on demand, including neighbours that the mesher or collision needs. Chunks within 6 of the player are meshed nearest-first, within a few milliseconds per frame. Far chunks are unloaded.
