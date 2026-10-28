@@ -893,50 +893,9 @@ function blockTools(set, mat) {
 }
 
 // Square fort, N blocks across, gate in the middle of the +z wall
-function buildFort(set, { N, wall, mat, keep = true, crates = [] }) {
-  const { fill, clear, merlons } = blockTools(set, mat), C = N / 2, TOWER = wall + 3;
-  clear(-4, N + 4, 0, 14, -4, N + 4);                  // nothing generated pokes through
-
-  // Curtain walls (3 thick) with a walkway on top
-  fill(0, N, 0, wall, 0, 3); fill(0, N, 0, wall, N - 3, N);
-  fill(0, 3, 0, wall, 0, N); fill(N - 3, N, 0, wall, 0, N);
-  for (let i = 0; i < N; i += 2) { set(i, wall, 0, mat); set(i, wall, N - 1, mat); set(0, wall, i, mat); set(N - 1, wall, i, mat); }
-
-  // Corner towers with tunnels so the wall walk is continuous
-  for (const [tx, tz] of [[-2, -2], [N - 5, -2], [-2, N - 5], [N - 5, N - 5]]) {
-    fill(tx, tx + 7, 0, TOWER, tz, tz + 7);
-    merlons(tx, tx + 7, tz, tz + 7, TOWER);
-    const xa = Math.max(tx, 0), xb = Math.min(tx + 7, N), za = Math.max(tz, 0), zb = Math.min(tz + 7, N);
-    clear(xa, xb, wall, wall + 2, tz < C ? 0 : N - 3, tz < C ? 3 : N);
-    clear(tx < C ? 0 : N - 3, tx < C ? 3 : N, wall, wall + 2, za, zb);
-  }
-
-  // Gatehouse: two flanking towers and an arched opening
-  for (const gx of [C - 6, C + 2]) {
-    fill(gx, gx + 4, 0, TOWER, N - 4, N + 1);
-    merlons(gx, gx + 4, N - 4, N + 1, TOWER);
-    clear(gx, gx + 4, wall, wall + 2, N - 3, N);
-  }
-  clear(C - 2, C + 2, 0, 4, N - 3, N);
-  for (let z = N - 3; z < N; z++) { set(C - 2, 3, z, mat); set(C + 1, 3, z, mat); }
-
-  // Stairs up to the gate-side wall walk, either side of the gate
-  for (let k = 1; k <= wall; k++) {
-    fill(5 + k, 6 + k, 0, k - 1, N - 5, N - 3); fill(5 + k, 6 + k, k - 1, k, N - 5, N - 3, stairOf(mat, 0));
-    fill(N - 6 - k, N - 5 - k, 0, k - 1, N - 5, N - 3); fill(N - 6 - k, N - 5 - k, k - 1, k, N - 5, N - 3, stairOf(mat, 1));
-  }
-
-  // Keep in the courtyard: hollow, with a door and window slits
-  if (keep) {
-    fill(C - 6, C + 6, 0, 8, C - 14, C - 4);
-    clear(C - 5, C + 5, 0, 7, C - 13, C - 5);
-    merlons(C - 6, C + 6, C - 14, C - 4, 8);
-    clear(C - 1, C + 1, 0, 3, C - 5, C - 4);
-    clear(C - 6, C - 5, 3, 5, C - 10, C - 8); clear(C + 5, C + 6, 3, 5, C - 10, C - 8);
-    clear(C - 3, C - 2, 3, 5, C - 14, C - 13); clear(C + 2, C + 3, 3, 5, C - 14, C - 13);
-  }
-  for (const [x, y, z] of crates) set(x, y, z, WOOD);
-
+// A fort's layout: where its torches and guards go, and the fort model itself (makeFort)
+function buildFort({ N, wall, mat, keep = true, crates = [] }) {
+  const C = N / 2;
   const torches = [[N / 3, 3.4, 3.3], [2 * N / 3, 3.4, 3.3], [3.3, 3.4, C - 2], [N - 3.3, 3.4, C - 2],
     [C - 2.5, 3.4, N + .3], [C + 2.5, 3.4, N + .3]];
   if (keep) torches.push([C, 3.4, C - 3.7]);
@@ -945,7 +904,7 @@ function buildFort(set, { N, wall, mat, keep = true, crates = [] }) {
     { a: [8, 0, C + 6], b: [N - 8, 0, C + 6], speed: 1.2 },
     { a: [C - 3.2, 0, N + 2], face: [0, 1] }, { a: [C + 3.2, 0, N + 2], face: [0, 1] },
   ];
-  return { torches, guards };
+  return { torches, guards, models: [{ kind: 'fort', x: C, y: 0, z: C, N, wall, mat, keep, crates, angle: 0 }] };
 }
 
 // Watchtower: 7x7, spiral stairs inside up to a lookout platform at height h
@@ -1115,7 +1074,7 @@ function buildVillage(set, plan, rnd) {
 // The main fort at the start: Fort Greyhold, which holds Greyhold Pass
 const MAIN_TITLE = 'Fort Greyhold';
 
-const MAIN_FORT = buildFort((x, y, z, v) => setEdit(x + F0, y + G, z + F0, v), {
+const MAIN_FORT = buildFort({
   N: F1 - F0, wall: WALL, mat: BRICK,
   crates: [[7, 0, 7], [8, 0, 7], [7, 1, 7], [7, 0, 8], [38, 0, 32], [39, 0, 32], [38, 0, 33], [38, 1, 32], [12, 0, 30], [19, 0, 22], [20, 0, 22]],
 });
@@ -1215,7 +1174,7 @@ function buildPlan(plan) {
     out.get(k).push((wx & 15) | (wz & 15) << 4 | wy << 8, v);
   };
   const rnd = mulberry32(plan.seed);
-  const extra = plan.type === FORT ? buildFort(set, { N: plan.N, wall: 6 + (rnd() * 2 | 0), mat: plan.mat, keep: plan.N >= 44,
+  const extra = plan.type === FORT ? buildFort({ N: plan.N, wall: 6 + (rnd() * 2 | 0), mat: plan.mat, keep: plan.N >= 44,
       crates: [[6, 0, 6], [7, 0, 6], [6, 1, 6], [plan.N - 8, 0, plan.N / 2], [plan.N - 8, 0, plan.N / 2 + 1]] })
     : plan.type === TOWER ? buildTower(set, { mat: plan.mat, h: plan.towerH })
     : plan.type === VILLAGE ? buildVillage(set, plan, rnd)
@@ -1224,7 +1183,7 @@ function buildPlan(plan) {
   const toWorld = ([x, y, z]) => { const [lx, lz] = rotateLocal(x, z, S, plan.rot); return [plan.ox + lx, plan.base + y, plan.oz + lz]; };
   plan.decor = {
     torches: extra.torches.map(toWorld),
-    models: (extra.models || []).map(m => ({ ...m, pos: toWorld([m.x, m.y, m.z]) })),
+    models: (extra.models || []).map(m => ({ ...m, pos: toWorld([m.x, m.y, m.z]), angle: (m.angle || 0) - plan.rot * Math.PI / 2 })),
     village: extra.village && {
       streets: extra.village.streets.map(p => p.map(([x, z]) => [x + plan.ox, z + plan.oz])),
       radius: extra.village.radius, centre: toWorld([plan.N / 2, 0, plan.N / 2]),
@@ -1710,8 +1669,19 @@ function treeHit(x, y, z) {
   }
   return false;
 }
-// Does anything block sight or an arrow here: the ground, a block, or a tree?
-const obstructed = (x, y, z) => y < groundY(x, z) || solid(objectBlock(Math.floor(x), Math.floor(y), Math.floor(z))) || treeHit(x, y, z);
+// Is a point inside a collider (a building's walls, a tree trunk)?
+function colliderPoint(x, y, z) {
+  const set = colliderGrid.get(chunkKey(Math.floor(x) >> 4, Math.floor(z) >> 4));
+  if (set) for (const k of set) {
+    if (y <= k.y0 || y >= k.y1) continue;
+    if (k.cyl) { if (Math.hypot(x - k.x, z - k.z) < k.r) return true; continue; }
+    const dx = x - k.x, dz = z - k.z;
+    if (Math.abs(dx * k.c - dz * k.s) < k.hx && Math.abs(dx * k.s + dz * k.c) < k.hz) return true;
+  }
+  return false;
+}
+// Does anything block sight or an arrow here: the ground, a block, a building or a tree?
+const obstructed = (x, y, z) => y < groundY(x, z) || solid(objectBlock(Math.floor(x), Math.floor(y), Math.floor(z))) || colliderPoint(x, y, z) || treeHit(x, y, z);
 
 // Where to stand in a column: on top of the highest block, or on the ground
 function surfaceY(x, z) {
@@ -2538,7 +2508,7 @@ function updateModels(dt) {
 // material, and general colliders (boxes and cylinders) make walls, floors, stairs and furniture
 // solid for walking, landing and step-ups.
 // ---------------------------------------------------------------------------
-const BDEF = { plaster: 'plaster', timber: 'timber', stone: 'rock', roof: 'roof', floor: 'deckPlank', wood: 'plank', log: 'log' };
+const BDEF = { plaster: 'plaster', timber: 'timber', stone: 'rock', roof: 'roof', floor: 'deckPlank', wood: 'plank', log: 'log', castle: 'brick', sandstone: 'sandstone', crate: 'wood' };
 const BMAT = {};
 // Material keys: a texture name, or '#rrggbb' for a plain colour; ':in' marks an interior surface,
 // drawn darker since it gets less daylight
@@ -2905,6 +2875,108 @@ function makeTowerMill(m) {
   } };
   animated.add(obj);
   return obj;
+}
+
+// Forts as models. The layout is the old block fort's, in the same local coordinates (0..N each
+// way, y from the ground), so guards, torches and roads line up as before:
+//  - curtain walls 3 thick with a walkway on top, behind a parapet with merlons along the outside
+//  - square corner towers: a solid base with a plinth and a string course, then a chamber at
+//    walkway level that the walkways run through by doorways, a roof and battlements on top
+//  - a gatehouse of two towers either side of an arched gateway, its heavy gate leaves standing open
+//  - two stone stairs of half steps up to the walkway, either side of the gate
+//  - a keep in the courtyard with a doorway, window slits and battlements, and stacks of crates
+// Built centred on the fort and turned with it; everything solid gets a collider.
+function makeFort(m) {
+  const K = new Kit(), { N, wall, keep } = m, C = N / 2, TOP = wall + 3, stone = m.mat === SANDSTONE ? 'sandstone' : 'castle';
+  const blk = (key, x0, y0, z0, x1, y1, z1, solid = true) => K.aabb(key, x0 - C, y0, z0 - C, x1 - C, y1, z1 - C, solid);
+  // A wall from (x0, z0) to (x1, z1) and y0..y1, with openings [a0, a1, b0, b1] along its length and height
+  const holed = (key, x0, z0, x1, z1, y0, y1, holes) => {
+    const alongX = x1 - x0 > z1 - z0, a0 = alongX ? x0 : z0, a1 = alongX ? x1 : z1;
+    const piece = (p0, p1, q0, q1) => { if (p1 > p0 && q1 > q0) alongX ? blk(key, p0, q0, z0, p1, q1, z1) : blk(key, x0, q0, p0, x1, q1, p1); };
+    let p = a0;
+    for (const [h0, h1, v0, v1] of [...holes].sort((a, b) => a[0] - b[0])) { piece(p, h0, y0, y1); piece(h0, h1, y0, v0); piece(h0, h1, v1, y1); p = h1; }
+    piece(p, a1, y0, y1);
+  };
+  // Battlements: a merlon on every other cell round the edge of a rectangle
+  const merlons = (x0, x1, z0, z1, y) => {
+    for (let x = x0; x < x1; x++) for (let z = z0; z < z1; z++)
+      if ((x === x0 || x === x1 - 1 || z === z0 || z === z1 - 1) && (x + z) % 2 === 0) blk(stone, x + .05, y, z + .05, x + .95, y + .95, z + .95);
+  };
+  // A tower: solid to the walkway, a chamber above with doorways, a roof and battlements
+  const tower = (x0, z0, x1, z1, doors) => {
+    blk(stone, x0 - .2, 0, z0 - .2, x1 + .2, 1, z1 + .2);                       // plinth
+    blk(stone, x0, 1, z0, x1, wall, z1);
+    blk(stone, x0 - .12, wall - .3, z0 - .12, x1 + .12, wall, z1 + .12, false);   // string course
+    const top = TOP - .5, door = (side, a, b) => doors.filter(d => d[0] === side).map(d => [d[1], d[2], wall, wall + 2.3]);
+    holed(stone, x0, z0, x1, z0 + 1, wall, top, door('N'));
+    holed(stone, x0, z1 - 1, x1, z1, wall, top, door('S'));
+    holed(stone, x0, z0 + 1, x0 + 1, z1 - 1, wall, top, door('W'));
+    holed(stone, x1 - 1, z0 + 1, x1, z1 - 1, wall, top, door('E'));
+    blk(stone, x0, top, z0, x1, TOP, z1);
+    merlons(x0, x1, z0, z1, TOP);
+  };
+
+  // Curtain walls, between the towers (the south wall is broken by the gatehouse)
+  blk(stone, 5, 0, 0, N - 5, wall, 3);
+  blk(stone, 0, 0, 5, 3, wall, N - 5);
+  blk(stone, N - 3, 0, 5, N, wall, N - 5);
+  blk(stone, 5, 0, N - 3, C - 6, wall, N);
+  blk(stone, C + 6, 0, N - 3, N - 5, wall, N);
+  // Parapets with merlons along the outer edges
+  const parapet = (x0, z0, x1, z1) => {
+    blk(stone, x0, wall, z0, x1, wall + .6, z1);
+    const alongX = x1 - x0 > z1 - z0;
+    for (let i = Math.ceil(alongX ? x0 : z0); i < (alongX ? x1 : z1); i++) if (i % 2 === 0)
+      alongX ? blk(stone, i + .05, wall + .6, z0, i + .95, wall + 1.5, z1) : blk(stone, x0, wall + .6, i + .05, x1, wall + 1.5, i + .95);
+  };
+  parapet(5, 0, N - 5, .5); parapet(0, 5, .5, N - 5); parapet(N - .5, 5, N, N - 5);
+  parapet(5, N - .5, C - 6, N); parapet(C + 6, N - .5, N - 5, N);
+
+  // Corner towers, with doorways where the walkways come in
+  for (const [tx, tz] of [[-2, -2], [N - 5, -2], [-2, N - 5], [N - 5, N - 5]]) {
+    const xs = tx < C ? [0, 3] : [N - 3, N], zs = tz < C ? [0, 3] : [N - 3, N];
+    tower(tx, tz, tx + 7, tz + 7, [[tx < C ? 'E' : 'W', zs[0], zs[1]], [tz < C ? 'S' : 'N', xs[0], xs[1]]]);
+  }
+  // The gatehouse: towers either side, a lintel and arch over the gateway, and the gates
+  for (const gx of [C - 6, C + 2]) tower(gx, N - 4, gx + 4, N + 1, [['W', N - 3, N], ['E', N - 3, N]]);
+  blk(stone, C - 2, 4, N - 3, C + 2, wall, N);
+  for (const s of [-1, 1]) {
+    const x = s < 0 ? C - 2 : C + 2;
+    blk(stone, Math.min(x, x - s * .9), 3.4, N - 3, Math.max(x, x - s * .9), 4, N);
+    blk(stone, Math.min(x, x - s * .45), 2.8, N - 3, Math.max(x, x - s * .45), 3.4, N);
+  }
+  for (const s of [-1, 1]) {                                                       // gate leaves, swung open inwards
+    const x = s < 0 ? C - 1.85 : C + 1.65;
+    blk('#4a3220', x, 0, N - 5, x + .2, 3.5, N - 3);
+    for (const y of [.6, 2.8]) blk('#2a2a2e', x - .03, y, N - 4.9, x + .23, y + .14, N - 3.1, false);   // iron bands
+  }
+  // Stairs up to the walkway either side of the gate, in half steps
+  for (let j = 1; j <= 2 * wall; j++) {
+    blk(stone, 5.5 + j * .5, 0, N - 5, 6 + j * .5, j * .5, N - 3);
+    blk(stone, N - 6 - j * .5, 0, N - 5, N - 5.5 - j * .5, j * .5, N - 3);
+  }
+  // The keep: hollow, with a doorway on the courtyard side and window slits
+  if (keep) {
+    const x0 = C - 6, x1 = C + 6, z0 = C - 14, z1 = C - 4;
+    blk(stone, x0 - .2, 0, z0 - .2, x1 + .2, .6, z1 + .2, false);
+    holed(stone, x0, z1 - 1, x1, z1, 0, 7, [[C - 1, C + 1, 0, 3]]);
+    holed(stone, x0, z0, x1, z0 + 1, 0, 7, [[C - 3, C - 2, 3, 5], [C + 2, C + 3, 3, 5]]);
+    holed(stone, x0, z0 + 1, x0 + 1, z1 - 1, 0, 7, [[C - 10, C - 8, 3, 5]]);
+    holed(stone, x1 - 1, z0 + 1, x1, z1 - 1, 0, 7, [[C - 10, C - 8, 3, 5]]);
+    blk(stone, x0, 7, z0, x1, 8, z1);
+    merlons(x0, x1, z0, z1, 8);
+    blk('floor:in', x0 + 1, 0, z0 + 1, x1 - 1, .05, z1 - 1, false);
+  }
+  for (const [x, y, z] of m.crates || []) blk('crate', x + .04, y, z + .04, x + .96, y + .92, z + .96);
+  const built = K.build(m.pos[0], m.pos[1], m.pos[2], m.angle);
+  scene.add(built.group); addColliders(built.colliders);
+  return { g: built.group, colliders: built.colliders, torches: [] };
+}
+
+// The starting fort stands for good
+{
+  const f = MAIN_FORT.models[0];
+  makeFort({ ...f, pos: [F0 + f.x, G, F0 + f.z], angle: 0 });
 }
 
 function removeBuilding(obj) {
@@ -4551,7 +4623,7 @@ function addChunkDecor(c) {
   for (const plan of placesIn(regionOf(c.cx * CHUNK), regionOf(c.cz * CHUNK))) {
     plan.edits();
     for (const [x, y, z] of plan.decor.torches) if (mine(x, z)) c.decor.push(['torch', addTorch(x, y, z)]);
-    for (const m of plan.decor.models) if (mine(m.pos[0], m.pos[2])) c.decor.push(['building', m.kind === 'cottage' ? makeCottage(m) : m.kind === 'stall' ? makeStall(m) : makeTowerMill(m)]);
+    for (const m of plan.decor.models) if (mine(m.pos[0], m.pos[2])) c.decor.push(['building', m.kind === 'cottage' ? makeCottage(m) : m.kind === 'stall' ? makeStall(m) : m.kind === 'fort' ? makeFort(m) : makeTowerMill(m)]);
     if (plan.decor.village && mine(plan.cx, plan.cz)) {               // the village's people live with its central chunk
       plan.decor.village.cottages = plan.decor.models.filter(m => m.kind === 'cottage');
       plan.decor.village.mill = plan.decor.models.find(m => m.kind === 'windmill');

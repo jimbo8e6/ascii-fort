@@ -202,12 +202,23 @@ These are placed by the seed like everything else:
 
 ## The ground
 
-The land is a smooth, continuous surface rather than blocks: real slopes and curves, with no stair-steps. Buildings still stand on it as blocks for now.
+The land is a smooth, continuous surface rather than blocks: real slopes and curves, with no stair-steps. Forts are models; the watchtower, ruins and standing stones still stand on it as blocks for now.
 
 - **How it looks:** the ground is coloured by what the land is (grass, darker forest floor, sand and beaches, snow, red sand in the Rustwaste, packed earth in fort courtyards). It turns to bare rock as the slope steepens: sandstone in the desert, red rock on the mesas. It's lit with smooth shading, so hills catch the light.
 - **Walking:** you walk on the surface itself, smoothly up and down. Slopes steeper than about 50° (the mesa cliffs, the sharpest ridges) are walls you can't climb. Going downhill you stay on the ground rather than stepping off into the air.
 - **Water:** the sea is a flat surface just under sea level wherever the ground dips below it, so shorelines follow the land's curves. The lake and tarns are flat at their own levels, and rivers slope downstream (see *Rivers*). You can swim in any of them.
 - **No caves:** a smooth surface has no underside, so the caves are gone for now. They may come back later as separate cave models behind entrances.
+
+## Forts
+
+Forts are stone models rather than blocks: brick, or sandstone in the desert.
+
+- **Walls:** curtain walls 3 blocks thick with a walkway along the top, behind a parapet with merlons on the outside.
+- **Corner towers:** square, with a plinth at the foot and a band of stone at walkway height. At the top is a chamber the walkways run through by doorways, then a roof and battlements.
+- **The gatehouse:** two towers either side of an arched gateway, with heavy iron-banded gates standing open.
+- **Stairs:** two flights of stone half steps either side of the gate, up to the walkway.
+- **The keep:** a hollow keep in the courtyard with a doorway, window slits and battlements. Stacks of crates stand about.
+- **Solid:** walls, towers, stairs, gates and crates are all solid. You walk the wall walks and climb the stairs, and guards patrol the walls. Walls block arrows and line of sight.
 
 ## Trees
 
@@ -281,7 +292,7 @@ The world map (M) shows biomes, water depth and hill shading, with the fort and 
    - **Swimming:** water is a separate see-through mesh with drifting ripples. Below the surface you swim slowly and hold jump to rise, and the fog turns murky blue.
 3. **Chunks.** The world is split into 16×16×64 chunks. Each chunk is generated purely from the seed, so any chunk can be built on demand, including neighbours that the mesher or collision needs. Chunks within 6 of the player are meshed nearest-first, within a few milliseconds per frame. Far chunks are unloaded.
 4. **Structures.** The world is divided into 192×192-block regions. Each place is filed under the region holding its corner, at most one per region, but its footprint and the flattened ground around it may reach into neighbouring regions, which also list it.
-   - **Forts:** 44 or 48 blocks across, with corner towers, wall walks, stairs, a keep in larger ones, torches and guards. The gate faces the place's road.
+   - **Forts:** 44 or 48 blocks across, built as models (see *Forts* below), with torches and guards. The gate faces the place's road.
    - **Watchtowers:** 7×7, with spiral stairs inside up to a lookout platform.
    - **Ruins:** broken, overgrown walls with a fallen corner tower and rubble.
    - **Standing stones:** a single great stone, a ring, or a field of monuments with grave mounds.
@@ -289,7 +300,7 @@ The world map (M) shows biomes, water depth and hill shading, with the fort and 
    - A place's plan (type, size, rotation, ground level) is worked out at startup. Its blocks are only built when a nearby chunk needs them.
    - The ground is flattened under each place, at the average height of the land there (never below the water), and blended into the surroundings.
    - **Modelled buildings:** cottages and windmills are built from a parts kit that merges each building into one mesh per material. They use general colliders (oriented boxes and cylinders), which walking, landing and step-ups all respect.
-   - All forts share one builder, including the starting fort, which comes out identical to the original hand-built version.
+   - All forts share one layout (`buildFort`) and one model (`makeFort`), including the starting fort.
    - Torches and guards appear with the chunk they stand in. A fixed pool of 10 point lights moves to the nearest torches, so more forts never add rendering cost.
    - Places appear on the world map: red squares are forts, houses are villages, triangles are watchtowers, crosses are ruins and rings are standing stones.
 5. **The smooth ground.** The height functions return smooth, unrounded heights. Each chunk stores the height at its 17×17 block corners, and the ground mesh joins them in two triangles per block, split corner to corner.
@@ -298,17 +309,18 @@ The world map (M) shows biomes, water depth and hill shading, with the fort and 
    - **The blocks underneath:** the chunk still holds whole-block columns of ground below the surface, for anything that asks about blocks. They're neither drawn nor collided with.
    - **Still water:** a flat surface over every block cell where a corner dips below the sea's level, the lake's or a tarn's.
    - **Rivers:** one strip of water per river, down its course at its water level and a little wider than the channel so the edges tuck under the banks. Its texture scrolls downstream, and segments that drop steeply are tinted white. Anything that asks about water (swimming, bridges, trees, animals, the map, guards) uses the water level at that spot, not sea level.
-6. **Greedy meshing (buildings).** The blocks standing on the ground (forts, ruins, stones) become one mesh per chunk, containing only the faces that touch air. Neighbouring faces of the same material are merged into larger rectangles, with one geometry group per material and world-space UVs so the textures still tile once per block.
+6. **Greedy meshing (block buildings).** The blocks standing on the ground (the watchtower, ruins and stones) become one mesh per chunk, containing only the faces that touch air. Neighbouring faces of the same material are merged into larger rectangles, with one geometry group per material and world-space UVs so the textures still tile once per block.
    - **Ambient occlusion:** each face corner is darkened by how many of the three blocks around it are solid, from fully open down to tucked into a corner. The result is stored as vertex colours. This shades inside corners and the base of walls.
    - **Sky light:** each face also stores how much open sky the air in front of it can see, so the insides of towers and the keep are darker. A small patch to the Lambert shader scales only the sun/moon and sky light by that value, leaving point lights (torches, lanterns) untouched.
    - Faces only merge when their corner shading matches. Each quad is split along the diagonal that keeps a dark corner from smearing across it.
+   - **Fort models:** built with the same parts kit as the cottages: textured boxes in the old block layout (so guards, torches and roads line up), merged into one mesh per material, turned with the fort, with box colliders for everything solid. Steps are half a block, so the usual step-up climbs them. `colliderPoint` lets walls block arrows and sight.
    - **Trees:** each chunk records its trees (position, kind, trunk and crown size) when it's generated. When it's drawn, copies of four base shapes (a tapering trunk, a cone, a ball and a column) are scaled, turned and merged into one flat-shaded mesh with vertex colours. Trunks become cylinder colliders. `treeHit` tests trunks and crowns (a cone for a pine, a squashed ball for an oak) for arrows, hunters' shots and guards' sight.
 7. **Shaped blocks.** As well as full cubes, the grid holds slabs (half blocks), stairs and sloped roof wedges.
    - Each one records its base block (for textures), its shape and the direction it rises.
    - **Structures:** fort and watchtower stairs use stair blocks (rotated with the structure), and grave mounds and the Silent Grove's altar are slabs.
    - **Drawing:** shaped blocks get small per-block meshes, with faces hidden against neighbouring cubes. Cubes still use the merged greedy mesh.
    - **Collision:** it reads each shape's height under your feet, so you walk up stairs in smooth half-steps.
-8. **The starting fort** is built with the same `buildFort()` as the procedural forts, on flattened ground at the spawn, with a road leading to its gate.
+8. **The starting fort** is built with the same `buildFort()` and `makeFort()` as the other forts, on flattened ground at the spawn, with a road leading to its gate. Its model stays built for good.
 9. **Lighting.** Hemisphere sky light and a sun/moon directional light driven by the day/night cycle, exponential fog that hides the edge of the loaded area, and torchlight from the light pool described above.
 10. **ASCII pass.** The 3D scene is rendered into a low-resolution target, at 2× the character grid. A full-screen shader picks a character for each cell based on its brightness, then tints it with the scene colour. The glyph atlas is redrawn at the exact on-screen cell size, so small characters stay sharp.
    - **FINE** (default): about 40 characters, sorted at startup by how much ink each covers, with some of the scene colour blended behind them. This gives smooth shading.
