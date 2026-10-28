@@ -14,8 +14,9 @@ of bakers) are as valid as famous ones (a displaced king in the family tree).
   histories up to that year. A later start may take a while to build.
 - **The war story:** James writes the story of the war and the times before it. Over time it gets
   muddled in retellings and copies, but clear versions remain in the world for players to find.
-- **Families can cross race.** Elves and dwarves live longer than humans; exact lifespans to be decided.
-  The prototype uses adjustable placeholders.
+- **Families can cross race.**
+- **Lifespans:** typical lives of humans 80, elves 600, dwarves 300, orcs 60, with outliers: some humans
+  live much longer, some elves much shorter. Deaths can come from anything, injury to illness.
 - **Items:** James is choosing the actual items (weapons, armour, scrolls, books). When the player takes
   an item they become a new owner in its chain. NPCs can find things the player has used or left.
 - **Journal:** records everything the player has encountered, and only that. Taking something to a
@@ -38,7 +39,7 @@ of bakers) are as valid as famous ones (a displaced king in the family tree).
 - Places stay hand-authored; history is built on them.
 
 ## Open questions
-- Lifespans per race, and the inheritance rules for mixed-race families (race, lifespan, surname, where a
+- The inheritance rules for mixed-race families (race, lifespan, surname, where a
   couple lives). The prototype marks its temporary choices in `TEMP_RULES`.
 - The longest start a player may choose: to be set from measured build times, not guessed.
 - Whether a later start also changes what's built (the gazetteer's era states for war sites).

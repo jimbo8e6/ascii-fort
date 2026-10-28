@@ -1,6 +1,6 @@
 // Runs the six checks for the family simulation prototype and measures generation time.
 // Usage: node test.mjs   (prints a report; also writes results.txt next to this file)
-import { newHistory, simulate, save, load, ancestors, sharedAncestors, relationship, describe, fullName, RACES, TEMP_RULES, RULES } from './family-sim.mjs';
+import { newHistory, simulate, save, load, ancestors, sharedAncestors, relationship, describe, fullName, RACES, TEMP_RULES, RULES, CEILING } from './family-sim.mjs';
 import { createHash } from 'node:crypto';
 import { writeFileSync, readFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -90,7 +90,7 @@ log('\n3. An early start and a later start from the same seed: the later one onl
   // People as they stood at year `early`, rebuilt from the longer history
   // (a trade is only known once its trade event has happened; place is left out, as people move later)
   const lateTrade = new Set(L.events.filter(e => e.t === 'trade' && e.y > early).map(e => e.p));
-  const asOf = (p, y) => ({ ...p, death: p.death !== null && p.death <= y ? p.death : null, spouses: p.spouses.filter(s => s.year <= y),
+  const asOf = (p, y) => ({ ...p, death: p.death !== null && p.death <= y ? p.death : null, cause: p.death !== null && p.death <= y ? p.cause : null, spouses: p.spouses.filter(s => s.year <= y),
     trade: lateTrade.has(p.id) ? null : p.trade, place: null });
   const same = E.people.every((p, i) => JSON.stringify({ ...asOf(p, early) }) === JSON.stringify(asOf(L.people[i], early)));
   check(same && L.people.length > E.people.length, `the ${E.people.length} people of year ${early} have the same births, parents, marriages and deaths; ${L.people.length - E.people.length} more people come later`);
@@ -130,7 +130,8 @@ function sanity(H) {
   for (const p of P) {
     const R = RACES[TEMP_RULES.lifespanRace(p)];
     if (p.death !== null && p.death < p.birth) bad.push(`#${p.id} dies before birth`);
-    if ((p.death ?? H.year) - p.birth > R.max) bad.push(`#${p.id} outlives its race's maximum`);
+    if ((p.death ?? H.year) - p.birth > R.life * CEILING) bad.push(`#${p.id} outlives the ceiling for its race`);
+    if ((p.death === null) !== (p.cause === null)) bad.push(`#${p.id} has a death without a cause or a cause without a death`);
     for (const [par, rel] of [[p.mother, 'mother'], [p.father, 'father']]) {
       if (par === null) continue;
       const q = P[par];
@@ -164,10 +165,35 @@ for (const yrs of [1, 100, 500]) {
   const X = yrs === 100 ? run(SEED, 100) : run(SEED + yrs, yrs), bad = sanity(X);
   check(bad.length === 0, `${yrs} years (seed ${X.seed}): ${X.people.length} people, ${X.events.length} events, ${bad.length} problems${bad.length ? ': ' + bad.slice(0, 5).join('; ') : ''}`);
 }
-log('  Checked: no one dies before birth or outlives their race; every child is born after both parents');
+log('  Checked: no one dies before birth or outlives the ceiling (1.6 × their race\'s typical life); every death has a cause; every child is born after both parents');
 log('  and before either died, to a mother in her child-bearing years; marriages are of adults, while both');
 log('  live, recorded on both sides, one at a time; no one is their own ancestor; events are in order and');
 log('  none concerns someone before birth or after death.');
+
+// ---------------------------------------------------------------------------------------------
+log('\nLifespans and causes of death (seed 1337, 2,000 years, everyone who died after year 0)');
+{
+  const X = run(SEED, 2000), dead = X.people.filter(p => p.death !== null && p.birth > 0);
+  const pct = (a, q) => a[Math.min(a.length - 1, Math.floor(q * a.length))];
+  log('  race    typical  deaths  died as   age at death, adults    old-age deaths  outliers                          oldest');
+  log('                           children  (10% / 50% / 90%)       median');
+  for (const race of Object.keys(RACES)) {
+    const R = RACES[race], ds = dead.filter(p => p.race === race), adults = ds.filter(p => p.death - p.birth >= R.adult).map(p => p.death - p.birth).sort((a, b) => a - b);
+    const kids = ds.length - adults.length, long = adults.filter(a => a > R.life * 1.15).length, short = adults.filter(a => a < R.life * .5).length;
+    const oldAge = ds.filter(p => p.cause === 'old age').map(p => p.death - p.birth).sort((a, b) => a - b);
+    log(`  ${race.padEnd(6)} ${String(R.life).padStart(6)}  ${String(ds.length).padStart(6)}  ${(kids / ds.length * 100).toFixed(0).padStart(5)}%    ${pct(adults, .1)} / ${pct(adults, .5)} / ${pct(adults, .9)}`.padEnd(64) + `${pct(oldAge, .5)}`.padEnd(16) +
+      `${(long / adults.length * 100).toFixed(1)}% past ${Math.round(R.life * 1.15)}, ${(short / adults.length * 100).toFixed(0)}% before ${R.life / 2}`.padEnd(34) + `${adults.at(-1)}`);
+  }
+  const causes = {};
+  for (const p of dead) { const c = p.cause === 'old age' ? 'old age' : p.cause === 'childbirth' ? 'childbirth' : /drown|rockfall|skirmish|hunting|falling tree|forge|scaffold|crushing|fall|cart|fight|horse|fire|wound/.test(p.cause) ? 'injury' : 'illness'; causes[c] = (causes[c] || 0) + 1; }
+  log(`  Causes: ${Object.entries(causes).map(([c, n]) => `${c} ${(n / dead.length * 100).toFixed(0)}%`).join(', ')}`);
+  const oldest = (race) => { const ds = dead.filter(p => p.race === race).sort((a, b) => (b.death - b.birth) - (a.death - a.birth)); return ds[0]; };
+  for (const race of ['human', 'elf']) { const p = oldest(race); log(`  Longest-lived ${race}: ${describe(X, p.id)}, constitution ${p.constitution.toFixed(2)}`); }
+  const youngElf = dead.filter(p => p.race === 'elf' && p.death - p.birth >= RACES.elf.adult).sort((a, b) => (a.death - a.birth) - (b.death - b.birth))[0];
+  log(`  Shortest-lived adult elf: ${describe(X, youngElf.id)}`);
+  const sample = dead.filter(p => p.race === 'human').slice(-6);
+  log('  A few human deaths:'); for (const p of sample) log(`   ${describe(X, p.id)}`);
+}
 
 // ---------------------------------------------------------------------------------------------
 log('\n6. Save and reload');

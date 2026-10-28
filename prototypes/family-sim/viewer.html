@@ -56,7 +56,7 @@ const $ = id => document.getElementById(id);
 let H = null, pickA = null, pickB = null;
 
 // Editable placeholder lifespans
-const fields = [['adult', 'adult at'], ['old', 'old from'], ['max', 'max age']];
+const fields = [['life', 'typical life'], ['adult', 'adult at']];
 $('races').innerHTML = '<tr><th></th>' + fields.map(f => `<th>${f[1]}</th>`).join('') + '<th>child-bearing</th></tr>' +
   Object.keys(RACES).map(r => `<tr><td>${r}</td>${fields.map(([k]) => `<td><input type="number" data-r="${r}" data-k="${k}" value="${RACES[r][k]}"></td>`).join('')}<td><input type="number" data-r="${r}" data-k="f0" value="${RACES[r].fertile[0]}">–<input type="number" data-r="${r}" data-k="f1" value="${RACES[r].fertile[1]}"></td></tr>`).join('');
 $('races').addEventListener('change', e => { const { r, k } = e.target.dataset, v = +e.target.value; if (k === 'f0') RACES[r].fertile[0] = v; else if (k === 'f1') RACES[r].fertile[1] = v; else RACES[r][k] = v; });
@@ -97,14 +97,14 @@ function show(id) {
   const lifeEvents = H.events.filter(e => e.p === id || e.a === id || e.b === id);
   $('card').innerHTML = `
     <h2>${name(id)} <span class="dim">#${id}</span>${p.notable ? ` <span class="star">★ ${p.notable}</span>` : ''}</h2>
-    <div>${p.race}${p.heritage.length > 1 ? ` <span class="temp">(family of ${p.heritage.join(', ')}; race chosen by a temporary rule)</span>` : ''}, ${p.sex === 'f' ? 'female' : 'male'}, born ${p.birth} in ${p.birthPlace}${p.death !== null ? `, died ${p.death} aged ${p.death - p.birth}` : `, alive, aged ${H.year - p.birth}`}</div>
+    <div>${p.race}${p.heritage.length > 1 ? ` <span class="temp">(family of ${p.heritage.join(', ')}; race chosen by a temporary rule)</span>` : ''}, ${p.sex === 'f' ? 'female' : 'male'}, born ${p.birth} in ${p.birthPlace}${p.death !== null ? `, died ${p.death} aged ${p.death - p.birth} of ${p.cause}` : `, alive, aged ${H.year - p.birth}`} · constitution ${p.constitution.toFixed(2)}</div>
     <div>${p.trade || 'no trade yet'} · lives in ${p.place} · generation ${p.gen}</div>
     <div style="margin-top:8px"><button id="setA">SET AS A</button> <button id="setB">SET AS B</button></div>
     ${pickA !== null && pickB !== null ? relBox() : ''}
     <h3>Parents</h3><div>mother ${p.mother === null ? '<span class="dim">unknown (founder)</span>' : brief(p.mother)}<br>father ${p.father === null ? '<span class="dim">unknown (founder)</span>' : brief(p.father)}</div>
     <h3>Marriages</h3><div>${p.spouses.map(s => `${s.year}: ${brief(s.id)}`).join('<br>') || '<span class="dim">none</span>'}</div>
     <h3>Children (${kids.length})</h3><div>${kids.map(brief).join('<br>') || '<span class="dim">none</span>'}</div>
-    <h3>Life</h3><div class="dim">${lifeEvents.map(e => `${e.y}: ${e.t === 'wed' ? 'married ' + name(e.a === id ? e.b : e.a) : e.t === 'move' ? `moved ${e.from} → ${e.to}` : e.t === 'trade' ? 'became a ' + e.trade : e.t === 'found' ? 'living at the end of the war' : e.t}`).join('<br>')}</div>
+    <h3>Life</h3><div class="dim">${lifeEvents.map(e => `${e.y}: ${e.t === 'wed' ? 'married ' + name(e.a === id ? e.b : e.a) : e.t === 'move' ? `moved ${e.from} → ${e.to}` : e.t === 'trade' ? 'became a ' + e.trade : e.t === 'found' ? 'living at the end of the war' : e.t === 'death' ? 'died of ' + e.cause : e.t}`).join('<br>')}</div>
     <h3>Ancestors: ${A.size} known, ${notables.length} notable</h3>
     <div>${notables.slice(0, 10).map(([x, e]) => `<span class="star">★</span> ${link(x)}, ${H.people[x].notable} <span class="dim">(${e.depth} generations back, via ${e.routes[0].join(' → ')})</span>`).join('<br>') || '<span class="dim">no notable ancestors: an ordinary family</span>'}</div>
     <h3>Family line (father's side, as surnames pass under the temporary rule)</h3><div>${line.map(brief).join('<br>')}</div>

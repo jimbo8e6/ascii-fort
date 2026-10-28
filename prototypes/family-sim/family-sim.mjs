@@ -9,14 +9,37 @@
 // The history is people (with mother, father and marriages) and a log of events. Everything else
 // (children, ancestors, relationships) is worked out from those.
 
-// ---- Placeholder lifespans and fertility, per race (years). Adjust freely. ----
+// ---- Lifespans and fertility, per race (years) ----
+// life: a typical lifespan (James: humans 80, elves 600, dwarves 300, orcs 60). Each person also has a
+// constitution that stretches or shortens their own (see constitution below), so there are outliers.
+// Placeholders, adjust freely: age of adulthood; child-bearing years; yearly chances of a child (per
+// couple), of dying of illness (adults; children) and of a fatal injury (adults, more in dangerous trades).
 export const RACES = {
-  //        age of adulthood, child-bearing years, old from, can't outlive, yearly chances: birth (per couple), death (adult; child)
-  human: { adult: 16, fertile: [16, 45], old: 60, max: 95, birth: .3, death: .006, childDeath: .015 },
-  elf:   { adult: 50, fertile: [50, 450], old: 550, max: 750, birth: .03, death: .0008, childDeath: .002 },
-  dwarf: { adult: 30, fertile: [30, 160], old: 200, max: 300, birth: .08, death: .002, childDeath: .006 },
-  orc:   { adult: 13, fertile: [13, 35], old: 40, max: 65, birth: .35, death: .01, childDeath: .03 },
+  human: { life: 80,  adult: 16, fertile: [16, 45],  birth: .3,  illness: .003,   childIllness: .012, injury: .002 },
+  elf:   { life: 600, adult: 50, fertile: [50, 450], birth: .03, illness: .0003,  childIllness: .002, injury: .0003 },
+  dwarf: { life: 300, adult: 30, fertile: [30, 160], birth: .08, illness: .0008,  childIllness: .005, injury: .001 },
+  orc:   { life: 60,  adult: 13, fertile: [13, 35],  birth: .35, illness: .005,   childIllness: .025, injury: .006 },
 };
+// No one outlives this share of their race's typical life, however hardy
+export const CEILING = 1.6;
+// Old age: a person's own lifespan is their race's life times their constitution. Decline starts at
+// 85% of it, and the yearly chance of dying of old age rises so that half of those who reach old age
+// have died of it by their own lifespan (it rises in proportion more slowly in the long-lived races)
+const oldAgeChance = (R, p, age) => {
+  const x = age / (R.life * p.constitution);
+  return x < .85 ? 0 : Math.min(1, ((x - .85) / .15) ** 2 * 18 / R.life);
+};
+// Dangerous trades multiply the chance of a fatal injury
+const RISKY = { miner: 3, warrior: 3, guard: 2, sailor: 2.5, fisher: 2, ferryman: 2, hunter: 2, woodcutter: 2, boatwright: 1.5, mason: 1.5, smith: 1.3, docker: 1.5, carter: 1.5 };
+// What carried someone off (for the record and for stories)
+const CAUSES = {
+  illness: ['a fever', 'the coughing sickness', 'a wasting illness', 'the flux', 'a winter chill', 'a sickness of the blood', 'a fever of the lungs'],
+  injury: ['a fall', 'a cart accident', 'a fight', 'a kick from a horse', 'a fire', 'a bad wound gone foul'],
+  trade: { miner: 'a rockfall in the mines', sailor: 'drowning at sea', fisher: 'drowning', ferryman: 'drowning in the Vael', warrior: 'wounds from a skirmish',
+    guard: 'wounds from a skirmish', hunter: 'a hunting accident', woodcutter: 'a falling tree', smith: 'burns at the forge', mason: 'a fall from scaffolding', docker: 'a crushing load' },
+  childbirth: 'childbirth',
+};
+const CHILDBIRTH = .006;                 // a mother's chance of dying in childbirth
 
 // ---- ⚠ TEMPORARY inheritance rules, for James to decide. Each one is a single function to swap. ----
 export const TEMP_RULES = {
@@ -28,6 +51,10 @@ export const TEMP_RULES = {
   birthRace: (mother, father) => mother.race,
   // Children take their father's surname and family line
   lineParent: (mother, father) => father,
+  // Constitution (a multiplier on lifespan) runs partly in families: the everyday part is half the
+  // parents' (without their outlier) and half the person's own. Then the person's own rare outlier
+  // (hardy or frail) applies on top, undiluted. Founders draw their own.
+  constitution: (mother, father, [base, outlier]) => (mother ? (mother.base + father.base) / 2 * .5 + base * .5 : base) * outlier,
   // After a wedding, the wife moves to the husband's home
   newHome: (wife, husband) => husband.place,
   // How likely a match across races is, against a match within one
@@ -97,13 +124,28 @@ function rand(seed, tag, a = 0, b = 0, c = 0) {
   h ^= h >>> 16; h = Math.imul(h, 0x85ebca6b); h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35); h ^= h >>> 16;
   return (h >>> 0) / 4294967296;
 }
-const T = Object.fromEntries(['death', 'wed', 'wedPick', 'away', 'awayPlace', 'birth', 'sex', 'race', 'name', 'trade', 'tradePick', 'leave', 'leavePlace', 'found', 'foundAge', 'foundKids', 'foundRace', 'foundSurname', 'foundTrade'].map(k => [k, TAG(k)]));
+const T = Object.fromEntries(['con', 'cause', 'childbirth', 'death', 'wed', 'wedPick', 'away', 'awayPlace', 'birth', 'sex', 'race', 'name', 'trade', 'tradePick', 'leave', 'leavePlace', 'found', 'foundAge', 'foundKids', 'foundRace', 'foundSurname', 'foundTrade'].map(k => [k, TAG(k)]));
+// A person's own constitution: mostly within 15% of 1, with about 1 in 25 unusually hardy (up to half
+// as long again) and about 1 in 25 frail (as little as half)
+function ownConstitution(seed, id) {
+  const n = (rand(seed, T.con, id, 1) + rand(seed, T.con, id, 2) + rand(seed, T.con, id, 3) - 1.5) / 1.5;   // -1..1, bunched in the middle
+  const r = rand(seed, T.con, id, 4);
+  const outlier = r < .04 ? 1.2 + rand(seed, T.con, id, 5) * .3 : r > .96 ? .5 + rand(seed, T.con, id, 5) * .35 : 1;
+  return [1 + n * .1, outlier];
+}
+// Give a person their constitution, keeping the everyday part (base) for their children
+function setConstitution(seed, p, mother, father) {
+  const own = ownConstitution(seed, p.id);
+  p.base = mother ? (mother.base + father.base) / 2 * .5 + own[0] * .5 : own[0];
+  p.constitution = TEMP_RULES.constitution(mother, father, own);
+}
 const pickW = (weights, r) => { let t = 0; for (const [, w] of weights) t += w; let x = r * t; for (const [k, w] of weights) { if ((x -= w) < 0) return k; } return weights.at(-1)[0]; };
 
 // ---- The history ----
 // A person: id, name, surname, line (family line id), sex, race, heritage (all races in the family),
 // birth, death (or null), mother, father (ids, or null for founders), spouses [{ id, year }], place,
-// birthPlace, trade, notable (a title, founders only), gen (generations from the founders).
+// birthPlace, trade, notable (a title, founders only), gen (generations from the founders), constitution
+// (a multiplier on their race's typical lifespan), cause (of death).
 // An event: { y, t, ... } with t one of found, birth, wed, death, trade, move.
 export function newHistory(seed) {
   const H = { version: 1, seed: seed | 0, year: 0, people: [], lines: [], events: [] };
@@ -116,7 +158,7 @@ export function newHistory(seed) {
 function found(H) {
   const { seed } = H;
   let n = 0;
-  const person = (o) => { const p = { id: H.people.length, spouses: [], death: null, mother: null, father: null, gen: 0, trade: null, notable: null, ...o }; H.people.push(p); return p; };
+  const person = (o) => { const p = { id: H.people.length, spouses: [], death: null, cause: null, mother: null, father: null, gen: 0, trade: null, notable: null, ...o }; H.people.push(p); return p; };
   const firstName = (race, sex, id) => NAMES[race][sex][rand(seed, T.name, id) * NAMES[race][sex].length | 0];
   const notables = NOTABLES.map(x => ({ ...x }));
   PLACES.forEach((pl, pi) => {
@@ -137,6 +179,7 @@ function found(H) {
       const wife = person({ sex: 'f', race: wifeRace, heritage: [wifeRace], birth: -ageW, place: pl.name, birthPlace: pl.name, surname: wifeSurname, line: wifeLine.id });
       line.founder = husband.id; wifeLine.founder = wife.id;
       for (const p of [husband, wife]) {
+        setConstitution(seed, p, null, null);
         p.name = firstName(p.race, p.sex, p.id);
         p.trade = pl.trades[rand(seed, T.foundTrade, p.id) * pl.trades.length | 0];
         H.events.push({ y: 0, t: 'found', p: p.id, place: pl.name });
@@ -153,6 +196,7 @@ function found(H) {
         const c = person({ sex: rand(seed, T.sex, pi * 1000 + hh, k) < .5 ? 'm' : 'f', race, heritage: [race], birth: -age, place: pl.name, birthPlace: pl.name,
           surname, line: line.id, mother: wife.id, father: husband.id, gen: 1 });
         c.name = firstName(race, c.sex, c.id);
+        setConstitution(seed, c, wife, husband);
         if (age >= R.adult) c.trade = husband.trade;
         H.events.push({ y: 0, t: 'found', p: c.id, place: pl.name });
         made++;
@@ -199,11 +243,19 @@ export function simulate(H, to) {
     const room = (place, race) => PLACES[placeIndex[place]].cap * (PLACES[placeIndex[place]].races[race] || 0);
     for (const p of living) add(p, 1);
     // Deaths
+    // Deaths: illness, injury and old age each have a yearly chance; one roll decides whether and which
     for (const p of living) {
       const R = RACES[TEMP_RULES.lifespanRace(p)], a = age(p, y);
-      let h = a < R.adult / 3 ? R.childDeath : R.death;
-      if (a > R.old) h += .55 * ((a - R.old) / (R.max - R.old)) ** 2;
-      if (a >= R.max || rand(seed, T.death, y, p.id) < h) { p.death = y; H.events.push({ y, t: 'death', p: p.id, place: p.place }); add(p, -1); }
+      const ill = a < R.adult / 3 ? R.childIllness : R.illness * (1 + Math.max(0, a / R.life - .5));   // the old sicken more easily
+      const hurt = a < R.adult / 2 ? R.injury * .3 : R.injury * (RISKY[p.trade] || 1);
+      const old = oldAgeChance(R, p, a);
+      const r = rand(seed, T.death, y, p.id);
+      let cause = null;
+      if (a >= R.life * CEILING) cause = 'old age';
+      else if (r < old) cause = 'old age';
+      else if (r < old + ill) cause = CAUSES.illness[rand(seed, T.cause, y, p.id) * CAUSES.illness.length | 0];
+      else if (r < old + ill + hurt) cause = CAUSES.trade[p.trade] && rand(seed, T.cause, y, p.id) < .7 ? CAUSES.trade[p.trade] : CAUSES.injury[rand(seed, T.cause, y, p.id + 1) * CAUSES.injury.length | 0];
+      if (cause) { p.death = y; p.cause = cause; H.events.push({ y, t: 'death', p: p.id, cause, place: p.place }); add(p, -1); }
     }
     const alive = living.filter(p => p.death === null);
     // Coming of age: a trade, and perhaps a move away
@@ -268,14 +320,16 @@ export function simulate(H, to) {
     }
     for (const [w, h, race] of born) {
       const id = H.people.length, lineParent = TEMP_RULES.lineParent(w, h);
-      const c = { id, sex: rand(seed, T.sex, y, id) < .5 ? 'm' : 'f', birth: y, death: null, mother: w.id, father: h.id, spouses: [], place: w.place, birthPlace: w.place,
+      const c = { id, sex: rand(seed, T.sex, y, id) < .5 ? 'm' : 'f', birth: y, death: null, cause: null, mother: w.id, father: h.id, spouses: [], place: w.place, birthPlace: w.place,
         surname: lineParent.surname, line: lineParent.line, trade: null, notable: null, gen: Math.max(w.gen, h.gen) + 1 };
       c.race = race;
+      setConstitution(seed, c, w, h);
       c.heritage = [...new Set([...w.heritage, ...h.heritage])].sort();
       c.name = NAMES[c.race][c.sex][rand(seed, T.name, id) * NAMES[c.race][c.sex].length | 0];
       H.people.push(c); H._children.push([]); H._children[w.id].push(id); H._children[h.id].push(id);
       H.events.push({ y, t: 'birth', p: id, mother: w.id, father: h.id, place: w.place });
       add(c, 1);
+      if (rand(seed, T.childbirth, y, w.id) < CHILDBIRTH) { w.death = y; w.cause = CAUSES.childbirth; H.events.push({ y, t: 'death', p: w.id, cause: w.cause, place: w.place }); add(w, -1); }
     }
     H._living = H.people.filter(p => p.death === null).map(p => p.id);
     H.year = y;
@@ -338,5 +392,5 @@ export function relationship(H, a, b) {
 export const fullName = (H, id) => { const p = H.people[id]; return `${p.name} ${p.surname}`; };
 export const describe = (H, id) => {
   const p = H.people[id];
-  return `${p.name} ${p.surname} (#${id}, ${p.race}${p.heritage.length > 1 ? ' of ' + p.heritage.join('-') + ' family' : ''}, ${p.sex === 'f' ? 'f' : 'm'}, born ${p.birth}${p.death !== null ? ', died ' + p.death : ''}${p.trade ? ', ' + p.trade : ''}, ${p.place}${p.notable ? ', ★ ' + p.notable : ''})`;
+  return `${p.name} ${p.surname} (#${id}, ${p.race}${p.heritage.length > 1 ? ' of ' + p.heritage.join('-') + ' family' : ''}, ${p.sex === 'f' ? 'f' : 'm'}, born ${p.birth}${p.death !== null ? `, died ${p.death} aged ${p.death - p.birth} of ${p.cause}` : ''}${p.trade ? ', ' + p.trade : ''}, ${p.place}${p.notable ? ', ★ ' + p.notable : ''})`;
 };
