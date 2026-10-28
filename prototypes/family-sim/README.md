@@ -15,8 +15,8 @@ Nothing in the game uses it.
   SAVE JSON). It's one self-contained file: open it straight from disk, no server needed.
 - `build-viewer.mjs`: copies `family-sim.mjs` into `viewer.html`; with `--hosted <file>` it also writes a copy
   for hosting as a web page (no outer document tags, no SAVE JSON). The hosted copy is published as the
-  *Family Line Explorer* page. Copies (`node build-viewer.mjs`; `test.mjs`
-  runs it too), so the viewer always uses the same simulation the tests check.
+  *Family Line Explorer* page. Run it with `node build-viewer.mjs` (`test.mjs` runs it too),
+  so the viewer always uses the same simulation the tests check.
 
 ## How it works
 - **Year 0** is the end of the war. Each place starts with families of its races: couples (married before
