@@ -58,7 +58,7 @@ The places come from the world gazetteer (draft 1) and are set by hand on the pa
   - **The delta's side channels** fan out south and east and run dry in the sand.
 - **Roads:** the gazetteer's five roads, laid by hand in `ROADS` through places and waypoints. They wind gently between their stops.
   - **Graded:** each road's height is the land along it smoothed out, then eased so it never climbs steeper than about 1 in 8 (12%). Where it meets a hill it runs through a cutting; across a dip it rides an embankment. The cuttings and embankments blend back into the land within a few blocks, and never fill in water.
-  - **A surface of its own:** like the bridges, the road is a mesh rather than blocks. It's a smooth strip of packed earth along the graded height, laid just over the blocks beneath, with dirt edges hiding the steps in the ground. You walk on it and carts drive on it, so it climbs a hill in one even slope.
+  - **A surface of its own:** like the bridges, the road is a mesh rather than blocks. It's a smooth strip of packed earth along the graded height, laid just over the ground, with dirt edges. You walk on it and carts drive on it, so it climbs a hill in one even slope.
   - **The River Road** runs down the Vael's west bank: Kharn Dolum, Fort Greyhold, past the Victory Fields, the Sunken Throne and Oathstone, then Concord Landing, Hollin's Ferry, Kelford, Millbrook, Castle Aldermere and Port Cassel.
   - **The Hollow Road** runs from the forest north of Thornwick, past Oathstone, over the Vael at Oath Ford and past the Broken Bastion to Gor Marakh.
   - **The Western Road** runs from Thornwick to Kelford.
@@ -198,15 +198,14 @@ These are placed by the seed like everything else:
 - These are 3D models built from boxes and cylinders, not blocks, so they can move and turn freely.
 - **Solid:** carts and boats each have an oriented collision box matching the hull, or the cart and horse together. You can't walk or swim into them, but you can always move out if you end up overlapping one. A cart that runs into you pushes you aside instead of driving through.
 
-## Caves
+## The ground
 
-Winding tunnels and big caverns run under the land, and in some areas they break through to the surface as entrances.
+The land is a smooth, continuous surface rather than blocks: real slopes and curves, with no stair-steps. Buildings and trees still stand on it as blocks for now.
 
-- **Darkness:** underground it's genuinely dark. Each block face knows how much open sky it can see, and that only scales the sun, moon and sky light. Torches still light cave walls and fort interiors.
-- **Lantern:** you carry one that glows automatically whenever there's rock over your head. The minimap shows *underground*.
-- **Crystals:** glowing violet crystals grow on floors and ceilings deep down.
-- **Where they don't go:** caves never cut under the forts, the road or other structures, and they stay a few blocks below the sea bed.
-- **The surface stays whole:** caverns always keep at least 7 blocks of rock overhead, and tunnels narrow near the surface, so entrances are occasional holes in the ground rather than open pits.
+- **How it looks:** the ground is coloured by what the land is (grass, darker forest floor, sand and beaches, snow, red sand in the Rustwaste, packed earth in fort courtyards). It turns to bare rock as the slope steepens: sandstone in the desert, red rock on the mesas. It's lit with smooth shading, so hills catch the light.
+- **Walking:** you walk on the surface itself, smoothly up and down. Slopes steeper than about 50° (the mesa cliffs, the sharpest ridges) are walls you can't climb. Going downhill you stay on the ground rather than stepping off into the air.
+- **Water:** the sea, lakes and rivers are a flat surface just under sea level wherever the ground dips below it, so shorelines follow the land's curves.
+- **No caves:** a smooth surface has no underside, so the caves are gone for now. They may come back later as separate cave models behind entrances.
 
 ## Guards and conversations
 
@@ -221,7 +220,7 @@ Guards patrol the walls and courtyards and stand at the gates. They're friendly.
      - the two nearest named forts, watchtowers or ruins, with compass direction and rough distance;
      - which way the land changes (desert, snowfields, pine woods, grassland, the sea, the lake, a mountain tarn, the marshes);
      - the nearest river, by name if it has one (*The Vael runs just to the north-east.*), or a stream;
-     - any cave mouth nearby, and a warning at night.
+     - a warning at night.
   2. **Goodbye.**
 - **Place names:** every place has its name from the gazetteer, e.g. *Fort Greyhold*, *Kelford*, *the Sunken Throne*.
 - **Speech bubbles** are drawn over the 3D view rather than inside it, so they stay readable in ASCII mode.
@@ -251,7 +250,7 @@ A full day lasts an hour of real time, or 3 minutes at 20× fast-forward (K). Th
 
 ## World seed and map
 
-The shape of the land, the places and the roads come from the painted map and the gazetteer, and are the same in every world. The seed decides the small-scale detail (hills, trees, caves, wildlife) and the villagers. Add `?seed=` to the URL to get a different one, e.g. `index.html?seed=42`. The default is 1337. The world map also has a seed box and a NEW WORLD button.
+The shape of the land, the places and the roads come from the painted map and the gazetteer, and are the same in every world. The seed decides the small-scale detail (hills, trees, wildlife) and the villagers. Add `?seed=` to the URL to get a different one, e.g. `index.html?seed=42`. The default is 1337. The world map also has a seed box and a NEW WORLD button.
 
 The world map (M) shows biomes, water depth and hill shading, with the fort and your position and facing marked. Drag to pan, scroll or use +/− to zoom, from 256 to about 10,000 blocks across (the whole continent). Structure markers thin out when zoomed far out, and an N marker shows north, and CENTRE ON ME to jump back to yourself. A minimap in the top-left corner (N) follows you and shows the biome (or, in water, the sea, lake, tarn, river or marsh) and coordinates you're at. Both are drawn from the same climate and height functions as the 3D world, a few rows per frame so the game never stalls.
 
@@ -266,7 +265,7 @@ The world map (M) shows biomes, water depth and hill shading, with the fort and 
    - **Rivers:** they're polylines in image pixels (`RIVERS` in `index.html`), smoothed into curves and bucketed in a coarse grid so each lookup only checks nearby segments.
    - **Biomes:** snow where the painting is snowy or the ground is high, desert where it's sandy or red (with red rock and red sand in the Rustwaste and the dunes), forest where it's wooded or marshy, and grassland elsewhere.
    - **Changing the map:** paint over `map/painted-map.jpg` and run `python3 map/build.py`, or edit `RIVERS`.
-   - **Blocks:** beaches form where land meets the sea, and steep slopes are bare rock. Underwater is sand, and empty space below sea level fills with water.
+   - **Ground:** beaches form where land meets the sea, and steep slopes are bare rock. Underwater is sand, and empty space below sea level fills with water.
    - **Swimming:** water is a separate see-through mesh with drifting ripples. Below the surface you swim slowly and hold jump to rise, and the fog turns murky blue.
 3. **Chunks.** The world is split into 16×16×64 chunks. Each chunk is generated purely from the seed, so any chunk can be built on demand, including neighbours that the mesher or collision needs. Chunks within 6 of the player are meshed nearest-first, within a few milliseconds per frame. Far chunks are unloaded.
 4. **Structures.** The world is divided into 192×192-block regions. Each place is filed under the region holding its corner, at most one per region, but its footprint and the flattened ground around it may reach into neighbouring regions, which also list it.
@@ -281,21 +280,20 @@ The world map (M) shows biomes, water depth and hill shading, with the fort and 
    - All forts share one builder, including the starting fort, which comes out identical to the original hand-built version.
    - Torches and guards appear with the chunk they stand in. A fixed pool of 10 point lights moves to the nearest torches, so more forts never add rendering cost.
    - Places appear on the world map: red squares are forts, houses are villages, triangles are watchtowers, crosses are ruins and rings are standing stones.
-5. **Caves.** Three 3D Perlin noise fields are sampled every 4 blocks and blended between grid points, which keeps it cheap. Tunnels form where two fields are both near zero, giving long winding tubes, and caverns form where the third is high, deeper down.
-   - A slow 2D noise decides where tunnels may reach the surface.
-   - Crystals are placed using a hash on cave floors and ceilings.
-6. **Greedy meshing.** Each chunk becomes one mesh containing only the faces that touch air. Neighbouring faces of the same material are merged into larger rectangles, with one geometry group per material and world-space UVs so the textures still tile once per block.
-   - **Ambient occlusion:** each face corner is darkened by how many of the three blocks around it are solid, from fully open down to tucked into a corner. The result is stored as vertex colours.
-   - This shades inside corners, the base of walls and the creases of terraced hills, which gives the ASCII view much more depth.
-   - **Sky light:** each face also stores how much open sky the air in front of it can see. There are four levels: open, under an overhang, sheltered, and deep underground, with light leaking in sideways and leaves letting it through.
-   - A small patch to the Lambert shader scales only the sun/moon and sky light by that value, leaving point lights (torches, lantern) untouched.
+5. **The smooth ground.** The height functions return smooth, unrounded heights. Each chunk stores the height at its 17×17 block corners, and the ground mesh joins them in two triangles per block, split corner to corner.
+   - **Colour and lighting:** each corner gets a colour from its biome, blended towards rock by the slope. A faint noise texture adds grain, and normals come from the neighbouring heights, so shading runs smoothly across chunk edges.
+   - **Collision:** `groundY` reads the same triangles, plus a road's surface where you're on one. The player, animals, hunters, carts and arrows all use it.
+   - **The blocks underneath:** the chunk still holds whole-block columns of ground below the surface, for anything that asks about blocks. They're neither drawn nor collided with.
+   - **Water:** a flat surface just under sea level over every block cell where a corner dips below it.
+6. **Greedy meshing (buildings and trees).** The blocks standing on the ground (forts, ruins, stones, trees) become one mesh per chunk, containing only the faces that touch air. Neighbouring faces of the same material are merged into larger rectangles, with one geometry group per material and world-space UVs so the textures still tile once per block.
+   - **Ambient occlusion:** each face corner is darkened by how many of the three blocks around it are solid, from fully open down to tucked into a corner. The result is stored as vertex colours. This shades inside corners and the base of walls.
+   - **Sky light:** each face also stores how much open sky the air in front of it can see, so the insides of towers and the keep are darker. A small patch to the Lambert shader scales only the sun/moon and sky light by that value, leaving point lights (torches, lanterns) untouched.
    - Faces only merge when their corner shading matches. Each quad is split along the diagonal that keeps a dark corner from smearing across it.
 7. **Shaped blocks.** As well as full cubes, the grid holds slabs (half blocks), stairs and sloped roof wedges.
    - Each one records its base block (for textures), its shape and the direction it rises.
-   - **Terrain:** a slab goes wherever the ground rises by exactly one block next door, turning hard terraces into half-steps.
-   - **Structures:** fort and watchtower stairs use stair blocks (rotated with the structure), and cottage roofs are built from wedges into proper sloped gables.
+   - **Structures:** fort and watchtower stairs use stair blocks (rotated with the structure), and grave mounds and the Silent Grove's altar are slabs.
    - **Drawing:** shaped blocks get small per-block meshes, with faces hidden against neighbouring cubes. Cubes still use the merged greedy mesh.
-   - **Collision:** it reads each shape's height under your feet, so you walk up slabs and stairs in smooth half-steps.
+   - **Collision:** it reads each shape's height under your feet, so you walk up stairs in smooth half-steps.
 8. **The starting fort** is built with the same `buildFort()` as the procedural forts, on flattened ground at the spawn, with a road leading to its gate.
 9. **Lighting.** Hemisphere sky light and a sun/moon directional light driven by the day/night cycle, exponential fog that hides the edge of the loaded area, and torchlight from the light pool described above.
 10. **ASCII pass.** The 3D scene is rendered into a low-resolution target, at 2× the character grid. A full-screen shader picks a character for each cell based on its brightness, then tints it with the scene colour. The glyph atlas is redrawn at the exact on-screen cell size, so small characters stay sharp.

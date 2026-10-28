@@ -171,28 +171,6 @@ function makeNoise2D(seed) {
 }
 const noiseA = makeNoise2D(SEED), noiseB = makeNoise2D(SEED + 1), noiseC = makeNoise2D(SEED + 2);
 
-// 3D gradient (Perlin) noise, roughly in [-1, 1], for caves
-function makeNoise3D(seed) {
-  const r = mulberry32(seed), p = new Uint8Array(512), base = [...Array(256).keys()];
-  for (let i = 255; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [base[i], base[j]] = [base[j], base[i]]; }
-  for (let i = 0; i < 512; i++) p[i] = base[i & 255];
-  const fade = t => t * t * t * (t * (t * 6 - 15) + 10), lerp = (a, b, t) => a + (b - a) * t;
-  const grad = (h, x, y, z) => {
-    h &= 15;
-    const u = h < 8 ? x : y, v = h < 4 ? y : h === 12 || h === 14 ? x : z;
-    return ((h & 1) ? -u : u) + ((h & 2) ? -v : v);
-  };
-  return (x, y, z) => {
-    const fx = Math.floor(x), fy = Math.floor(y), fz = Math.floor(z), X = fx & 255, Y = fy & 255, Z = fz & 255;
-    x -= fx; y -= fy; z -= fz;
-    const u = fade(x), v = fade(y), w = fade(z);
-    const A = p[X] + Y, AA = p[A] + Z, AB = p[A + 1] + Z, B = p[X + 1] + Y, BA = p[B] + Z, BB = p[B + 1] + Z;
-    return lerp(
-      lerp(lerp(grad(p[AA], x, y, z), grad(p[BA], x - 1, y, z), u), lerp(grad(p[AB], x, y - 1, z), grad(p[BB], x - 1, y - 1, z), u), v),
-      lerp(lerp(grad(p[AA + 1], x, y, z - 1), grad(p[BA + 1], x - 1, y, z - 1), u), lerp(grad(p[AB + 1], x, y - 1, z - 1), grad(p[BB + 1], x - 1, y - 1, z - 1), u), v), w);
-  };
-}
-const caveA = makeNoise3D(SEED + 10), caveB = makeNoise3D(SEED + 11), caveC = makeNoise3D(SEED + 12);
 
 // Deterministic per-column random number in [0, 1)
 function hash2(x, z) {
@@ -625,8 +603,10 @@ function climate(x, z) {
     mesa: F.mesa, dunes: F.dunes, ocean: 1 - smoothstep(-30, 0, coast) };
 }
 
-// Natural surface height, before flattening for procedural structures
-function rawHeight(x, z, cl = climate(x, z)) {
+// Natural surface height (whole blocks), before places are flattened in
+const rawHeight = (x, z, cl) => Math.round(rawHeightF(x, z, cl));
+// The same, unrounded: the smooth land
+function rawHeightF(x, z, cl = climate(x, z)) {
   const c = cl.coast;
   let h;
   if (c < 0) {
@@ -679,26 +659,29 @@ function rawHeight(x, z, cl = climate(x, z)) {
     for (const [fx, fz] of FORDS) { const d = Math.hypot(x - fx, z - fz); if (d < 40) h = Math.min(h, SEA - 1 + Math.max(0, d - 8) * .3); }
   }
   h += (G - h) * flatness(x, z);
-  return Math.max(2, Math.min(H - 12, Math.round(h)));
+  return Math.max(2, Math.min(H - 12, h));
 }
 
 // The land's height with places flattened in, before roads are graded into it
-function naturalHeight(x, z, cl = climate(x, z)) {
-  const h = rawHeight(x, z, cl), s = structureAt(x, z);
-  return s ? Math.round(h + (s.plan.base - h) * s.w) : h;
+function naturalHeightF(x, z, cl = climate(x, z)) {
+  const h = rawHeightF(x, z, cl), s = structureAt(x, z);
+  return s ? h + (s.plan.base - h) * s.w : h;
 }
-// Surface height: number of solid blocks in the column (player stands at this y). Roads are graded
-// in: the ground under a road sits just below its smooth surface, and cuttings and embankments
-// blend back into the land on either side (never filling in water).
-function terrainHeight(x, z, cl = climate(x, z)) {
-  const h = naturalHeight(x, z, cl), r = roadSurface(x + .5, z + .5);
+const naturalHeight = (x, z, cl) => Math.round(naturalHeightF(x, z, cl));
+// The ground's height at a point: the smooth land, with roads graded in. The ground under a road
+// sits just below its surface, and cuttings and embankments blend back into the land on either
+// side (never filling in water). The ground mesh joins these heights at every block corner.
+function terrainHeightF(x, z, cl = climate(x, z)) {
+  const h = naturalHeightF(x, z, cl), r = roadSurface(x, z);
   if (!r || r.deck) return h;
-  const core = ROAD_HALF + .5, top = Math.floor(r.p);
+  const core = ROAD_HALF + .5, top = r.p - .06;
   if (r.d <= core) return top;
   if (h <= SEA && top > h) return h;
   const shoulder = Math.min(14, 2 + Math.abs(h - top) * 1.2);
-  return r.d >= core + shoulder ? h : Math.round(top + (h - top) * smoothstep(0, shoulder, r.d - core));
+  return r.d >= core + shoulder ? h : top + (h - top) * smoothstep(0, shoulder, r.d - core);
 }
+// Whole blocks of ground in the column at (x, z), for the block data underneath the smooth ground
+const terrainHeight = (x, z, cl) => Math.round(terrainHeightF(x, z, cl));
 
 const OCEAN = 0, DESERT = 1, PLAINS = 2, FOREST = 3, SNOWY = 4;
 const BIOME_NAMES = ['ocean', 'desert', 'plains', 'forest', 'snowy'];
@@ -726,10 +709,10 @@ function generateChunk(cx, cz) {
   const data = new Uint8Array(CHUNK * CHUNK * H);
   const ox = cx * CHUNK, oz = cz * CHUNK;
   const M = 3, HM = M + 1, S = CHUNK + 2 * HM;    // trees can overhang by M; heights need one more for slopes
-  const hm = new Int16Array(S * S), bm = new Uint8Array(S * S), cold = new Float32Array(S * S), coast = new Float32Array(S * S), red = new Uint8Array(S * S);
+  const hm = new Int16Array(S * S), hf = new Float32Array(S * S), bm = new Uint8Array(S * S), cold = new Float32Array(S * S), coast = new Float32Array(S * S), red = new Uint8Array(S * S);
   for (let z = 0; z < S; z++) for (let x = 0; x < S; x++) {
-    const wx = ox + x - HM, wz = oz + z - HM, cl = climate(wx, wz), h = terrainHeight(wx, wz, cl), i = x + z * S;
-    hm[i] = h; bm[i] = biomeOf(cl, h); cold[i] = cl.cold; coast[i] = cl.e; red[i] = cl.red > .5;
+    const wx = ox + x - HM, wz = oz + z - HM, cl = climate(wx, wz), f = terrainHeightF(wx, wz, cl), h = Math.round(f), i = x + z * S;
+    hf[i] = f; hm[i] = h; bm[i] = biomeOf(cl, h); cold[i] = cl.cold; coast[i] = cl.e; red[i] = cl.red > .5;
   }
   const at = (lx, lz) => (lx + HM) + (lz + HM) * S;
   const hAt = (lx, lz) => hm[at(lx, lz)];
@@ -755,53 +738,8 @@ function generateChunk(cx, cz) {
     else if (h > G + 22) top = sub = ROCK;
     const deep = sub === RED_ROCK ? RED_ROCK : ROCK;                             // mesas are red right through
     for (let y = 0; y < h; y++) put(lx, y, lz, y === h - 1 ? top : y >= h - 4 ? sub : deep);
-    // A half step where the ground rises by exactly one block next door, smoothing the terraces
-    if (h > SEA && !st && !road && SLAB_OF.has(top) && (hAt(lx + 1, lz) === h + 1 || hAt(lx - 1, lz) === h + 1 || hAt(lx, lz + 1) === h + 1 || hAt(lx, lz - 1) === h + 1))
-      put(lx, h, lz, SLAB_OF.get(top));
     for (let y = h; y < SEA; y++) put(lx, y, lz, y === SEA - 1 && cold[i] > .6 ? ICE : WATER);
     if (deck && h > deck) { for (let y = deck; y < h; y++) put(lx, y, lz, AIR); put(lx, deck - 1, lz, PATH); }   // cut the approach level
-  }
-
-  // Caves. Three 3D noise fields are sampled every 4 blocks and interpolated between. Winding
-  // tunnels form where two of them are both near zero; big caverns where the third is high, deep down.
-  // Most tunnels stay a few blocks under the surface; in some areas they break out as entrances.
-  {
-    const GY = H / 4 + 1, n = 5 * 5 * GY, fa = new Float32Array(n), fb = new Float32Array(n), fc = new Float32Array(n);
-    for (let gy = 0; gy < GY; gy++) for (let gz = 0; gz < 5; gz++) for (let gx = 0; gx < 5; gx++) {
-      const x = ox + gx * 4, y = gy * 4, z = oz + gz * 4, i = gx + gz * 5 + gy * 25;
-      fa[i] = caveA(x / 44, y / 22, z / 44); fb[i] = caveB(x / 44, y / 22, z / 44); fc[i] = caveC(x / 70, y / 16, z / 70);
-    }
-    const sample = (f, lx, y, lz) => {
-      const gx = lx >> 2, gy = y >> 2, gz = lz >> 2, tx = (lx & 3) / 4, ty = (y & 3) / 4, tz = (lz & 3) / 4, i = gx + gz * 5 + gy * 25;
-      const l = (a, b, t) => a + (b - a) * t;
-      return l(l(l(f[i], f[i + 1], tx), l(f[i + 5], f[i + 6], tx), tz), l(l(f[i + 25], f[i + 26], tx), l(f[i + 30], f[i + 31], tx), tz), ty);
-    };
-    for (let lz = 0; lz < CHUNK; lz++) for (let lx = 0; lx < CHUNK; lx++) {
-      const x = ox + lx, z = oz + lz, h = hAt(lx, lz);
-      if (flatness(x, z) > .01 || structureAt(x, z)) continue;                    // keep forts and the road solid
-      const open = noiseC(x * .009 + 500, z * .009 - 300) > .62;                  // the odd stretch of entrance country
-      const cap = h <= SEA + 1 ? h - 6 : open ? h : h - 4;
-      for (let y = 2; y < cap; y++) {
-        const a = sample(fa, lx, y, lz), b = sample(fb, lx, y, lz);
-        // Tunnels narrow near the surface, so entrances are holes rather than trenches; caverns always
-        // keep at least 7 blocks of rock overhead
-        const tube = y > h - 5 ? .004 : .011;
-        if (a * a + b * b < tube || y < Math.min(24, h - 7) && sample(fc, lx, y, lz) > .38 + (24 - y) * -.004) {
-          const i = lx + lz * CHUNK + y * 256;
-          if (data[i] !== WATER) data[i] = AIR;
-        }
-      }
-    }
-    // Glowing crystals on cave floors and ceilings, well below the surface
-    for (let lz = 0; lz < CHUNK; lz++) for (let lx = 0; lx < CHUNK; lx++) {
-      const x = ox + lx, z = oz + lz, h = hAt(lx, lz);
-      for (let y = 3; y < h - 8; y++) {
-        const i = lx + lz * CHUNK + y * 256;
-        if (data[i] !== AIR || hash2(x * 7 + y * 131, z) > .02) continue;
-        if (data[i - 256]) { data[i] = CRYSTAL; if (hash2(z, x + y) < .4 && !data[i + 256]) data[i + 256] = CRYSTAL; }
-        else if (data[i + 256]) data[i] = CRYSTAL;
-      }
-    }
   }
 
   // Trees and cacti, including ones rooted just outside this chunk whose leaves reach in
@@ -841,7 +779,13 @@ function generateChunk(cx, cz) {
     const p = list[i];
     data[(p & 15) + ((p >> 4) & 15) * CHUNK + (p >> 8) * 256] = list[i + 1];
   }
-  return data;
+  // The smooth ground's height at the chunk's block corners (0..16 each way) and the whole-block
+  // height of each column: blocks below that are the ground itself, drawn and walked on as the
+  // smooth surface rather than as blocks
+  const corners = new Float32Array(17 * 17), cols = new Int16Array(CHUNK * CHUNK);
+  for (let z = 0; z <= CHUNK; z++) for (let x = 0; x <= CHUNK; x++) corners[x + z * 17] = hf[at(x, z)];
+  for (let z = 0; z < CHUNK; z++) for (let x = 0; x < CHUNK; x++) cols[x + z * CHUNK] = hm[at(x, z)];
+  return { data, corners, cols };
 }
 
 // ---------------------------------------------------------------------------
@@ -1573,13 +1517,6 @@ function buildRoads() {
     }
   }
 }
-// Standing on a road: its surface height if feet are just below it, else null
-function roadHit(x, y, z) {
-  const r = roadSurface(x, z);
-  if (!r || r.deck || r.d > ROAD_HALF + RADIUS * .5) return null;
-  const top = r.p + .04;
-  return y < top - 1e-4 && y > top - .6 ? top : null;
-}
 
 // Bridges near the player get meshes (and collision); far ones are dropped
 const activeBridges = new Set();
@@ -1640,7 +1577,7 @@ const chunks = new Map();   // key -> { cx, cz, data, mesh, water }
 function chunkAt(cx, cz) {
   const k = chunkKey(cx, cz);
   let c = chunks.get(k);
-  if (!c) { c = { cx, cz, data: generateChunk(cx, cz), mesh: null }; chunks.set(k, c); }
+  if (!c) { c = { cx, cz, ...generateChunk(cx, cz), mesh: null }; chunks.set(k, c); }
   return c;
 }
 // Block at integer world coordinates; below the world counts as solid
@@ -1649,10 +1586,29 @@ function get(x, y, z) {
   if (y >= H) return AIR;
   return chunkAt(x >> 4, z >> 4).data[(x & 15) + (z & 15) * CHUNK + y * 256];
 }
-// Top of the highest solid block in a column
+// The ground's own blocks (below the smooth surface) aren't drawn or walked on: this is the block
+// at a spot with the ground taken out
+function objectBlock(x, y, z) {
+  const c = chunkAt(x >> 4, z >> 4);
+  return y < c.cols[(x & 15) + (z & 15) * CHUNK] ? AIR : c.data[(x & 15) + (z & 15) * CHUNK + y * 256] ?? AIR;
+}
+// The smooth ground's height at a block corner
+function cornerHeight(x, z) { return chunkAt(x >> 4, z >> 4).corners[(x & 15) + (z & 15) * 17]; }
+// The walkable ground at any point: the smooth land exactly as its mesh draws it (each block cell is
+// two triangles split corner to corner), or a road's surface where you're on one
+function groundY(x, z) {
+  const ix = Math.floor(x), iz = Math.floor(z), fx = x - ix, fz = z - iz;
+  const h00 = cornerHeight(ix, iz), h11 = cornerHeight(ix + 1, iz + 1);
+  let g;
+  if (fx > fz) { const h10 = cornerHeight(ix + 1, iz); g = h00 + (h10 - h00) * fx + (h11 - h10) * fz; }
+  else { const h01 = cornerHeight(ix, iz + 1); g = h00 + (h11 - h01) * fx + (h01 - h00) * fz; }
+  const r = roadSurface(x, z);
+  return r && !r.deck && r.d < ROAD_HALF ? Math.max(g, r.p + .04) : g;
+}
+// Where to stand in a column: on top of the highest block, or on the ground
 function surfaceY(x, z) {
-  for (let y = H - 1; y >= 0; y--) if (solid(get(x, y, z))) return y + 1;
-  return 0;
+  for (let y = H - 1; y >= 0; y--) if (solid(objectBlock(x, y, z))) return Math.max(y + 1, groundY(x + .5, z + .5));
+  return groundY(x + .5, z + .5);
 }
 
 // ---------------------------------------------------------------------------
@@ -1773,9 +1729,10 @@ const clockText = () => {
 const AO_SHADE = [.22, .47, .73, 1];      // vertex brightness for 0..3 open sides
 const SKY_SHADE = [.04, .22, .6, 1];      // share of sun/moon/sky light for sky levels 0..3
 
-// water = false meshes opaque blocks; water = true meshes only water surfaces (drawn as a separate transparent mesh)
-function meshChunk(c, water = false) {
+// Meshes the blocks standing on the ground (buildings, trees); the ground and water have meshes of their own
+function meshChunk(c) {
   const ox = c.cx * CHUNK, oz = c.cz * CHUNK, data = c.data;
+  const ground = (x, y, z) => y < c.cols[x + z * CHUNK];       // part of the ground (in-chunk x, z)
   let ymax = 0;
   for (let i = data.length - 1; i >= 0; i--) if (data[i]) { ymax = Math.floor(i / 256) + 2; break; }
   ymax = Math.min(ymax, H);
@@ -1833,11 +1790,10 @@ function meshChunk(c, water = false) {
       for (x[v] = 0; x[v] < dims[v]; x[v]++) for (x[u] = 0; x[u] < dims[u]; x[u]++, n++) {
         const a = block(x[0], x[1], x[2]), b = block(x[0] + q[0], x[1] + q[1], x[2] + q[2]);
         const aIn = x[d] >= 0, bIn = x[d] < dims[d] - 1 || d === 1;
-        if (water) mask[n] = a === WATER && !b && aIn ? MAT.water | 255 << 8 | 3 << 16 : b === WATER && !a && bIn ? -(MAT.water | 255 << 8 | 3 << 16) : 0;
-        else if (cube(a) && !cube(b) && aIn) {
+        if (cube(a) && !cube(b) && aIn && !ground(x[0], x[1], x[2])) {
           const ax = x[0] + q[0], ay = x[1] + q[1], az = x[2] + q[2];
           mask[n] = faceMaterial(a, posFace) | aoPack(ax, ay, az) << 8 | skyLevel(ax, ay, az) << 16;
-        } else if (cube(b) && !cube(a) && bIn) {
+        } else if (cube(b) && !cube(a) && bIn && !ground(x[0] + q[0], x[1] + q[1], x[2] + q[2])) {
           mask[n] = -(faceMaterial(b, posFace + 1) | aoPack(x[0], x[1], x[2]) << 8 | skyLevel(x[0], x[1], x[2]) << 16);
         }
         else mask[n] = 0;
@@ -1861,7 +1817,7 @@ function meshChunk(c, water = false) {
           const shade = AO_SHADE[(ao >> (k * 2)) & 3];
           b.col.push(shade, shade, shade);
           b.sky.push(sky);
-          const px = ox + x[0] + cnr[0], py = x[1] + cnr[1] - (water ? .15 : 0), pz = oz + x[2] + cnr[2];  // water sits a little low
+          const px = ox + x[0] + cnr[0], py = x[1] + cnr[1], pz = oz + x[2] + cnr[2];
           b.pos.push(px, py, pz);
           b.nrm.push(d === 0 ? Math.sign(m) : 0, d === 1 ? Math.sign(m) : 0, d === 2 ? Math.sign(m) : 0);
           // World-space UVs: one texture tile per block, with v running up the sides
@@ -1904,9 +1860,9 @@ function meshChunk(c, water = false) {
       if (!(z1 === 1 && hid(0, 0, 1))) quad(faceMaterial(s.base, 4), [[X0, Y0, Z1], [X1, Y0, Z1], [X1, Y1, Z1], [X0, Y1, Z1]], [0, 0, 1], sky, vOff);
       if (!(z0 === 0 && hid(0, 0, -1))) quad(faceMaterial(s.base, 5), [[X0, Y0, Z0], [X1, Y0, Z0], [X1, Y1, Z0], [X0, Y1, Z0]], [0, 0, -1], sky, vOff);
     };
-    if (!water) for (let y = 0; y < ymax; y++) for (let lz = 0; lz < CHUNK; lz++) for (let lx = 0; lx < CHUNK; lx++) {
+    for (let y = 0; y < ymax; y++) for (let lz = 0; lz < CHUNK; lz++) for (let lx = 0; lx < CHUNK; lx++) {
       const v = data[lx + lz * CHUNK + y * 256];
-      if (v < 32) continue;
+      if (v < 32 || ground(lx, y, lz)) continue;
       const s = SHAPED[v - 32], wx = ox + lx, wz = oz + lz, sky = SKY_SHADE[skyLevel(lx, y + 1, lz)];
       if (s.shape === 'slab') { box(s, lx, y, lz, wx, wz, 0, 0, 0, 1, .5, 1, sky); continue; }
       const [dx, dz] = DIR_VEC[s.dir];
@@ -1960,6 +1916,84 @@ function meshChunk(c, water = false) {
   return mesh;
 }
 
+// The ground: a smooth surface through the chunk's corner heights, two triangles per block split
+// corner to corner (as groundY reads it). Each corner is coloured by what the land is there (grass,
+// forest floor, sand, snow, rock, red sand and rock, a road or courtyard), turning to rock or bare
+// stone as the slope steepens, and lit with smooth normals.
+const GROUND_RGB = {
+  grass: [70, 104, 50], forest: [54, 84, 42], sand: [176, 158, 112], sandstone: [150, 128, 90], snow: [200, 208, 222],
+  rock: [120, 120, 124], redSand: [182, 112, 68], redRock: [150, 80, 50], path: [132, 110, 80], dirt: [112, 88, 62], bed: [150, 136, 100],
+};
+const GROUND = Object.fromEntries(Object.entries(GROUND_RGB).map(([k, [r, g, b]]) => [k, new THREE.Color().setRGB(r / 255, g / 255, b / 255, THREE.SRGBColorSpace)]));
+TEX.ground = canvasTexture(32, (g, s) => noiseFill(g, s, [236, 236, 236], 26));
+const groundMat = new THREE.MeshLambertMaterial({ map: TEX.ground, vertexColors: true });
+function groundColor(x, z, h, slope, out) {
+  const cl = climate(x, z), st = structureAt(x, z), biome = biomeOf(cl, Math.round(h));
+  const steep = smoothstep(.9, 1.6, slope);
+  let a, b = GROUND.rock;
+  if (inCourtyard(x, z) || isRoad(x, z) || st?.inside && st.plan.type === FORT) a = GROUND.path;
+  else if (h <= SEA) a = h < SEA - 4 ? GROUND.dirt : GROUND.bed;
+  else if (biome === DESERT && cl.red > .5) { a = GROUND.redSand; b = GROUND.redRock; }
+  else if (biome === DESERT) { a = GROUND.sand; b = GROUND.sandstone; }
+  else if ((h <= SEA + 1 && cl.e < .04 || cl.e < .015 && h <= SEA + 3) && biome !== SNOWY) a = GROUND.sand;
+  else if (biome === SNOWY) a = GROUND.snow;
+  else if (h > G + 22) a = GROUND.rock;
+  else a = biome === FOREST ? GROUND.forest : GROUND.grass;
+  out.copy(a).lerp(b, steep);
+}
+function meshGround(c) {
+  const ox = c.cx * CHUNK, oz = c.cz * CHUNK, N = CHUNK + 1;
+  // Heights one corner beyond the chunk all round, for smooth normals across chunk edges
+  const H2 = (x, z) => x >= 0 && z >= 0 && x <= CHUNK && z <= CHUNK ? c.corners[x + z * 17] : terrainHeightF(ox + x, oz + z);
+  const pos = new Float32Array(N * N * 3), nrm = new Float32Array(N * N * 3), col = new Float32Array(N * N * 3), uv = new Float32Array(N * N * 2), tmp = new THREE.Color();
+  for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
+    const i = x + z * N, h = c.corners[x + z * 17];
+    const dx = (H2(x + 1, z) - H2(x - 1, z)) / 2, dz = (H2(x, z + 1) - H2(x, z - 1)) / 2, l = Math.hypot(dx, 1, dz);
+    pos.set([ox + x, h, oz + z], i * 3);
+    nrm.set([-dx / l, 1 / l, -dz / l], i * 3);
+    uv.set([(ox + x) / 2, (oz + z) / 2], i * 2);
+    groundColor(ox + x, oz + z, h, Math.hypot(dx, dz), tmp);
+    col.set([tmp.r, tmp.g, tmp.b], i * 3);
+  }
+  const idx = [];
+  for (let z = 0; z < CHUNK; z++) for (let x = 0; x < CHUNK; x++) {
+    const a = x + z * N, b = a + 1, d = a + N, e = d + 1;          // a = (x, z), b = (x+1, z), d = (x, z+1), e = (x+1, z+1)
+    idx.push(a, e, b, a, d, e);                                     // wound to face up
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  geo.setIndex(idx);
+  geo.computeBoundingSphere();
+  const mesh = new THREE.Mesh(geo, groundMat);
+  mesh.matrixAutoUpdate = false;
+  return mesh;
+}
+// Water: a flat surface a little below sea level over every block cell where the ground dips under it
+function meshWater(c) {
+  const ox = c.cx * CHUNK, oz = c.cz * CHUNK, pos = [], uv = [], sky = [], y = SEA - .15;
+  for (let z = 0; z < CHUNK; z++) for (let x = 0; x < CHUNK; x++) {
+    const k = x + z * 17;
+    if (Math.min(c.corners[k], c.corners[k + 1], c.corners[k + 17], c.corners[k + 18]) >= SEA - .15) continue;
+    const X = ox + x, Z = oz + z;
+    pos.push(X, y, Z, X + 1, y, Z + 1, X + 1, y, Z, X, y, Z, X, y, Z + 1, X + 1, y, Z + 1);
+    uv.push(X, Z, X + 1, Z + 1, X + 1, Z, X, Z, X, Z + 1, X + 1, Z + 1);
+    sky.push(1, 1, 1, 1, 1, 1);
+  }
+  if (!pos.length) return null;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(pos.map((_, i) => i % 3 === 1 ? 1 : 0), 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geo.setAttribute('sky', new THREE.Float32BufferAttribute(sky, 1));
+  geo.computeBoundingSphere();
+  const mesh = new THREE.Mesh(geo, materials[MAT.water - 1]);
+  mesh.matrixAutoUpdate = false;
+  return mesh;
+}
+
 // Stream chunks around the player: build the nearest missing meshes within a time budget, drop far ones
 const VIEW = 6;              // view radius in chunks
 let lastCenter = '';
@@ -1978,9 +2012,9 @@ function streamChunks(px, pz, budgetMs) {
     for (const [k, c] of chunks) {
       const ddx = c.cx - pcx, ddz = c.cz - pcz, d2 = ddx * ddx + ddz * ddz;
       if (c.built && d2 > (VIEW + 2) ** 2) {
-        for (const m of [c.mesh, c.water]) if (m) { scene.remove(m); m.geometry.dispose(); }
+        for (const m of [c.mesh, c.water, c.ground]) if (m) { scene.remove(m); m.geometry.dispose(); }
         removeChunkDecor(c);
-        c.mesh = c.water = null; c.built = false;
+        c.mesh = c.water = c.ground = null; c.built = false;
       }
       if (d2 > (VIEW + 4) ** 2) chunks.delete(k);
     }
@@ -1990,9 +2024,8 @@ function streamChunks(px, pz, budgetMs) {
     const [cx, cz] = buildQueue.pop();
     const c = chunkAt(cx, cz);
     if (c.built) continue;
-    c.mesh = meshChunk(c); c.water = meshChunk(c, true); c.built = true;
-    if (c.mesh) scene.add(c.mesh);
-    if (c.water) scene.add(c.water);
+    c.mesh = meshChunk(c); c.water = meshWater(c); c.ground = meshGround(c); c.built = true;
+    for (const m of [c.mesh, c.water, c.ground]) if (m) scene.add(m);
     addChunkDecor(c);
   }
 }
@@ -2229,14 +2262,8 @@ function makeCart(color) {
   return { g, wheels, legs, driver, y: null, s: 0 };
 }
 function groundAt(x, z) {
-  const r = roadSurface(x, z);
-  if (r && !r.deck && r.d < ROAD_HALF + .5) return Math.max(r.p + .04, SEA);   // on the road surface
-  const fx = Math.floor(x), fz = Math.floor(z);
-  let h = terrainHeight(fx, fz);
-  const c = chunks.get(chunkKey(fx >> 4, fz >> 4));
-  if (c && shapeOf(c.data[(fx & 15) + (fz & 15) * CHUNK + h * 256])?.shape === 'slab') h += .5;
-  const deck = roadInfo(fx, fz);
-  return Math.max(h, SEA, deck || 0);                         // on a bridge, ride on the deck
+  const deck = roadInfo(Math.floor(x), Math.floor(z));
+  return Math.max(groundY(x, z), SEA, deck || 0);              // on a bridge, ride on the deck
 }
 function updateCarts(dt) {
   cartTime += dt;
@@ -3913,7 +3940,7 @@ function updateAnimals(dt) {
     if (a.kind === 'hawk') {                                            // circling high up
       a.phase += dt * a.speed;
       const x = a.cx + Math.cos(a.phase) * a.r, z = a.cz + Math.sin(a.phase) * a.r;
-      a.g.position.set(x, terrainHeight(Math.floor(a.cx), Math.floor(a.cz)) + a.alt, z);
+      a.g.position.set(x, groundY(a.cx, a.cz) + a.alt, z);
       a.g.rotation.set(0, -a.phase, 0); a.g.rotation.z = -.25;
       a.wings.forEach((w, i) => { w.rotation.z = (i ? -1 : 1) * Math.sin(t * 1.5 + a.phase) * .08; });
       a.g.visible = !night;
@@ -3929,7 +3956,7 @@ function updateAnimals(dt) {
     if (a.state === 'dead') continue;
     if (a.state === 'fall') {                                           // shot out of a tree or out of the air
       a.vy -= 20 * dt; a.y += a.vy * dt;
-      const gy = terrainHeight(Math.floor(a.x), Math.floor(a.z));
+      const gy = groundY(a.x, a.z);
       if (a.y <= gy) { a.y = gy; layDead(a); } else a.g.position.y = a.y;
       continue;
     }
@@ -4058,7 +4085,7 @@ function updateArrows(dt) {
     let groundT = null;
     for (let k = 0, n = Math.ceil(len / .2); k <= n; k++) {
       _v.lerpVectors(a0, a1, k / n);
-      if (solid(get(Math.floor(_v.x), Math.floor(_v.y), Math.floor(_v.z)))) { groundT = k / n * len; break; }
+      if (_v.y < groundY(_v.x, _v.z) || solid(objectBlock(Math.floor(_v.x), Math.floor(_v.y), Math.floor(_v.z)))) { groundT = k / n * len; break; }
     }
     // Any animal on the way
     let best = null;
@@ -4101,7 +4128,7 @@ function arrowHits(ar, a, zone, point) {
 }
 function killAnimal(a, from) {
   if (a.state === 'dead' || a.state === 'fall') return;
-  const inAir = a.state === 'fly' || a.state === 'up' || a.state === 'down' || a.y > terrainHeight(Math.floor(a.x), Math.floor(a.z)) + .3;
+  const inAir = a.state === 'fly' || a.state === 'up' || a.state === 'down' || a.y > groundY(a.x, a.z) + .3;
   if (inAir) { a.state = 'fall'; a.vy = 0; if (a.kind === 'squirrel') { a.x += .4; a.body.rotation.x = 0; } }
   else layDead(a);
   if (from && a.herd) startle(a, from);                               // the rest of the herd scatters
@@ -4117,7 +4144,7 @@ function layDead(a) {
 }
 const BLOOD_MAT = new THREE.MeshLambertMaterial({ color: 0x5a0e0a });
 function addBlood(x, y, z, size = .35) {
-  const gy = terrainHeight(Math.floor(x), Math.floor(z));
+  const gy = groundY(x, z);
   const m = new THREE.Mesh(partGeo.get('b1,1,1') || (partGeo.set('b1,1,1', new THREE.BoxGeometry(1, 1, 1)), partGeo.get('b1,1,1')), BLOOD_MAT);
   m.scale.set(size * (.6 + Math.random() * .6), .02, size * (.6 + Math.random() * .6));
   m.position.set(x + (Math.random() - .5) * .4, gy + .02, z + (Math.random() - .5) * .4); m.rotation.y = Math.random() * 3;
@@ -4170,7 +4197,7 @@ function hunterWalk(gd, x, z, speed, dt) {
   if (d < .05) return 0;
   const step = Math.min(d, speed * dt);
   pos.x += dx / d * step; pos.z += dz / d * step;
-  pos.y += (terrainHeight(Math.floor(pos.x), Math.floor(pos.z)) - pos.y) * Math.min(1, dt * 8);
+  pos.y += (groundY(pos.x, pos.z) - pos.y) * Math.min(1, dt * 8);
   turnTowards(gd, Math.atan2(dx, dz), dt * 2);
   const swing = Math.sin(clock.elapsedTime * speed * 4.5) * .5;
   gd.legs[0].rotation.x = swing; gd.legs[1].rotation.x = -swing;
@@ -4433,13 +4460,14 @@ function cellTop(v, ix, iz, x, z) {
 }
 function collides(x, y, z) {
   const eps = 1e-4;
+  if (y < groundY(x, z) - eps) return true;
   for (let iy = Math.floor(y + eps); iy <= Math.floor(y + HEIGHT - eps); iy++)
     for (let iz = Math.floor(z - RADIUS); iz <= Math.floor(z + RADIUS - eps); iz++)
       for (let ix = Math.floor(x - RADIUS); ix <= Math.floor(x + RADIUS - eps); ix++) {
-        const top = cellTop(get(ix, iy, iz), ix, iz, x, z);
+        const top = cellTop(objectBlock(ix, iy, iz), ix, iz, x, z);
         if (top && y < iy + top - eps) return true;
       }
-  return bridgeHit(x, y, z) !== null || roadHit(x, y, z) !== null || colliderHit(x, y, z);
+  return bridgeHit(x, y, z) !== null || colliderHit(x, y, z);
 }
 // Where feet land when falling into the layer at y: the highest solid top under the footprint
 function landingY(x, y, z) {
@@ -4447,20 +4475,32 @@ function landingY(x, y, z) {
   let best = -Infinity;
   for (let iz = Math.floor(z - RADIUS); iz <= Math.floor(z + RADIUS - 1e-4); iz++)
     for (let ix = Math.floor(x - RADIUS); ix <= Math.floor(x + RADIUS - 1e-4); ix++) {
-      const top = cellTop(get(ix, iy, iz), ix, iz, x, z);
+      const top = cellTop(objectBlock(ix, iy, iz), ix, iz, x, z);
       if (top) best = Math.max(best, iy + top);
     }
-  const bt = bridgeHit(x, y, z), rt = roadHit(x, y, z);
+  const bt = bridgeHit(x, y, z), g = groundY(x, z);
   if (typeof bt === 'number') best = Math.max(best, bt);
-  if (rt !== null) best = Math.max(best, rt);
+  if (g > y - 1e-4) best = Math.max(best, g);
   best = Math.max(best, colliderTop(x, y, z));
   return best > -Infinity ? best : iy + 1;
 }
 
+const MAX_SLOPE = 1.2;          // the steepest ground you can walk up (rise per block, about 50 degrees)
 function moveAxis(dx, dz) {
-  const nx = P.pos.x + dx, nz = P.pos.z + dz;
+  const nx = P.pos.x + dx, nz = P.pos.z + dz, run = Math.hypot(dx, dz);
   if (guardBlocks(nx, nz, P.pos.y) || solidBlocks(nx, nz, P.pos.y)) return;
-  if (!collides(nx, P.pos.y, nz)) { P.pos.x = nx; P.pos.z = nz; return; }
+  // Walking over the land: follow the ground up a slope (too steep is a wall), and keep to it going
+  // down rather than stepping off into the air
+  const g = groundY(nx, nz);
+  if (g > P.pos.y - 1e-4) {
+    if (g - P.pos.y > run * MAX_SLOPE + .02 && !P.inWater) return;
+    if (!collides(nx, g, nz)) { P.pos.set(nx, g, nz); return; }
+  } else if (!collides(nx, P.pos.y, nz)) {
+    P.pos.x = nx; P.pos.z = nz;
+    const drop = P.pos.y - (run * MAX_SLOPE + .05);
+    if (P.grounded && !P.inWater && !collides(nx, P.pos.y - .02, nz) && collides(nx, drop, nz)) P.pos.y = landingY(nx, drop, nz);
+    return;
+  }
   if (!P.grounded && !P.inWater) return;                 // swimmers can climb out onto the bank
   for (const up of [.55, 1.05]) {              // auto step onto stairs / crates
     if (!collides(P.pos.x, P.pos.y + up, P.pos.z) && !collides(nx, P.pos.y + up, nz)) {
@@ -5038,14 +5078,6 @@ function describeArea(gd) {
     break;
   }
 
-  // A cave mouth nearby?
-  let cave = null;
-  for (let d = 40; d <= 280 && !cave; d += 40) for (let k = 0; k < 8 && !cave; k++) {
-    const a = k / 8 * Math.PI * 2, x = Math.floor(x0 + Math.sin(a) * d), z = Math.floor(z0 - Math.cos(a) * d);
-    const h = terrainHeight(x, z);
-    if (h > SEA + 1 && get(x, h - 1, z) === AIR && get(x, h - 2, z) === AIR) cave = { d, dir: COMPASS[k] };
-  }
-  if (cave) out.push(`There's a cave mouth ${paces(cave.d)} to the ${cave.dir}. Take a light if you go in.`);
   if (env.daylight < .35) out.push('I\'d wait for daylight before wandering far.');
   return out.join(' ');
 }
@@ -5308,7 +5340,7 @@ function simulate(seconds) {
   env.speedIdx = keep;
 }
 updatePurse();
-window.__fort = { solid, arrows, hunters, shootArrow, aimVelocity, velFrom, killAnimal, startle, animals, rosterFor, tradeRun, stateOf, runs, tradeCarts, isTradeDay, isMarketDay, player, villageMemory, gameHours, millBusy, simulate, villages, activityFor, cottages, colliderGrid, solids, activeBridges, roadInfo, boatSpot, carts, animated, shapeOf, collides, roadsAtNode, layRoads, plans, PLACES, P, surfaceY, mapToWorld, terrainHeight, climate, discovered, roadAt, roadBetween, rawHeight, dlg, describeArea, MAIN_TITLE, lantern, guards, talk, saveGame, store, env, planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
+window.__fort = { solid, arrows, hunters, shootArrow, aimVelocity, velFrom, killAnimal, startle, animals, rosterFor, tradeRun, stateOf, runs, tradeCarts, isTradeDay, isMarketDay, player, villageMemory, gameHours, millBusy, simulate, villages, activityFor, cottages, colliderGrid, solids, activeBridges, roadInfo, boatSpot, carts, animated, shapeOf, collides, roadsAtNode, layRoads, plans, PLACES, P, surfaceY, mapToWorld, terrainHeight, climate, discovered, objectBlock, groundY, chunkAt, roadAt, roadBetween, rawHeight, dlg, describeArea, MAIN_TITLE, lantern, guards, talk, saveGame, store, env, planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
 frame();
 </script>
 </body>
