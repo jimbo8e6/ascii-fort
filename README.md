@@ -57,6 +57,8 @@ The places come from the world gazetteer (draft 1) and are set by hand on the pa
   - **The Vael** rises in a mountain tarn in the Greyspine and runs south through Greyhold Pass and the Hollow, gathering tributaries. One of them flows out of the Mistwater. The Vael splits into a delta above the desert and reaches the sea on the south-west coast. It grows from about 5 blocks wide at its source to 13 at its mouth.
   - **The delta's side channels** fan out south and east and run dry in the sand.
 - **Roads:** the gazetteer's five roads, laid by hand in `ROADS` through places and waypoints. They wind gently between their stops.
+  - **Graded:** each road's height is the land along it smoothed out, then eased so it never climbs steeper than about 1 in 8 (12%). Where it meets a hill it runs through a cutting; across a dip it rides an embankment. The cuttings and embankments blend back into the land within a few blocks, and never fill in water.
+  - **A surface of its own:** like the bridges, the road is a mesh rather than blocks. It's a smooth strip of packed earth along the graded height, laid just over the blocks beneath, with dirt edges hiding the steps in the ground. You walk on it and carts drive on it, so it climbs a hill in one even slope.
   - **The River Road** runs down the Vael's west bank: Kharn Dolum, Fort Greyhold, past the Victory Fields, the Sunken Throne and Oathstone, then Concord Landing, Hollin's Ferry, Kelford, Millbrook, Castle Aldermere and Port Cassel.
   - **The Hollow Road** runs from the forest north of Thornwick, past Oathstone, over the Vael at Oath Ford and past the Broken Bastion to Gor Marakh.
   - **The Western Road** runs from Thornwick to Kelford.

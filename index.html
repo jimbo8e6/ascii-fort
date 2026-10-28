@@ -682,10 +682,22 @@ function rawHeight(x, z, cl = climate(x, z)) {
   return Math.max(2, Math.min(H - 12, Math.round(h)));
 }
 
-// Surface height: number of solid blocks in the column (player stands at this y)
-function terrainHeight(x, z, cl = climate(x, z)) {
+// The land's height with places flattened in, before roads are graded into it
+function naturalHeight(x, z, cl = climate(x, z)) {
   const h = rawHeight(x, z, cl), s = structureAt(x, z);
   return s ? Math.round(h + (s.plan.base - h) * s.w) : h;
+}
+// Surface height: number of solid blocks in the column (player stands at this y). Roads are graded
+// in: the ground under a road sits just below its smooth surface, and cuttings and embankments
+// blend back into the land on either side (never filling in water).
+function terrainHeight(x, z, cl = climate(x, z)) {
+  const h = naturalHeight(x, z, cl), r = roadSurface(x + .5, z + .5);
+  if (!r || r.deck) return h;
+  const core = ROAD_HALF + .5, top = Math.floor(r.p);
+  if (r.d <= core) return top;
+  if (h <= SEA && top > h) return h;
+  const shoulder = Math.min(14, 2 + Math.abs(h - top) * 1.2);
+  return r.d >= core + shoulder ? h : Math.round(top + (h - top) * smoothstep(0, shoulder, r.d - core));
 }
 
 const OCEAN = 0, DESERT = 1, PLAINS = 2, FOREST = 3, SNOWY = 4;
@@ -744,7 +756,7 @@ function generateChunk(cx, cz) {
     const deep = sub === RED_ROCK ? RED_ROCK : ROCK;                             // mesas are red right through
     for (let y = 0; y < h; y++) put(lx, y, lz, y === h - 1 ? top : y >= h - 4 ? sub : deep);
     // A half step where the ground rises by exactly one block next door, smoothing the terraces
-    if (h > SEA && !st && SLAB_OF.has(top) && (hAt(lx + 1, lz) === h + 1 || hAt(lx - 1, lz) === h + 1 || hAt(lx, lz + 1) === h + 1 || hAt(lx, lz - 1) === h + 1))
+    if (h > SEA && !st && !road && SLAB_OF.has(top) && (hAt(lx + 1, lz) === h + 1 || hAt(lx - 1, lz) === h + 1 || hAt(lx, lz + 1) === h + 1 || hAt(lx, lz - 1) === h + 1))
       put(lx, h, lz, SLAB_OF.get(top));
     for (let y = h; y < SEA; y++) put(lx, y, lz, y === SEA - 1 && cold[i] > .6 ? ICE : WATER);
     if (deck && h > deck) { for (let y = deck; y < h; y++) put(lx, y, lz, AIR); put(lx, deck - 1, lz, PATH); }   // cut the approach level
@@ -1271,7 +1283,17 @@ function layRoads() {
     for (let i = 0; i < leg.pts.length; i += 2) { x0 = Math.min(x0, leg.pts[i]); x1 = Math.max(x1, leg.pts[i]); z0 = Math.min(z0, leg.pts[i + 1]); z1 = Math.max(z1, leg.pts[i + 1]); }
     leg.box = [x0 - 3, z0 - 3, x1 + 3, z1 + 3];
     planBridges(leg);
+    gradeLeg(leg);
     roadLegs.push(leg);
+    for (let i = 0; i + 3 < leg.pts.length; i += 2) {
+      const [ax, az, bx, bz] = [leg.pts[i], leg.pts[i + 1], leg.pts[i + 2], leg.pts[i + 3]];
+      for (let cz = Math.floor((Math.min(az, bz) - ROAD_REACH) / ROAD_CELL); cz <= Math.floor((Math.max(az, bz) + ROAD_REACH) / ROAD_CELL); cz++)
+        for (let cx = Math.floor((Math.min(ax, bx) - ROAD_REACH) / ROAD_CELL); cx <= Math.floor((Math.max(ax, bx) + ROAD_REACH) / ROAD_CELL); cx++) {
+          const k = chunkKey(cx, cz);
+          if (!roadGrid.has(k)) roadGrid.set(k, []);
+          roadGrid.get(k).push([leg, i >> 1]);
+        }
+    }
     for (const p of [leg.a, leg.b]) if (p) {
       const k = chunkKey(p.rx, p.rz);
       if (!legsByNode.has(k)) legsByNode.set(k, []);
@@ -1301,6 +1323,52 @@ function layRoads() {
   }
   return roadLegs;
 }
+// A leg's height along its length: the land smoothed out, then eased so the road never climbs
+// steeper than ROAD_GRADE. It's held at the deck over bridges, at the riverbed through a ford and at
+// the ground inside a place.
+const ROAD_GRADE = .12;
+function gradeLeg(leg) {
+  const p = leg.pts, n = p.length / 2, g = [], pin = new Array(n).fill(null), len = [0];
+  for (let i = 0; i < n; i++) {
+    const x = Math.floor(p[i * 2]), z = Math.floor(p[i * 2 + 1]), st = structureAt(x, z);
+    g.push(naturalHeight(x, z));
+    if (st?.inside) pin[i] = st.plan.base;
+    else if (g[i] <= SEA) pin[i] = g[i];                                  // a ford
+    if (i) len.push(Math.hypot(p[i * 2] - p[i * 2 - 2], p[i * 2 + 1] - p[i * 2 - 1]));
+  }
+  for (let i = 0; i < n - 1; i++) if (leg.deck[i]) pin[i] = pin[i + 1] = leg.deck[i];
+  pin[0] ??= g[0]; pin[n - 1] ??= g[n - 1];
+  const prof = g.map((_, i) => {
+    if (pin[i] !== null) return pin[i];
+    let sum = 0, c = 0;
+    for (let k = Math.max(0, i - 4); k <= Math.min(n - 1, i + 4); k++) { sum += g[k]; c++; }
+    return sum / c;
+  });
+  for (let pass = 0; pass < 4; pass++) {
+    for (let i = 1; i < n; i++) if (pin[i] === null) { const m = ROAD_GRADE * len[i]; prof[i] = Math.max(prof[i - 1] - m, Math.min(prof[i - 1] + m, prof[i])); }
+    for (let i = n - 2; i >= 0; i--) if (pin[i] === null) { const m = ROAD_GRADE * len[i + 1]; prof[i] = Math.max(prof[i + 1] - m, Math.min(prof[i + 1] + m, prof[i])); }
+  }
+  leg.prof = prof;
+}
+
+// The nearest road to a point, within ROAD_REACH: how far from its centre line, the road's height
+// there, and the bridge deck height (0 off bridges)
+const ROAD_CELL = 32, ROAD_REACH = 18, roadGrid = new Map();
+function roadSurface(x, z) {
+  layRoads();
+  const list = roadGrid.get(chunkKey(Math.floor(x / ROAD_CELL), Math.floor(z / ROAD_CELL)));
+  if (!list) return null;
+  let best = null, bd = ROAD_REACH;
+  for (const [leg, i] of list) {
+    const p = leg.pts, ax = p[i * 2], az = p[i * 2 + 1], dx = p[i * 2 + 2] - ax, dz = p[i * 2 + 3] - az;
+    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz || 1)));
+    const d = Math.hypot(x - ax - dx * t, z - az - dz * t);
+    if (d < bd) { bd = d; best = { leg, i, t, d }; }
+  }
+  if (best) { const pr = best.leg.prof; best.p = pr[best.i] + (pr[best.i + 1] - pr[best.i]) * best.t; best.deck = best.leg.deck[best.i]; }
+  return best;
+}
+
 // Legs that end at the place filed under this region
 function roadsAtNode(rx, rz) { layRoads(); return legsByNode.get(chunkKey(rx, rz)) || []; }
 // The leg linking the places of two regions, or null
@@ -1308,21 +1376,10 @@ const roadBetween = (ax, az, bx, bz) => roadsAtNode(ax, az).find(r => [r.a, r.b]
 // All legs that pass through a region
 function roadsForRegion(rx, rz) { layRoads(); return legsByRegion.get(chunkKey(rx, rz)) || []; }
 
-// Is this column on a road?
 // Road at this column: null if none, otherwise the bridge deck height there (0 = ordinary road)
 function roadInfo(x, z) {
-  const px = x + .5, pz = z + .5;
-  for (const road of roadsForRegion(regionOf(x), regionOf(z))) {
-    const [x0, z0, x1, z1] = road.box;
-    if (px < x0 || px > x1 || pz < z0 || pz > z1) continue;
-    const p = road.pts;
-    for (let i = 0; i + 3 < p.length; i += 2) {
-      const ax = p[i], az = p[i + 1], dx = p[i + 2] - ax, dz = p[i + 3] - az;
-      const t = Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / (dx * dx + dz * dz)));
-      if (Math.hypot(px - ax - dx * t, pz - az - dz * t) < ROAD_HALF) return bridgeDeck(road)[i >> 1];
-    }
-  }
-  return null;
+  const r = roadSurface(x + .5, z + .5);
+  return r && r.d < ROAD_HALF ? r.deck : null;
 }
 const roadAt = (x, z) => roadInfo(x, z) !== null;
 
@@ -1445,7 +1502,6 @@ function planBridges(road) {
   }
   road.deck = deck;
 }
-const bridgeDeck = road => road.deck;
 
 // Lanterns on stone bridge parapets: a pair at each end, then alternating sides every ~9 blocks.
 // Each joins the torch list, so the shared light pool lights the nearest ones.
@@ -1473,10 +1529,63 @@ function addBridgeLanterns(b) {
 }
 const LANTERN_GLOW = new THREE.MeshBasicMaterial({ color: 0xffd08a });
 
+// Road surfaces: each leg is a smooth strip of road along its graded height, laid just over the
+// blocks beneath, with dirt edges hanging down to hide the steps in the ground. Like the bridges
+// they're meshes, so a road climbs a hill in one even slope. Bridges carry their own decks.
+let roadMeshes = null;
+function buildRoads() {
+  roadMeshes = [];
+  const top = new THREE.MeshLambertMaterial({ map: TEX.path }), side = new THREE.MeshLambertMaterial({ map: TEX.dirt });
+  for (const leg of layRoads()) {
+    const p = leg.pts, n = p.length / 2, pos = [], uv = [], pos2 = [], uv2 = [];
+    const at = i => [p[i * 2], leg.prof[i] + .04, p[i * 2 + 1]];
+    // Sideways at each point, square to the average direction of the segments either side
+    const across = i => {
+      const a = Math.max(0, i - 1), b = Math.min(n - 1, i + 1), dx = p[b * 2] - p[a * 2], dz = p[b * 2 + 1] - p[a * 2 + 1], l = Math.hypot(dx, dz) || 1;
+      return [-dz / l * ROAD_HALF, dx / l * ROAD_HALF];
+    };
+    let s0 = 0;
+    for (let i = 0; i < n - 1; i++) {
+      const [ax, ay, az] = at(i), [bx, by, bz] = at(i + 1), [ux, uz] = across(i), [vx, vz] = across(i + 1);
+      const s1 = s0 + Math.hypot(bx - ax, bz - az);
+      if (!leg.deck[i]) {
+        const L = [ax + ux, ay, az + uz], R = [ax - ux, ay, az - uz], L2 = [bx + vx, by, bz + vz], R2 = [bx - vx, by, bz - vz];
+        pos.push(...L, ...R2, ...R, ...L, ...L2, ...R2);                 // wound to face up
+        uv.push(0, s0, 3.2, s1, 3.2, s0, 0, s0, 0, s1, 3.2, s1);
+        for (const [A, B, flip] of [[L, L2, 0], [R, R2, 1]]) {        // edges, down 1.2 blocks
+          const A1 = [A[0], A[1] - 1.2, A[2]], B1 = [B[0], B[1] - 1.2, B[2]];
+          if (flip) pos2.push(...A, ...B1, ...A1, ...A, ...B, ...B1);
+          else pos2.push(...A, ...A1, ...B1, ...A, ...B1, ...B);
+          if (flip) uv2.push(s0, 1.2, s1, 0, s0, 0, s0, 1.2, s1, 1.2, s1, 0);
+          else uv2.push(s0, 1.2, s0, 0, s1, 0, s0, 1.2, s1, 0, s1, 1.2);
+        }
+      }
+      s0 = s1;
+    }
+    for (const [P_, U, mat] of [[pos, uv, top], [pos2, uv2, side]]) {
+      if (!P_.length) continue;
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(P_, 3));
+      geo.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2));
+      geo.computeVertexNormals();
+      const m = new THREE.Mesh(geo, mat);
+      scene.add(m); roadMeshes.push(m);
+    }
+  }
+}
+// Standing on a road: its surface height if feet are just below it, else null
+function roadHit(x, y, z) {
+  const r = roadSurface(x, z);
+  if (!r || r.deck || r.d > ROAD_HALF + RADIUS * .5) return null;
+  const top = r.p + .04;
+  return y < top - 1e-4 && y > top - .6 ? top : null;
+}
+
 // Bridges near the player get meshes (and collision); far ones are dropped
 const activeBridges = new Set();
 let bridgeScan = 0;
 function updateBridges(dt) {
+  if (!roadMeshes) buildRoads();
   bridgeScan -= dt;
   if (bridgeScan > 0) return;
   bridgeScan = .7;
@@ -2120,6 +2229,8 @@ function makeCart(color) {
   return { g, wheels, legs, driver, y: null, s: 0 };
 }
 function groundAt(x, z) {
+  const r = roadSurface(x, z);
+  if (r && !r.deck && r.d < ROAD_HALF + .5) return Math.max(r.p + .04, SEA);   // on the road surface
   const fx = Math.floor(x), fz = Math.floor(z);
   let h = terrainHeight(fx, fz);
   const c = chunks.get(chunkKey(fx >> 4, fz >> 4));
@@ -4328,7 +4439,7 @@ function collides(x, y, z) {
         const top = cellTop(get(ix, iy, iz), ix, iz, x, z);
         if (top && y < iy + top - eps) return true;
       }
-  return bridgeHit(x, y, z) !== null || colliderHit(x, y, z);
+  return bridgeHit(x, y, z) !== null || roadHit(x, y, z) !== null || colliderHit(x, y, z);
 }
 // Where feet land when falling into the layer at y: the highest solid top under the footprint
 function landingY(x, y, z) {
@@ -4339,8 +4450,9 @@ function landingY(x, y, z) {
       const top = cellTop(get(ix, iy, iz), ix, iz, x, z);
       if (top) best = Math.max(best, iy + top);
     }
-  const bt = bridgeHit(x, y, z);
+  const bt = bridgeHit(x, y, z), rt = roadHit(x, y, z);
   if (typeof bt === 'number') best = Math.max(best, bt);
+  if (rt !== null) best = Math.max(best, rt);
   best = Math.max(best, colliderTop(x, y, z));
   return best > -Infinity ? best : iy + 1;
 }
