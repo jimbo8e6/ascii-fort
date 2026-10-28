@@ -534,7 +534,7 @@ const RIVERS = [
     [723, 343], [703, 360], [690, 380], [685, 393], [692, 413], [703, 433], [713, 450], [717, 463], [700, 487], [690, 503], [700, 527],
     [720, 547], [730, 570], [723, 590], [703, 610], [698, 630], [707, 647], [700, 663], [680, 680], [657, 693], [645, 712], [628, 738],
     [608, 772], [588, 812], [568, 850], [552, 882], [540, 905], [530, 922]] },
-  { name: 'the Mistwater outflow', w: [3, 3.5], pts: [[505, 474], [530, 480], [553, 490], [580, 498], [613, 500], [640, 492], [663, 492], [690, 502]] },
+  { w: [3, 3.5], pts: [[505, 474], [530, 480], [553, 490], [580, 498], [613, 500], [640, 492], [663, 492], [690, 502]] },
   { w: [1.5, 2.5], pts: [[620, 387], [650, 390], [682, 390]] },
   { w: [1.5, 3], pts: [[840, 293], [830, 310], [823, 327], [803, 343], [777, 367], [753, 383], [730, 397], [707, 407], [692, 413]] },
   { w: [1.5, 2.5], pts: [[820, 393], [787, 413], [760, 433], [743, 447], [717, 460]] },
@@ -545,11 +545,11 @@ const RIVERS = [
   { w: [1.5, 2.5], pts: [[600, 670], [630, 680], [652, 695]] },
   { w: [1.5, 2.5], pts: [[685, 670], [730, 695]] },
   // The delta's side channels
-  { w: [3, 1.2], pts: [[648, 708], [640, 725], [575, 745], [500, 752]] },
-  { w: [3, 1.2], pts: [[650, 708], [652, 775], [655, 850], [660, 880]] },
-  { w: [3, 1.2], pts: [[650, 708], [660, 750], [685, 800], [700, 840], [710, 865]] },
-  { w: [3, 1.2], pts: [[652, 710], [670, 740], [710, 775], [740, 800], [755, 810]] },
-  { w: [2.5, 1.2], pts: [[640, 725], [615, 795], [600, 840], [600, 870]] },
+  { name: 'the Vael delta', w: [3, 1.2], pts: [[648, 708], [640, 725], [575, 745], [500, 752]] },
+  { name: 'the Vael delta', w: [3, 1.2], pts: [[650, 708], [652, 775], [655, 850], [660, 880]] },
+  { name: 'the Vael delta', w: [3, 1.2], pts: [[650, 708], [660, 750], [685, 800], [700, 840], [710, 865]] },
+  { name: 'the Vael delta', w: [3, 1.2], pts: [[652, 710], [670, 740], [710, 775], [740, 800], [755, 810]] },
+  { name: 'the Vael delta', w: [2.5, 1.2], pts: [[640, 725], [615, 795], [600, 840], [600, 870]] },
 ];
 
 // Each river becomes a chain of short segments (a Catmull-Rom curve through its points), bucketed
@@ -572,7 +572,7 @@ for (const r of RIVERS) {
   const lens = segs.map((p, i) => i ? (total += Math.hypot(p[0] - segs[i - 1][0], p[1] - segs[i - 1][1])) : 0);
   for (let i = 0; i < segs.length - 1; i++) {
     const [ax, az] = segs[i], [bx, bz] = segs[i + 1], f = (lens[i] + lens[i + 1]) / 2 / total;
-    const seg = { ax, az, bx, bz, w: r.w[0] + (r.w[1] - r.w[0]) * f };
+    const seg = { ax, az, bx, bz, w: r.w[0] + (r.w[1] - r.w[0]) * f, river: r };
     const R = RIVER_REACH + seg.w;
     for (let cz = Math.floor((Math.min(az, bz) - R) / RIVER_CELL); cz <= Math.floor((Math.max(az, bz) + R) / RIVER_CELL); cz++)
       for (let cx = Math.floor((Math.min(ax, bx) - R) / RIVER_CELL); cx <= Math.floor((Math.max(ax, bx) + R) / RIVER_CELL); cx++) {
@@ -582,23 +582,36 @@ for (const r of RIVERS) {
       }
   }
 }
-// How far a point is outside the nearest river's banks (negative = in the water), and that river's half-width
+// How far a point is outside the nearest river's banks (negative = in the water), that river's
+// half-width there, the river itself and the nearest point on its course
 function riverAt(x, z) {
   const list = riverGrid.get(riverKey(Math.floor(x / RIVER_CELL), Math.floor(z / RIVER_CELL)));
-  let best = Infinity, w = 0;
+  let best = Infinity, w = 0, river = null, px = 0, pz = 0;
   if (list) for (const s of list) {
     const dx = s.bx - s.ax, dz = s.bz - s.az, l2 = dx * dx + dz * dz;
     const t = l2 ? Math.max(0, Math.min(1, ((x - s.ax) * dx + (z - s.az) * dz) / l2)) : 0;
     const d = Math.hypot(x - s.ax - dx * t, z - s.az - dz * t) - s.w;
-    if (d < best) { best = d; w = s.w; }
+    if (d < best) { best = d; w = s.w; river = s.river; px = s.ax + dx * t; pz = s.az + dz * t; }
   }
-  return { d: best, w };
+  return { d: best, w, river, px, pz };
 }
 
 // Oath Ford, where the Hollow Road wades the Vael: the riverbed rises to a single block of water
 const FORDS = [[707, 441]].map(([px, py]) => mapToWorld(px, py));
 // Little tarns the painting shows too small to measure: the Vael's source and a pool on a tributary
 const TARNS = [[737, 223, 7], [655, 389, 5]].map(([px, py, r]) => [...mapToWorld(px, py), r * MAP_SCALE]);
+
+// What kind of water lies at a spot below the waterline: the sea, the lake by Mistwater, a mountain
+// tarn, a river (by name, if it has one) or the marshes' pools. kind is a short label, phrase reads in a sentence.
+function waterAt(x, z, cl = climate(x, z)) {
+  if (cl.coast < 0) return { kind: 'sea', phrase: 'the sea' };
+  if (cl.lake < 40) return { kind: 'lake', phrase: 'the lake' };
+  if (TARNS.some(([tx, tz, r]) => Math.hypot(x - tx, z - tz) < r + 6)) return { kind: 'tarn', phrase: 'a mountain tarn' };
+  const rv = riverAt(x, z);
+  if (rv.d < 14) return { kind: 'river', phrase: rv.river.name || 'a river' };
+  if (cl.marsh > .2) return { kind: 'marsh', phrase: 'the marshes' };
+  return { kind: 'pool', phrase: 'a pool' };
+}
 
 function climate(x, z) {
   // Wobble the lookup so coasts and borders aren't smooth blobs
@@ -4671,7 +4684,8 @@ mapCanvas.addEventListener('pointerup', () => { if (drag) { drag = null; renderB
 mapCanvas.addEventListener('pointercancel', () => { drag = null; });
 
 function updateMaps() {
-  const biome = BIOME_NAMES[biomeOf(climate(Math.floor(P.pos.x), Math.floor(P.pos.z)), terrainHeight(Math.floor(P.pos.x), Math.floor(P.pos.z)))];
+  const fx = Math.floor(P.pos.x), fz = Math.floor(P.pos.z), cl = climate(fx, fz), h = terrainHeight(fx, fz);
+  const biome = h <= SEA ? waterAt(fx, fz, cl).kind : BIOME_NAMES[biomeOf(cl, h)];
   const where = `${P.underground ? 'underground' : biome} · ${Math.floor(P.pos.x)}, ${Math.floor(P.pos.z)}`;
   if (mapOpen) {
     bigMap.step(10);
@@ -4793,7 +4807,7 @@ const COMPASS = ['north', 'north-east', 'east', 'south-east', 'south', 'south-we
 // Compass direction from a to b: -z is north, +x is east
 const compass = (dx, dz) => COMPASS[Math.round(((Math.atan2(dx, -dz) / (Math.PI * 2)) * 8 + 8)) % 8];
 const paces = d => d < 80 ? 'just' : `about ${Math.round(d / 50) * 50} paces`;
-const BIOME_PHRASE = { [OCEAN]: 'the sea', [DESERT]: 'desert', [PLAINS]: 'open grassland', [FOREST]: 'pine woods', [SNOWY]: 'the snowfields' };
+const BIOME_PHRASE = { [DESERT]: 'desert', [PLAINS]: 'open grassland', [FOREST]: 'pine woods', [SNOWY]: 'the snowfields' };
 const cap = t => t[0].toUpperCase() + t.slice(1);
 
 function talk() {
@@ -4885,17 +4899,32 @@ function describeArea(gd) {
   }
 
   // Which way the land changes: the nearest different biomes in eight directions
-  const here = biomeOf(climate(Math.floor(x0), Math.floor(z0)), terrainHeight(Math.floor(x0), Math.floor(z0)));
+  // (rivers are too narrow to find this way; they're named separately below)
+  const kindAt = (x, z) => { const cl = climate(x, z), h = terrainHeight(x, z); if (h > SEA) return BIOME_PHRASE[biomeOf(cl, h)]; const w = waterAt(x, z, cl); return w.kind === 'river' ? null : w.phrase; };
+  const here = kindAt(Math.floor(x0), Math.floor(z0));
   const seen = new Map();
   for (let d = 60; d <= 600; d += 30) for (let k = 0; k < 8; k++) {
     const a = k / 8 * Math.PI * 2, x = Math.floor(x0 + Math.sin(a) * d), z = Math.floor(z0 - Math.cos(a) * d);
-    const b = biomeOf(climate(x, z), terrainHeight(x, z));
-    if (b !== here && !seen.has(b)) seen.set(b, { d, dir: COMPASS[k] });
+    const b = kindAt(x, z);
+    if (b && b !== here && !seen.has(b)) seen.set(b, { d, dir: COMPASS[k] });
   }
   const far = d => d < 150 ? 'a short walk' : d < 350 ? 'a few hundred paces' : 'a long walk';
   [...seen.entries()].sort((a, b) => a[1].d - b[1].d).slice(0, 2).forEach(([b, { d, dir }]) => {
-    out.push(`Head ${dir} and you'll reach ${BIOME_PHRASE[b]}, ${far(d)} off.`);
+    out.push(`Head ${dir} and you'll reach ${b}, ${far(d)} off.`);
   });
+
+  // The nearest river: look out in widening rings until one turns up, then take its closest point
+  for (let d = 0; d <= 600; d += 24) {
+    let rv = null, dist = Infinity;
+    for (let k = 0; k < (d ? 16 : 1); k++) {
+      const a = k / 16 * Math.PI * 2, r = riverAt(x0 + Math.sin(a) * d, z0 - Math.cos(a) * d), e = Math.hypot(r.px - x0, r.pz - z0);
+      if (r.river && e < dist) { rv = r; dist = e; }
+    }
+    if (!rv) continue;
+    const name = rv.river.name || 'a stream';
+    out.push(dist < 30 ? `${cap(name)} runs right past here.` : `${cap(name)} runs ${paces(dist)} to the ${compass(rv.px - x0, rv.pz - z0)}.`);
+    break;
+  }
 
   // A cave mouth nearby?
   let cave = null;

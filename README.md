@@ -217,7 +217,8 @@ Guards patrol the walls and courtyards and stand at the gates. They're friendly.
   1. **What can you tell me about this area?** The guard answers from the world itself:
      - the name of the place you're at;
      - the two nearest named forts, watchtowers or ruins, with compass direction and rough distance;
-     - which way the land changes (sea, desert, snowfields, pine woods, grassland);
+     - which way the land changes (desert, snowfields, pine woods, grassland, the sea, the lake, a mountain tarn, the marshes);
+     - the nearest river, by name if it has one (*The Vael runs just to the north-east.*), or a stream;
      - any cave mouth nearby, and a warning at night.
   2. **Goodbye.**
 - **Place names:** every place has its name from the gazetteer, e.g. *Fort Greyhold*, *Kelford*, *the Sunken Throne*.
@@ -250,7 +251,7 @@ A full day lasts an hour of real time, or 3 minutes at 20× fast-forward (K). Th
 
 The shape of the land, the places and the roads come from the painted map and the gazetteer, and are the same in every world. The seed decides the small-scale detail (hills, trees, caves, wildlife) and the villagers. Add `?seed=` to the URL to get a different one, e.g. `index.html?seed=42`. The default is 1337. The world map also has a seed box and a NEW WORLD button.
 
-The world map (M) shows biomes, water depth and hill shading, with the fort and your position and facing marked. Drag to pan, scroll or use +/− to zoom, from 256 to about 10,000 blocks across (the whole continent). Structure markers thin out when zoomed far out, and an N marker shows north, and CENTRE ON ME to jump back to yourself. A minimap in the top-left corner (N) follows you and shows the biome and coordinates you're at. Both are drawn from the same climate and height functions as the 3D world, a few rows per frame so the game never stalls.
+The world map (M) shows biomes, water depth and hill shading, with the fort and your position and facing marked. Drag to pan, scroll or use +/− to zoom, from 256 to about 10,000 blocks across (the whole continent). Structure markers thin out when zoomed far out, and an N marker shows north, and CENTRE ON ME to jump back to yourself. A minimap in the top-left corner (N) follows you and shows the biome (or, in water, the sea, lake, tarn, river or marsh) and coordinates you're at. Both are drawn from the same climate and height functions as the 3D world, a few rows per frame so the game never stalls.
 
 ## How it works
 
