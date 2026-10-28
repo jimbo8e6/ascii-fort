@@ -12,4 +12,18 @@ export function buildViewer() {
   if (out !== page) writeFileSync(here + 'viewer.html', out);
   return out !== page;
 }
-if (process.argv[1] === fileURLToPath(import.meta.url)) console.log(buildViewer() ? 'viewer.html updated' : 'viewer.html already up to date');
+// A copy for hosting as a web page (node build-viewer.mjs --hosted <file>): without the outer document
+// tags, which the host adds, and without SAVE JSON, since hosted pages can't start downloads
+export function hostedViewer(path) {
+  buildViewer();
+  let page = readFileSync(here + 'viewer.html', 'utf8');
+  page = page.replace(/<!doctype html>\s*<html[^>]*>\s*<head>\s*<meta charset="utf-8">\s*<meta name="viewport"[^>]*>\s*/i, '')
+    .replace(/<\/head>\s*<body>\s*/i, '').replace(/\s*<\/body>\s*<\/html>\s*$/i, '\n')
+    .replace(/\s*<button class="btn"? ?id="saveBtn">SAVE JSON<\/button>/, '').replace(/<button id="saveBtn">SAVE JSON<\/button>\s*/, '');
+  writeFileSync(path, page);
+}
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const i = process.argv.indexOf('--hosted');
+  if (i > 0) { hostedViewer(process.argv[i + 1]); console.log('hosted copy written to', process.argv[i + 1]); }
+  else console.log(buildViewer() ? 'viewer.html updated' : 'viewer.html already up to date');
+}

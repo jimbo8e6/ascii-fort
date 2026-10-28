@@ -3,9 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Family Sim Viewer</title>
+<title>Family Line Explorer</title>
 <style>
-  :root { --bg: #0e1016; --panel: #171a23; --line: #2a2f3d; --text: #d8d4c8; --dim: #8a8678; --accent: #e0a85a; --link: #8fc0e8; --star: #e8c860; }
+  /* A record-keeper's ledger at night: two panes, people on the left, the open record on the right. Dark first, with a light version. */
+  :root { --bg: #0e1016; --panel: #171a23; --line: #2a2f3d; --text: #d8d4c8; --dim: #8f8a7c; --accent: #e0a85a; --link: #8fc0e8; --star: #e8c860; --warn: #e88a6a; color-scheme: dark; }
+  @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --bg: #f5f2ea; --panel: #ebe6da; --line: #cfc7b4; --text: #2a2620; --dim: #6c6556; --accent: #9a5a12; --link: #1f5f94; --star: #a07800; --warn: #b0401c; color-scheme: light; } }
+  :root[data-theme="light"] { --bg: #f5f2ea; --panel: #ebe6da; --line: #cfc7b4; --text: #2a2620; --dim: #6c6556; --accent: #9a5a12; --link: #1f5f94; --star: #a07800; --warn: #b0401c; color-scheme: light; }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   header { padding: 14px 16px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
@@ -26,7 +29,9 @@
   h3 { font-size: 13px; margin: 16px 0 6px; color: var(--dim); text-transform: uppercase; letter-spacing: .08em; }
   ul.tree { list-style: none; margin: 0; padding-left: 18px; border-left: 1px dashed var(--line); }
   ul.tree.root { padding-left: 0; border: 0; }
-  .temp { color: #e88a6a; }
+  .temp { color: var(--warn); }
+  .problem { color: var(--warn); border: 1px solid var(--warn); border-radius: 4px; padding: 8px 10px; margin: 8px 0; white-space: normal; }
+  button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   table { border-collapse: collapse; } td, th { padding: 2px 10px 2px 0; text-align: left; } th { color: var(--dim); font-weight: normal; }
   .rel { margin-top: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); }
   @media (max-width: 760px) { main { grid-template-columns: 1fr; } aside { border-right: 0; border-bottom: 1px solid var(--line); max-height: 40vh; } section { max-height: none; } }
@@ -44,12 +49,19 @@
 </header>
 <main>
   <aside>
-    <div class="stat" id="stats">Press GENERATE.</div>
+    <div class="stat" id="stats">Starting…</div>
     <input id="search" placeholder="search name or #id" style="width:100%">
     <div class="list" id="results"></div>
   </aside>
   <section id="card"><p class="dim">Pick someone on the left. Click any name to follow it. Set A and B to see how two people are related.</p></section>
 </main>
+<noscript><p class="problem" style="margin:16px">This page needs JavaScript. Open the file in a web browser (Chrome, Edge, Firefox or Safari) with JavaScript on, rather than a file preview.</p></noscript>
+<script>
+  // If the main script fails or never runs (an old browser, a file preview), say so on the page
+  function showProblem(text) { var s = document.getElementById('stats'); if (s) { s.className = 'stat problem'; s.textContent = text; } }
+  window.addEventListener('error', function (e) { showProblem('Something went wrong: ' + (e.message || e) + '. Try the latest Chrome, Edge, Firefox or Safari.'); });
+  setTimeout(function () { if (!window.__viewerReady) showProblem("The page's script didn't start. Open this file in an up-to-date web browser (Chrome, Edge, Firefox or Safari), not a file preview or an app's viewer."); }, 2500);
+</script>
 <script type="module">
 // <family-sim> (copied from family-sim.mjs by build-viewer.mjs; edit that file, not this block)
 // Family simulation prototype for Connected Histories. Standalone: nothing in the game uses it yet.
@@ -520,8 +532,10 @@ function relBox() {
 document.body.addEventListener('click', e => { const a = e.target.closest('a[data-id]'); if (a) show(+a.dataset.id); });
 $('go').onclick = generate;
 $('search').oninput = search;
-$('saveBtn').onclick = () => { if (!H) return; const b = new Blob([save(H)], { type: 'application/json' }), u = URL.createObjectURL(b), a = document.createElement('a'); a.href = u; a.download = `history-${H.seed}-${H.year}.json`; a.click(); URL.revokeObjectURL(u); };
+if ($('saveBtn')) $('saveBtn').onclick = () => { if (!H) return; const b = new Blob([save(H)], { type: 'application/json' }), u = URL.createObjectURL(b), a = document.createElement('a'); a.href = u; a.download = `history-${H.seed}-${H.year}.json`; a.click(); URL.revokeObjectURL(u); };
 $('loadFile').onchange = async e => { const f = e.target.files[0]; if (!f) return; H = load(await f.text()); $('seed').value = H.seed; $('years').value = H.year; $('stats').textContent = 'Loaded from file\n' + stats(); search(); show(H._living[0]); };
+window.__viewerReady = true;
+$('stats').textContent = 'Ready. Press GENERATE.';
 window.__sim = { run: (seed, years) => { const t = performance.now(); const X = simulate(newHistory(seed), years); return { ms: performance.now() - t, people: X.people.length, events: X.events.length }; } };
 </script>
 </body>
