@@ -2,6 +2,8 @@
 // Usage: node test.mjs   (prints a report; also writes results.txt next to this file)
 import { newHistory, simulate, save, load, ancestors, sharedAncestors, relationship, describe, fullName, RACES, TEMP_RULES, RULES, CEILING } from './family-sim.mjs';
 import { createHash } from 'node:crypto';
+import { buildViewer } from './build-viewer.mjs';
+buildViewer();                                   // keep viewer.html's copy of the simulation up to date
 import { writeFileSync, readFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 

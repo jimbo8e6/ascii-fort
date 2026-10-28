@@ -11,8 +11,10 @@ Nothing in the game uses it.
   `results.txt`, plus a saved history in `out/` (not committed).
 - `viewer.html`: generate a history and browse it: search people, follow parents, spouses and children,
   see ancestry trees, family lines and notable ancestors, and pick two people to see how they're related
-  and through whom. Edit the placeholder lifespans, save and load histories. It's an ES module, so serve
-  the folder (`npx serve .` or `python3 -m http.server`) rather than opening the file directly.
+  and through whom. Edit the placeholder lifespans, save and load histories (LOAD takes a file saved with
+  SAVE JSON). It's one self-contained file: open it straight from disk, no server needed.
+- `build-viewer.mjs`: copies `family-sim.mjs` into `viewer.html` (`node build-viewer.mjs`; `test.mjs`
+  runs it too), so the viewer always uses the same simulation the tests check.
 
 ## How it works
 - **Year 0** is the end of the war. Each place starts with families of its races: couples (married before
