@@ -1,0 +1,88 @@
+1. Same seed and start year give the same people and ancestry
+  seed 1337, 150 years: run 1 2cf4849d57b337d9, run 2 2cf4849d57b337d9 (2631 people, 7333 events)
+  seed 1338, 150 years: d9003f327620a41f
+  PASS  two runs give byte-identical histories
+  PASS  a different seed gives a different history
+  PASS  the same ancestry for Thrak Harrow (178 ancestors) in both runs
+
+2. Shared ancestors between relatives, through both parents and across family lines
+  PASS  shared ancestors match an independent walk down the family tree for all 402 related pairs tried
+  Example: Maud Anvilborn (#2637, human of dwarf-elf-human-orc family, f, born 151, stablehand, Dust Wells)
+       and Kit Baker (#2639, human, m, born 151, carpenter, Harrowgate Keep)
+  Different surnames. They are half third cousins twice removed, with 11 shared ancestors in all; nearest:
+   • Jory Baker (#905, human, m, born 10, died 88, hunter, Thornwick)
+       from Maud: Maud Anvilborn → father Ned Anvilborn → mother Daisy Baker → father Edwin Baker → father Jory Baker
+       from Kit: Kit Baker → mother Peg Nash → mother Peg Fenwick → mother Ida Stone → mother Cora Baker → mother Bess Baker → father Jory Baker
+   • Fern Reeve (#223, human, f, born -26, died 38, trader, Thornwick)
+       from Maud: Maud Anvilborn → mother Joan Kell → father Ned Kell → mother Ida Dale → father Leof Dale → mother Edith Fletcher → mother Fern Reeve
+       from Kit: Kit Baker → father Merric Baker → father Ulric Baker → father Ivo Baker → mother Kate Fletcher → mother Fern Reeve
+   • Rowan Fletcher (#222, human, m, born -26, died 47, woodcutter, Thornwick)
+       from Maud: Maud Anvilborn → mother Joan Kell → father Ned Kell → mother Ida Dale → father Leof Dale → mother Edith Fletcher → father Rowan Fletcher
+       from Kit: Kit Baker → father Merric Baker → father Ulric Baker → father Ivo Baker → mother Kate Fletcher → father Rowan Fletcher
+   • Wynn Webb (#713, human, f, born -39, died 32, farmer, Harrowgate Keep)
+       from Maud: Maud Anvilborn → mother Joan Kell → father Ned Kell → father Hal Kell → mother Kate Fletcher → mother Daisy Nash → mother Wynn Webb
+       from Kit: Kit Baker → father Merric Baker → mother Wynn Fenwick → father Wat Fenwick → mother Cora Nash → father Piers Nash → mother Wynn Webb
+   • Tobin Nash (#712, human, m, born -38, died 13, farmer, Harrowgate Keep)
+       from Maud: Maud Anvilborn → mother Joan Kell → father Ned Kell → father Hal Kell → mother Kate Fletcher → mother Daisy Nash → father Tobin Nash
+       from Kit: Kit Baker → father Merric Baker → mother Wynn Fenwick → father Wat Fenwick → mother Cora Nash → father Piers Nash → father Tobin Nash
+   • Cora Marsh (#624, human, f, born -29, died 36, healer, Concord Landing)
+       from Maud: Maud Anvilborn → mother Joan Kell → father Ned Kell → father Hal Kell → mother Kate Fletcher → father Dunstan Fletcher → mother Cora Marsh
+       from Kit: Kit Baker → mother Peg Nash → mother Peg Fenwick → mother Ida Stone → father Rowan Stone → mother Rose Fletcher → mother Cora Marsh
+   • Fenn Fletcher (#623, human, m, born -30, died 50, farmer, Concord Landing)
+       from Maud: Maud Anvilborn → mother Joan Kell → father Ned Kell → father Hal Kell → mother Kate Fletcher → father Dunstan Fletcher → father Fenn Fletcher
+       from Kit: Kit Baker → mother Peg Nash → mother Peg Fenwick → mother Ida Stone → father Rowan Stone → mother Rose Fletcher → father Fenn Fletcher
+   • Tess Stone (#612, human, f, born -30, died 15, carpenter, Concord Landing)
+       from Maud: Maud Anvilborn → father Ned Anvilborn → mother Daisy Baker → father Edwin Baker → mother Hilda Brightwater → mother Lena Stonefist → mother Kate Stone → father Aldric Stone → mother Tess Stone
+       from Kit: Kit Baker → father Merric Baker → father Ulric Baker → mother Orla Stone → father Garret Stone → mother Tess Stone
+   • Merric Stone (#611, human, m, born -33, died 42, carpenter, Concord Landing)
+       from Maud: Maud Anvilborn → father Ned Anvilborn → mother Daisy Baker → father Edwin Baker → mother Hilda Brightwater → mother Lena Stonefist → mother Kate Stone → father Aldric Stone → father Merric Stone
+       from Kit: Kit Baker → father Merric Baker → father Ulric Baker → mother Orla Stone → father Garret Stone → father Merric Stone
+  Grimli Kell (#1369, dwarf of dwarf-human-orc family, m, born 48, smith, Concord Landing) has 14 ancestors from 7 family names, e.g. Anvilborn, Kell, Ironfoot, Redfang, Bloodtusk, Miller, Stonefist
+  PASS  ancestry crosses family lines through marriages, not just the surname
+  Same surname, not related: Rika Hammerfall (#9, dwarf, f, born -40, guard, Kharn Dolum) and Thrain Hammerfall (#79, dwarf, m, born -31, smith, Kharn Dolum)
+  PASS  two people with the same surname can have no shared ancestor
+  Mixed-race family: Ugra Redfang (#892, orc of human-orc family, f, born 9, died 60, trader, Dust Wells), mother Peg Stone (#114, human, f, born -8, died 22, miner, Dust Wells), father Ruk Redfang (#282, orc, m, born -5, died 53, smith, Dust Wells)  [⚠ TEMPORARY rule: child takes one parent's race at random]
+
+3. An early start and a later start from the same seed: the later one only adds history
+  PASS  all 2507 events up to year 40 are identical in the 300-year history
+  PASS  the 1288 people of year 40 have the same births, parents, marriages and deaths; 3223 more people come later
+  PASS  11424 later events, all after year 40
+  PASS  saving at year 40 and carrying on to 300 gives exactly the straight-through history
+
+4. An ordinary family line: generations of bakers, no famous ancestor
+  The Brook line, 6 generations (father to son), oldest first:
+   Piers Brook (#411, human, m, born -27, died 26, baker, Kelford)
+   Tobin Brook (#740, human, m, born 1, died 75, baker, Kelford)
+   Rowan Brook (#1058, human, m, born 22, died 70, baker, Kelford)
+   Hal Brook (#1597, human, m, born 68, died 141, baker, Kelford)
+   Wat Brook (#1856, human, m, born 91, died 168, baker, Kelford)
+   Kate Brook (#2109, human, f, born 110, died 182, baker, Thornwick)
+  PASS  none of the youngest's 54 ancestors, on any side, is a notable figure
+  For comparison, 273 of 880 living people do descend from one of the placeholder notables (5 founders).
+
+5. Births, marriages and deaths make sense under the placeholder rules
+  PASS  1 years (seed 1338): 755 people, 774 events, 0 problems
+  PASS  100 years (seed 1337): 1989 people, 5128 events, 0 problems
+  PASS  500 years (seed 1837): 6780 people, 22255 events, 0 problems
+  Checked: no one dies before birth or outlives their race; every child is born after both parents
+  and before either died, to a mother in her child-bearing years; marriages are of adults, while both
+  live, recorded on both sides, one at a time; no one is their own ancestor; events are in order and
+  none concerns someone before birth or after death.
+
+6. Save and reload
+  PASS  reloaded 1471 KB file is identical: 3247 people, 9548 events
+  PASS  ancestry of 40 living people is the same after reloading
+  PASS  relationships between them are the same after reloading
+
+Generation time (seed 1337; each length run 3 times, fastest shown)
+  years   time      people ever  alive at end  events    saved size  alive by race (human/elf/dwarf/orc), deepest generation
+      1    0.00 s          752           746      766      0.3 MB  397/102/105/142, 1
+     50    0.03 s         1396           920     2956      0.5 MB  489/117/161/153, 4
+    100    0.06 s         1989           839     5128      0.8 MB  375/146/171/147, 7
+    200    0.12 s         3247           880     9548      1.4 MB  407/159/180/134, 12
+    500    0.35 s         6888           874    22532      3.2 MB  381/164/184/145, 29
+   1000    0.68 s        12963           879    44226      6.3 MB  393/165/184/137, 56
+   2000    1.54 s        25068           884    87365     12.5 MB  421/160/174/129, 109
+  (Node v22.22.0, one thread. A browser should be similar; not measured yet.)
+
+All checks passed.

@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Family Sim Viewer</title>
+<style>
+  :root { --bg: #0e1016; --panel: #171a23; --line: #2a2f3d; --text: #d8d4c8; --dim: #8a8678; --accent: #e0a85a; --link: #8fc0e8; --star: #e8c860; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  header { padding: 14px 16px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
+  h1 { font-size: 16px; margin: 0; color: var(--accent); letter-spacing: .08em; }
+  label { color: var(--dim); }
+  input, button, select { font: inherit; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 4px 8px; }
+  input[type=number] { width: 84px; }
+  button { cursor: pointer; } button:hover { border-color: var(--accent); }
+  main { display: grid; grid-template-columns: minmax(0, 320px) minmax(0, 1fr); gap: 0; min-height: calc(100vh - 60px); }
+  aside { border-right: 1px solid var(--line); padding: 12px 16px; overflow: auto; max-height: calc(100vh - 60px); }
+  section { padding: 12px 20px; overflow: auto; max-height: calc(100vh - 60px); }
+  .stat { color: var(--dim); margin: 6px 0 12px; white-space: pre-wrap; }
+  .list div { padding: 2px 0; }
+  a { color: var(--link); cursor: pointer; text-decoration: none; } a:hover { text-decoration: underline; }
+  .star { color: var(--star); }
+  .dim { color: var(--dim); }
+  h2 { font-size: 15px; margin: 4px 0 8px; color: var(--accent); }
+  h3 { font-size: 13px; margin: 16px 0 6px; color: var(--dim); text-transform: uppercase; letter-spacing: .08em; }
+  ul.tree { list-style: none; margin: 0; padding-left: 18px; border-left: 1px dashed var(--line); }
+  ul.tree.root { padding-left: 0; border: 0; }
+  .temp { color: #e88a6a; }
+  table { border-collapse: collapse; } td, th { padding: 2px 10px 2px 0; text-align: left; } th { color: var(--dim); font-weight: normal; }
+  .rel { margin-top: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); }
+  @media (max-width: 760px) { main { grid-template-columns: 1fr; } aside { border-right: 0; border-bottom: 1px solid var(--line); max-height: 40vh; } section { max-height: none; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>FAMILY SIM</h1>
+  <label>seed <input id="seed" type="number" value="1337"></label>
+  <label>years since the war <input id="years" type="number" value="200" min="0"></label>
+  <button id="go">GENERATE</button>
+  <button id="saveBtn">SAVE JSON</button>
+  <label>load <input id="loadFile" type="file" accept=".json"></label>
+  <details><summary class="dim">placeholder lifespans</summary><table id="races"></table><p class="temp">⚠ temporary inheritance rules: see family-sim.mjs, TEMP_RULES</p></details>
+</header>
+<main>
+  <aside>
+    <div class="stat" id="stats">Press GENERATE.</div>
+    <input id="search" placeholder="search name or #id" style="width:100%">
+    <div class="list" id="results"></div>
+  </aside>
+  <section id="card"><p class="dim">Pick someone on the left. Click any name to follow it. Set A and B to see how two people are related.</p></section>
+</main>
+<script type="module">
+import { newHistory, simulate, save, load, ancestors, sharedAncestors, relationship, RACES } from './family-sim.mjs';
+const $ = id => document.getElementById(id);
+let H = null, pickA = null, pickB = null;
+
+// Editable placeholder lifespans
+const fields = [['adult', 'adult at'], ['old', 'old from'], ['max', 'max age']];
+$('races').innerHTML = '<tr><th></th>' + fields.map(f => `<th>${f[1]}</th>`).join('') + '<th>child-bearing</th></tr>' +
+  Object.keys(RACES).map(r => `<tr><td>${r}</td>${fields.map(([k]) => `<td><input type="number" data-r="${r}" data-k="${k}" value="${RACES[r][k]}"></td>`).join('')}<td><input type="number" data-r="${r}" data-k="f0" value="${RACES[r].fertile[0]}">–<input type="number" data-r="${r}" data-k="f1" value="${RACES[r].fertile[1]}"></td></tr>`).join('');
+$('races').addEventListener('change', e => { const { r, k } = e.target.dataset, v = +e.target.value; if (k === 'f0') RACES[r].fertile[0] = v; else if (k === 'f1') RACES[r].fertile[1] = v; else RACES[r][k] = v; });
+
+const name = id => { const p = H.people[id]; return `${p.name} ${p.surname}`; };
+const link = id => id === null ? '<span class="dim">unknown</span>' : `<a data-id="${id}">${name(id)}</a>${H.people[id].notable ? ' <span class="star">★</span>' : ''}`;
+const life = p => `${p.birth}–${p.death ?? ''}`;
+const brief = id => { const p = H.people[id]; return `${link(id)} <span class="dim">${p.race}${p.heritage.length > 1 ? '*' : ''} ${life(p)}${p.trade ? ' · ' + p.trade : ''}</span>`; };
+
+function stats() {
+  const by = {}; for (const id of H._living) { const r = H.people[id].race; by[r] = (by[r] || 0) + 1; }
+  return `${H.people.length} people ever, ${H._living.length} alive in year ${H.year}\n${H.events.length} events, ${H.lines.length} founding family lines\nalive: ${Object.entries(by).map(([r, n]) => `${r} ${n}`).join(', ')}`;
+}
+function generate() {
+  const t = performance.now();
+  H = simulate(newHistory(+$('seed').value), +$('years').value);
+  const ms = performance.now() - t;
+  $('stats').textContent = `Generated in ${(ms / 1000).toFixed(2)} s\n` + stats();
+  pickA = pickB = null; search();
+  show(H._living[0]);
+}
+function search() {
+  if (!H) return;
+  const q = $('search').value.trim().toLowerCase();
+  let ids = q.startsWith('#') ? [+q.slice(1)].filter(i => H.people[i]) : H.people.filter(p => !q || `${p.name} ${p.surname}`.toLowerCase().includes(q)).map(p => p.id);
+  if (!q) ids = [...H.people.filter(p => p.notable).map(p => p.id), ...H._living.slice(-40)];
+  $('results').innerHTML = ids.slice(0, 200).map(id => `<div>${brief(id)}</div>`).join('') + (ids.length > 200 ? `<div class="dim">…${ids.length - 200} more</div>` : '');
+}
+function tree(id, depth) {
+  const p = H.people[id];
+  if (depth === 0 || (p.mother === null && p.father === null)) return '';
+  return `<ul class="tree">${[['mother', p.mother], ['father', p.father]].map(([rel, x]) => `<li><span class="dim">${rel}</span> ${x === null ? '<span class="dim">unknown</span>' : brief(x) + tree(x, depth - 1)}</li>`).join('')}</ul>`;
+}
+function show(id) {
+  const p = H.people[id], kids = H._children[id], A = ancestors(H, id);
+  const notables = [...A.entries()].filter(([x]) => H.people[x].notable).sort((a, b) => a[1].depth - b[1].depth);
+  const line = []; for (let x = id; x !== null; x = H.people[x].father) line.unshift(x);
+  const lifeEvents = H.events.filter(e => e.p === id || e.a === id || e.b === id);
+  $('card').innerHTML = `
+    <h2>${name(id)} <span class="dim">#${id}</span>${p.notable ? ` <span class="star">★ ${p.notable}</span>` : ''}</h2>
+    <div>${p.race}${p.heritage.length > 1 ? ` <span class="temp">(family of ${p.heritage.join(', ')}; race chosen by a temporary rule)</span>` : ''}, ${p.sex === 'f' ? 'female' : 'male'}, born ${p.birth} in ${p.birthPlace}${p.death !== null ? `, died ${p.death} aged ${p.death - p.birth}` : `, alive, aged ${H.year - p.birth}`}</div>
+    <div>${p.trade || 'no trade yet'} · lives in ${p.place} · generation ${p.gen}</div>
+    <div style="margin-top:8px"><button id="setA">SET AS A</button> <button id="setB">SET AS B</button></div>
+    ${pickA !== null && pickB !== null ? relBox() : ''}
+    <h3>Parents</h3><div>mother ${p.mother === null ? '<span class="dim">unknown (founder)</span>' : brief(p.mother)}<br>father ${p.father === null ? '<span class="dim">unknown (founder)</span>' : brief(p.father)}</div>
+    <h3>Marriages</h3><div>${p.spouses.map(s => `${s.year}: ${brief(s.id)}`).join('<br>') || '<span class="dim">none</span>'}</div>
+    <h3>Children (${kids.length})</h3><div>${kids.map(brief).join('<br>') || '<span class="dim">none</span>'}</div>
+    <h3>Life</h3><div class="dim">${lifeEvents.map(e => `${e.y}: ${e.t === 'wed' ? 'married ' + name(e.a === id ? e.b : e.a) : e.t === 'move' ? `moved ${e.from} → ${e.to}` : e.t === 'trade' ? 'became a ' + e.trade : e.t === 'found' ? 'living at the end of the war' : e.t}`).join('<br>')}</div>
+    <h3>Ancestors: ${A.size} known, ${notables.length} notable</h3>
+    <div>${notables.slice(0, 10).map(([x, e]) => `<span class="star">★</span> ${link(x)}, ${H.people[x].notable} <span class="dim">(${e.depth} generations back, via ${e.routes[0].join(' → ')})</span>`).join('<br>') || '<span class="dim">no notable ancestors: an ordinary family</span>'}</div>
+    <h3>Family line (father's side, as surnames pass under the temporary rule)</h3><div>${line.map(brief).join('<br>')}</div>
+    <h3>Ancestry, 4 generations</h3><ul class="tree root"><li>${brief(id)}${tree(id, 4)}</li></ul>`;
+  $('setA').onclick = () => { pickA = id; show(id); };
+  $('setB').onclick = () => { pickB = id; show(id); };
+}
+function relBox() {
+  const r = relationship(H, pickA, pickB), { nearest, common } = sharedAncestors(H, pickA, pickB);
+  const route = (from, steps) => { let x = from, out = [link(x)]; for (const s of steps) { x = H.people[x][s]; out.push(`<span class="dim">${s}</span> ${link(x)}`); } return out.join(' → '); };
+  return `<div class="rel">A: ${brief(pickA)}<br>B: ${brief(pickB)}<br><b>${r ? r : 'not related'}</b>${common.length ? ` <span class="dim">(${common.length} shared ancestors)</span>` : ''}
+    ${nearest.slice(0, 6).map(n => `<div style="margin-top:6px">${brief(n.id)}<br><span class="dim">A:</span> ${route(pickA, n.fromA.routes[0])}<br><span class="dim">B:</span> ${route(pickB, n.fromB.routes[0])}</div>`).join('')}</div>`;
+}
+document.body.addEventListener('click', e => { const a = e.target.closest('a[data-id]'); if (a) show(+a.dataset.id); });
+$('go').onclick = generate;
+$('search').oninput = search;
+$('saveBtn').onclick = () => { if (!H) return; const b = new Blob([save(H)], { type: 'application/json' }), u = URL.createObjectURL(b), a = document.createElement('a'); a.href = u; a.download = `history-${H.seed}-${H.year}.json`; a.click(); URL.revokeObjectURL(u); };
+$('loadFile').onchange = async e => { const f = e.target.files[0]; if (!f) return; H = load(await f.text()); $('seed').value = H.seed; $('years').value = H.year; $('stats').textContent = 'Loaded from file\n' + stats(); search(); show(H._living[0]); };
+window.__sim = { run: (seed, years) => { const t = performance.now(); const X = simulate(newHistory(seed), years); return { ms: performance.now() - t, people: X.people.length, events: X.events.length }; } };
+</script>
+</body>
+</html>
