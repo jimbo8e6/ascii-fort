@@ -505,14 +505,16 @@ function mapFields(x, z) {
   return out;
 }
 
-// Rivers, traced over the painting in image pixels. w = half-width of the channel in blocks at the
-// start and the end. Tributaries end where they meet the Vael; the delta's side channels run dry in the sand.
+// Rivers, traced over the painting in image pixels, each from its source downstream. w = half-width
+// of the channel in blocks at the start and the end. Tributaries end where they meet the Vael (or
+// another tributary); the outflow starts at the lake (lake), and the delta's side channels split off
+// the Vael (split) and run dry in the sand.
 const RIVERS = [
   { name: 'the Vael', w: [2.5, 6.5], pts: [[737, 222], [730, 233], [713, 247], [703, 260], [703, 277], [720, 293], [730, 310], [733, 327],
     [723, 343], [703, 360], [690, 380], [685, 393], [692, 413], [703, 433], [713, 450], [717, 463], [700, 487], [690, 503], [700, 527],
     [720, 547], [730, 570], [723, 590], [703, 610], [698, 630], [707, 647], [700, 663], [680, 680], [657, 693], [645, 712], [628, 738],
     [608, 772], [588, 812], [568, 850], [552, 882], [540, 905], [530, 922]] },
-  { w: [3, 3.5], pts: [[505, 474], [530, 480], [553, 490], [580, 498], [613, 500], [640, 492], [663, 492], [690, 502]] },
+  { w: [3, 3.5], lake: true, pts: [[505, 474], [530, 480], [553, 490], [580, 498], [613, 500], [640, 492], [663, 492], [690, 502]] },
   { w: [1.5, 2.5], pts: [[620, 387], [650, 390], [682, 390]] },
   { w: [1.5, 3], pts: [[840, 293], [830, 310], [823, 327], [803, 343], [777, 367], [753, 383], [730, 397], [707, 407], [692, 413]] },
   { w: [1.5, 2.5], pts: [[820, 393], [787, 413], [760, 433], [743, 447], [717, 460]] },
@@ -521,36 +523,39 @@ const RIVERS = [
   { w: [1.5, 2.5], pts: [[600, 587], [633, 598], [667, 603], [683, 617], [698, 628]] },
   { w: [1.5, 2.5], pts: [[773, 630], [740, 633], [705, 645]] },
   { w: [1.5, 2.5], pts: [[600, 670], [630, 680], [652, 695]] },
-  { w: [1.5, 2.5], pts: [[685, 670], [730, 695]] },
+  { w: [1.5, 2.5], pts: [[730, 695], [685, 670]] },
   // The delta's side channels
-  { name: 'the Vael delta', w: [3, 1.2], pts: [[648, 708], [640, 725], [575, 745], [500, 752]] },
-  { name: 'the Vael delta', w: [3, 1.2], pts: [[650, 708], [652, 775], [655, 850], [660, 880]] },
-  { name: 'the Vael delta', w: [3, 1.2], pts: [[650, 708], [660, 750], [685, 800], [700, 840], [710, 865]] },
-  { name: 'the Vael delta', w: [3, 1.2], pts: [[652, 710], [670, 740], [710, 775], [740, 800], [755, 810]] },
-  { name: 'the Vael delta', w: [2.5, 1.2], pts: [[640, 725], [615, 795], [600, 840], [600, 870]] },
+  { name: 'the Vael delta', split: true, w: [3, 1.2], pts: [[648, 708], [640, 725], [575, 745], [500, 752]] },
+  { name: 'the Vael delta', split: true, w: [3, 1.2], pts: [[650, 708], [652, 775], [655, 850], [660, 880]] },
+  { name: 'the Vael delta', split: true, w: [3, 1.2], pts: [[650, 708], [660, 750], [685, 800], [700, 840], [710, 865]] },
+  { name: 'the Vael delta', split: true, w: [3, 1.2], pts: [[652, 710], [670, 740], [710, 775], [740, 800], [755, 810]] },
+  { name: 'the Vael delta', split: true, w: [2.5, 1.2], pts: [[640, 725], [615, 795], [600, 840], [600, 870]] },
 ];
 
 // Each river becomes a chain of short segments (a Catmull-Rom curve through its points), bucketed
-// in a coarse grid so a lookup only checks the few segments nearby.
+// in a coarse grid so a lookup only checks the few segments nearby. Each point along the course
+// gets a water level (worked out below, once the land and the lake are known).
 const RIVER_CELL = 128, RIVER_REACH = 160;                    // a valley reaches at most this far from the bank
 const riverGrid = new Map(), riverKey = (cx, cz) => (cx + 32768) * 65536 + (cz + 32768);
 for (const r of RIVERS) {
-  const P = r.pts.map(([px, py]) => mapToWorld(px, py)), segs = [];
+  const P = r.pts.map(([px, py]) => mapToWorld(px, py)), c = [];
   for (let i = 0; i < P.length - 1; i++) {
     const p0 = P[Math.max(0, i - 1)], p1 = P[i], p2 = P[i + 1], p3 = P[Math.min(P.length - 1, i + 2)];
     const steps = Math.max(1, Math.ceil(Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) / 12));
     for (let s = 0; s < steps; s++) {
       const t = s / steps, t2 = t * t, t3 = t2 * t;
       const cr = k => .5 * (2 * p1[k] + (p2[k] - p0[k]) * t + (2 * p0[k] - 5 * p1[k] + 4 * p2[k] - p3[k]) * t2 + (3 * p1[k] - p0[k] - 3 * p2[k] + p3[k]) * t3);
-      segs.push([cr(0), cr(1)]);
+      c.push([cr(0), cr(1)]);
     }
   }
-  segs.push(P[P.length - 1]);
+  c.push(P[P.length - 1]);
   let total = 0;
-  const lens = segs.map((p, i) => i ? (total += Math.hypot(p[0] - segs[i - 1][0], p[1] - segs[i - 1][1])) : 0);
-  for (let i = 0; i < segs.length - 1; i++) {
-    const [ax, az] = segs[i], [bx, bz] = segs[i + 1], f = (lens[i] + lens[i + 1]) / 2 / total;
-    const seg = { ax, az, bx, bz, w: r.w[0] + (r.w[1] - r.w[0]) * f, river: r };
+  const lens = c.map((p, i) => i ? (total += Math.hypot(p[0] - c[i - 1][0], p[1] - c[i - 1][1])) : 0);
+  r.course = c; r.along = lens; r.segs = [];
+  for (let i = 0; i < c.length - 1; i++) {
+    const [ax, az] = c[i], [bx, bz] = c[i + 1], f = (lens[i] + lens[i + 1]) / 2 / total;
+    const seg = { ax, az, bx, bz, w: r.w[0] + (r.w[1] - r.w[0]) * f, river: r, l0: SEA, l1: SEA };
+    r.segs.push(seg);
     const R = RIVER_REACH + seg.w;
     for (let cz = Math.floor((Math.min(az, bz) - R) / RIVER_CELL); cz <= Math.floor((Math.max(az, bz) + R) / RIVER_CELL); cz++)
       for (let cx = Math.floor((Math.min(ax, bx) - R) / RIVER_CELL); cx <= Math.floor((Math.max(ax, bx) + R) / RIVER_CELL); cx++) {
@@ -561,23 +566,99 @@ for (const r of RIVERS) {
   }
 }
 // How far a point is outside the nearest river's banks (negative = in the water), that river's
-// half-width there, the river itself and the nearest point on its course
-function riverAt(x, z) {
+// half-width and water level there, the river itself and the nearest point on its course.
+// skip leaves one river out.
+function riverAt(x, z, skip = null) {
   const list = riverGrid.get(riverKey(Math.floor(x / RIVER_CELL), Math.floor(z / RIVER_CELL)));
-  let best = Infinity, w = 0, river = null, px = 0, pz = 0;
+  let best = Infinity, w = 0, river = null, px = 0, pz = 0, level = SEA;
   if (list) for (const s of list) {
+    if (s.river === skip) continue;
     const dx = s.bx - s.ax, dz = s.bz - s.az, l2 = dx * dx + dz * dz;
     const t = l2 ? Math.max(0, Math.min(1, ((x - s.ax) * dx + (z - s.az) * dz) / l2)) : 0;
     const d = Math.hypot(x - s.ax - dx * t, z - s.az - dz * t) - s.w;
-    if (d < best) { best = d; w = s.w; river = s.river; px = s.ax + dx * t; pz = s.az + dz * t; }
+    if (d < best) { best = d; w = s.w; river = s.river; px = s.ax + dx * t; pz = s.az + dz * t; level = s.l0 + (s.l1 - s.l0) * t; }
   }
-  return { d: best, w, river, px, pz };
+  return { d: best, w, river, px, pz, level };
 }
 
 // Oath Ford, where the Hollow Road wades the Vael: the riverbed rises to a single block of water
 const FORDS = [[707, 441]].map(([px, py]) => mapToWorld(px, py));
 // Little tarns the painting shows too small to measure: the Vael's source and a pool on a tributary
 const TARNS = [[737, 223, 7], [655, 389, 5]].map(([px, py, r]) => [...mapToWorld(px, py), r * MAP_SCALE]);
+
+// Water levels (the height of the drawn surface). The sea's is just under sea level. The lake at
+// Mistwater sits a block below the lowest point of its shore. Each river runs downhill from its
+// source: a little below the land along it (smoothed), never rising, so it cuts through any ridge
+// in its way. A tributary meets the river it joins at the same level, a delta channel splits off at
+// the Vael's level, and the Vael meets the sea. A tarn takes the level of the river running through it.
+const SEA_LEVEL = SEA - .15;
+const LAKE_LEVEL = (() => {
+  const F = MAP_FIELDS;
+  let lo = Infinity;
+  for (let gz = 0; gz < F.h; gz++) for (let gx = 0; gx < F.w; gx++) {
+    const v = F.lake[gx + gz * F.w];
+    if (v < 30 || v > 80) continue;
+    const [x, z] = mapToWorld((gx + .5) * F.cellPx, (gz + .5) * F.cellPx);
+    const cl = climate(x, z);
+    if (cl.coast > 0) lo = Math.min(lo, landHeight(x, z, cl));
+  }
+  return Math.max(SEA_LEVEL, lo - 1);
+})();
+// The level on a river's course nearest a point
+function levelOn(r, x, z) {
+  let best = Infinity, lv = SEA_LEVEL;
+  r.segs.forEach((s, i) => {
+    const dx = s.bx - s.ax, dz = s.bz - s.az, l2 = dx * dx + dz * dz || 1, t = Math.max(0, Math.min(1, ((x - s.ax) * dx + (z - s.az) * dz) / l2));
+    const d = Math.hypot(x - s.ax - dx * t, z - s.az - dz * t);
+    if (d < best) { best = d; lv = r.levels[i] + (r.levels[i + 1] - r.levels[i]) * t; }
+  });
+  return lv;
+}
+const RIVER_FALL = .03;                     // the steepest a river's level may drop (per block)
+// First each river on its own: the smoothed land along it, kept from ever rising
+for (const r of RIVERS) {
+  const c = r.course, n = c.length;
+  const t = c.map(([x, z]) => { const cl = climate(x, z); return cl.coast < 0 ? SEA_LEVEL : landHeight(x, z, cl) - 2.5; });
+  const lv = t.map((_, i) => { let sum = 0, k = 0; for (let j = Math.max(0, i - 6); j <= Math.min(n - 1, i + 6); j++) { sum += t[j]; k++; } return sum / k; });
+  if (r.lake) lv[0] = LAKE_LEVEL;
+  for (let i = 1; i < n; i++) lv[i] = Math.min(lv[i], lv[i - 1]);
+  r.levels = lv;
+  r.segs.forEach((sg, i) => { sg.l0 = lv[i]; sg.l1 = lv[i + 1]; });
+}
+// Where a tributary comes in lower than the river it joins, that river drops to meet it from there on
+for (const r of RIVERS) {
+  if (r.split || r.name === 'the Vael') continue;
+  const [x, z] = r.course.at(-1), p = riverAt(x, z, r).river, e = r.levels.at(-1);
+  r.parent = p;
+  let j = 0, best = Infinity;
+  p.course.forEach(([px, pz], i) => { const d = Math.hypot(px - x, pz - z); if (d < best) { best = d; j = i; } });
+  for (let k = j; k < p.levels.length; k++) p.levels[k] = Math.min(p.levels[k], e);
+}
+// Then the joins: each river ends level with the river it joins (the Vael with the sea), a delta
+// channel starts level with the Vael, and no drop is steeper than RIVER_FALL
+const VAEL = RIVERS.find(r => r.name === 'the Vael');
+for (const r of RIVERS) {
+  const c = r.course, n = c.length, lv = r.levels;
+  if (r.split) { lv[0] = levelOn(VAEL, ...c[0]); for (let i = 1; i < n; i++) lv[i] = Math.min(lv[i], lv[i - 1]); }
+  const end = r.split ? null : r === VAEL ? SEA_LEVEL : levelOn(r.parent, ...c[n - 1]);
+  if (end !== null) { for (let i = 0; i < n; i++) lv[i] = Math.max(lv[i], end); lv[n - 1] = end; }
+  for (let i = n - 2; i >= (r.lake || r.split ? 1 : 0); i--) lv[i] = Math.min(lv[i], lv[i + 1] + RIVER_FALL * (r.along[i + 1] - r.along[i]));
+  for (let i = 0; i < n; i++) lv[i] = Math.max(lv[i], SEA_LEVEL);
+  r.segs.forEach((sg, i) => { sg.l0 = lv[i]; sg.l1 = lv[i + 1]; });
+}
+for (const t of TARNS) t.push(riverAt(t[0], t[1]).level);
+// The water's surface over a spot: a river within its banks, the lake, a tarn, or else the sea's
+// level (which only matters where the ground is below it)
+function waterLevel(x, z, cl = climate(x, z)) {
+  const rv = riverAt(x, z);
+  if (rv.river && rv.d < .3 && rv.level > SEA_LEVEL) return rv.level;
+  if (cl.lake < 40) return LAKE_LEVEL;
+  for (const [tx, tz, r, l] of TARNS) if (Math.hypot(x - tx, z - tz) < r + 12) return l;
+  return SEA_LEVEL;
+}
+
+// Is the ground at height h under water here?
+const isWet = (x, z, h, cl) => h < waterLevel(x, z, cl) - .05;
 
 // What kind of water lies at a spot below the waterline: the sea, the lake by Mistwater, a mountain
 // tarn, a river (by name, if it has one) or the marshes' pools. kind is a short label, phrase reads in a sentence.
@@ -605,8 +686,15 @@ function climate(x, z) {
 
 // Natural surface height (whole blocks), before places are flattened in
 const rawHeight = (x, z, cl) => Math.round(rawHeightF(x, z, cl));
-// The same, unrounded: the smooth land
+// The same, unrounded: the smooth land, with its lakes and rivers
 function rawHeightF(x, z, cl = climate(x, z)) {
+  let h = landHeight(x, z, cl);
+  if (cl.coast >= 0) h = carveWater(x, z, h, cl);
+  h += (G - h) * flatness(x, z);
+  return Math.max(2, Math.min(H - 12, h));
+}
+// The land's shape from the painted map, before the lakes and rivers are cut into it
+function landHeight(x, z, cl = climate(x, z)) {
   const c = cl.coast;
   let h;
   if (c < 0) {
@@ -636,30 +724,32 @@ function rawHeightF(x, z, cl = climate(x, z)) {
     }
     // The south-western marshes: low ground pocked with pools
     if (cl.marsh > 0) h += (SEA - .1 + noiseA(x * .04 + 11, z * .04) * 1.6 + noiseC(x * .12, z * .12) * .6 - h) * smoothstep(.1, .6, cl.marsh) * .92;
-    // Lakes: the Mistwater, and the small tarns
-    let lake = cl.lake;
-    for (const [tx, tz, r] of TARNS) lake = Math.min(lake, Math.hypot(x - tx, z - tz) - r);
-    if (lake < 40) {
-      const bed = SEA - 1 - Math.min(9, Math.max(0, -lake) * .05);
-      h += (bed - h) * (lake < 0 ? 1 : 1 - smoothstep(0, 40, lake));
-    }
-    // Rivers: a valley slopes down to a channel cut just below sea level, so it fills with water. The
-    // valley is wider in the mountains, so the Vael leaves the Greyspine down a broad gorge.
-    const wx = x + 6 * noiseW1(x * .03, z * .03), wz = z + 6 * noiseW2(x * .03, z * .03);
-    const rv = riverAt(wx, wz);
-    if (rv.d < RIVER_REACH) {
-      const reach = 18 + 7 * rv.w + 150 * mtn + 30 * mesa;
-      const valley = 1 - smoothstep(2, reach, rv.d), channel = 1 - smoothstep(-1.2, .3, rv.d);
-      h += (SEA + 1.4 - h) * valley * .85;
-      let bed = SEA - 1.6 - Math.min(2, rv.w * .3);
-      for (const [fx, fz] of FORDS) bed += (SEA - 1 - bed) * (1 - smoothstep(10, 22, Math.hypot(x - fx, z - fz)));
-      h += (bed - h) * channel;
-    }
-    // The banks slope gently down into a ford, so you can walk through and out the other side
-    for (const [fx, fz] of FORDS) { const d = Math.hypot(x - fx, z - fz); if (d < 40) h = Math.min(h, SEA - 1 + Math.max(0, d - 8) * .3); }
   }
-  h += (G - h) * flatness(x, z);
-  return Math.max(2, Math.min(H - 12, h));
+  return h;
+}
+// Lakes and rivers cut into the land: each lake's bed below its level, and each river a valley
+// sloping down to a channel below its water level
+function carveWater(x, z, h, cl) {
+  const mtn = smoothstep(.1, .7, cl.mountain), mesa = smoothstep(.3, .6, cl.mesa);
+  // The lake at Mistwater, and the small tarns
+  const lakes = [[cl.lake, LAKE_LEVEL], ...TARNS.map(([tx, tz, r, l]) => [Math.hypot(x - tx, z - tz) - r, l])];
+  for (const [d, level] of lakes) if (d < 40) {
+    const bed = level - 1 - Math.min(9, Math.max(0, -d) * .05);
+    h += (bed - h) * (d < 0 ? 1 : 1 - smoothstep(0, 40, d));
+  }
+  // Rivers: a valley sloping down to the water, wider in the mountains, and a channel below it
+  const rv = riverAt(x, z);
+  if (rv.d < RIVER_REACH) {
+    const reach = 18 + 7 * rv.w + 60 * mtn + 30 * mesa;
+    const valley = 1 - smoothstep(2, reach, rv.d), channel = 1 - smoothstep(-1.2, .3, rv.d);
+    h += (rv.level + 1.55 - h) * valley * .85;
+    let bed = rv.level - 1.45 - Math.min(2, rv.w * .3);
+    for (const [fx, fz] of FORDS) bed += (rv.level - .85 - bed) * (1 - smoothstep(10, 22, Math.hypot(x - fx, z - fz)));
+    h += (bed - h) * channel;
+    // The banks slope gently down into a ford, so you can walk through and out the other side
+    for (const [fx, fz] of FORDS) { const d = Math.hypot(x - fx, z - fz); if (d < 40) h = Math.min(h, rv.level - .85 + Math.max(0, d - 8) * .3); }
+  }
+  return h;
 }
 
 // The land's height with places flattened in, before roads are graded into it
@@ -676,7 +766,7 @@ function terrainHeightF(x, z, cl = climate(x, z)) {
   if (!r || r.deck) return h;
   const core = ROAD_HALF + .5, top = r.p - .06;
   if (r.d <= core) return top;
-  if (h <= SEA && top > h) return h;
+  if (top > h && isWet(x, z, h, cl)) return h;
   const shoulder = Math.min(14, 2 + Math.abs(h - top) * 1.2);
   return r.d >= core + shoulder ? h : top + (h - top) * smoothstep(0, shoulder, r.d - core);
 }
@@ -747,7 +837,7 @@ function generateChunk(cx, cz) {
     const x = ox + tx, z = oz + tz, r0 = hash2(x, z);
     if (r0 > .05) continue;                                                     // cheap early out
     const i = at(tx, tz), h = hm[i], biome = bm[i];
-    if (biome === OCEAN || h <= SEA + 1 || h > G + 24 || flatness(x, z) > .05 || structureAt(x, z) || roadAt(x, z)) continue;
+    if (biome === OCEAN || h <= SEA + 1 || h > G + 24 || flatness(x, z) > .05 || structureAt(x, z) || roadAt(x, z) || isWet(x, z, h - 1)) continue;
     if (Math.abs(h - hAt(tx + 1, tz)) + Math.abs(h - hAt(tx, tz + 1)) > 2) continue;
     const r = hash2(z, x);
     if (biome === FOREST || biome === SNOWY) {
@@ -1277,7 +1367,7 @@ function gradeLeg(leg) {
     const x = Math.floor(p[i * 2]), z = Math.floor(p[i * 2 + 1]), st = structureAt(x, z);
     g.push(naturalHeight(x, z));
     if (st?.inside) pin[i] = st.plan.base;
-    else if (g[i] <= SEA) pin[i] = g[i];                                  // a ford
+    else if (FORDS.some(([fx, fz]) => Math.hypot(fx - x, fz - z) < 14)) pin[i] = g[i];   // a ford
     if (i) len.push(Math.hypot(p[i * 2] - p[i * 2 - 2], p[i * 2 + 1] - p[i * 2 - 1]));
   }
   for (let i = 0; i < n - 1; i++) if (leg.deck[i]) pin[i] = pin[i + 1] = leg.deck[i];
@@ -1366,7 +1456,7 @@ function buildWoodBridge(b) {
 }
 
 function buildStoneBridge(b) {
-  const g = new THREE.Group(), L = b.len, W = BRIDGE_W, spring = SEA - 1.2, top = -.15;
+  const g = new THREE.Group(), L = b.len, W = BRIDGE_W, spring = b.water - 1.05, top = -.15;
   const arches = Math.max(1, Math.round(L / 13)), span = L / arches;
   const stone = bmat(b.mat === SANDSTONE ? 'sandstone' : 'brick'), cap = bmat('rock');
   // The arched body as one mesh: side walls follow the arch curve underneath, plus the soffit
@@ -1408,26 +1498,30 @@ function buildStoneBridge(b) {
 // Work out a road's bridges once, when the road is made: where it dips to the water, a level deck
 // at the higher bank's height runs straight from bank to bank (the road is straightened to match)
 function planBridges(road) {
-  const p = road.pts, n = p.length / 2 - 1, g = [], low = [], deck = new Array(n).fill(0);
+  const p = road.pts, n = p.length / 2 - 1, g = [], low = [], wet = [], deck = new Array(n).fill(0);
   for (let i = 0; i <= n; i++) g.push(rawHeight(Math.floor(p[i * 2]), Math.floor(p[i * 2 + 1])));
   for (let i = 0; i < n; i++) {                        // lowest ground along each segment
-    let m = Infinity;
+    let m = Infinity, w = -Infinity;                     // lowest ground, and the level of any water it's under
     const sx = p[i * 2], sz = p[i * 2 + 1], ex = p[i * 2 + 2] - sx, ez = p[i * 2 + 3] - sz, l = Math.hypot(ex, ez) || 1;
     for (let k = 0; k <= 6; k++) for (const o of [-ROAD_HALF - .5, 0, ROAD_HALF + .5]) {     // along the segment, and across the road's width
       const t = k / 6;
-      m = Math.min(m, rawHeight(Math.floor(sx + ex * t - ez / l * o), Math.floor(sz + ez * t + ex / l * o)));
+      const x = Math.floor(sx + ex * t - ez / l * o), z = Math.floor(sz + ez * t + ex / l * o), f = rawHeightF(x, z), wl = waterLevel(x, z);
+      m = Math.min(m, Math.round(f));
+      if (f < wl - .1) w = Math.max(w, wl);
     }
-    low.push(m);
+    low.push(m); wet.push(w);
   }
   road.bridges = [];
   for (let i = 0; i < n; i++) {
-    if (low[i] > SEA || deck[i]) continue;
+    if (wet[i] === -Infinity || deck[i]) continue;
     let a = i, b = i;
-    while (b + 1 < n && low[b + 1] <= SEA) b++;
+    while (b + 1 < n && wet[b + 1] > -Infinity) b++;
     // At a ford the road wades across instead
     const mx = (p[a * 2] + p[b * 2 + 2]) / 2, mz = (p[a * 2 + 1] + p[b * 2 + 3]) / 2;
     if (FORDS.some(([fx, fz]) => Math.hypot(fx - mx, fz - mz) < 40)) { i = b; continue; }
-    const level = Math.max(g[a], g[b + 1], SEA + 1);
+    let water = -Infinity;
+    for (let k = a; k <= b; k++) water = Math.max(water, wet[k]);
+    const level = Math.max(g[a], g[b + 1], Math.ceil(water + 1.15));
     // Carry on while the ground at the next point, or anywhere along the next segment, is lower than the deck
     while (a > 0 && (g[a] < level || low[a - 1] < level - 1)) a--;
     while (b + 1 < n && (g[b + 1] < level || low[b + 1] < level - 1)) b++;
@@ -1439,7 +1533,7 @@ function planBridges(road) {
     let bed = level;
     for (let k = a; k <= b; k++) bed = Math.min(bed, low[k]);
     const cl = climate(Math.floor(ax), Math.floor(az));
-    road.bridges.push({ ax, az, bx, bz, len, deck: level, bed, dirx: (bx - ax) / len, dirz: (bz - az) / len,
+    road.bridges.push({ ax, az, bx, bz, len, deck: level, bed, water, dirx: (bx - ax) / len, dirz: (bz - az) / len,
       type: road.road?.stoneAt.some(([sx, sz]) => Math.hypot(sx - (ax + bx) / 2, sz - (az + bz) / 2) < 60) || seed < (len <= 40 ? .55 : .12) ? 'stone' : 'wood',   // long stone viaducts are rare
       mat: cl.desert > .5 ? SANDSTONE : BRICK, mesh: null });
     i = b;
@@ -1523,6 +1617,7 @@ const activeBridges = new Set();
 let bridgeScan = 0;
 function updateBridges(dt) {
   if (!roadMeshes) buildRoads();
+  if (!riverMeshes) buildRivers();
   bridgeScan -= dt;
   if (bridgeScan > 0) return;
   bridgeScan = .7;
@@ -1971,13 +2066,19 @@ function meshGround(c) {
   mesh.matrixAutoUpdate = false;
   return mesh;
 }
-// Water: a flat surface a little below sea level over every block cell where the ground dips under it
+// Still water: a flat surface over every block cell where the ground dips under the sea's level,
+// the lake's or a tarn's. Rivers above the sea have flowing surfaces of their own (buildRivers).
 function meshWater(c) {
-  const ox = c.cx * CHUNK, oz = c.cz * CHUNK, pos = [], uv = [], sky = [], y = SEA - .15;
+  const ox = c.cx * CHUNK, oz = c.cz * CHUNK, pos = [], uv = [], sky = [];
+  const nearLake = mapFields(ox + 8, oz + 8).lake < 140, tarns = TARNS.filter(([tx, tz, r]) => Math.hypot(ox + 8 - tx, oz + 8 - tz) < r + 40);
   for (let z = 0; z < CHUNK; z++) for (let x = 0; x < CHUNK; x++) {
-    const k = x + z * 17;
-    if (Math.min(c.corners[k], c.corners[k + 1], c.corners[k + 17], c.corners[k + 18]) >= SEA - .15) continue;
-    const X = ox + x, Z = oz + z;
+    const k = x + z * 17, X = ox + x, Z = oz + z, low = Math.min(c.corners[k], c.corners[k + 1], c.corners[k + 17], c.corners[k + 18]);
+    let y = SEA_LEVEL;
+    if (nearLake && climate(X + .5, Z + .5).lake < 40) y = LAKE_LEVEL;
+    for (const [tx, tz, r, l] of tarns) if (Math.hypot(X + .5 - tx, Z + .5 - tz) < r + 12) y = l;
+    if (low >= y) continue;
+    const rv = riverAt(X + .5, Z + .5);
+    if (rv.river && rv.d < 1 && rv.level > y + .05) continue;          // a river's own surface covers it
     pos.push(X, y, Z, X + 1, y, Z + 1, X + 1, y, Z, X, y, Z, X, y, Z + 1, X + 1, y, Z + 1);
     uv.push(X, Z, X + 1, Z + 1, X + 1, Z, X, Z, X, Z + 1, X + 1, Z + 1);
     sky.push(1, 1, 1, 1, 1, 1);
@@ -1992,6 +2093,48 @@ function meshWater(c) {
   const mesh = new THREE.Mesh(geo, materials[MAT.water - 1]);
   mesh.matrixAutoUpdate = false;
   return mesh;
+}
+
+// Flowing water: each river's surface as a strip down its course at its water level, a little wider
+// than the channel so its edges tuck under the banks. The ripples drift downstream, and where the
+// river drops steeply the water runs white. Stretches level with the sea, lake or a tarn are left
+// to their flat water.
+const riverTex = TEX.water.clone();
+riverTex.needsUpdate = true;
+const riverMat = new THREE.MeshLambertMaterial({ map: riverTex, transparent: true, opacity: .8, depthWrite: false, emissive: 0x0a1a34, vertexColors: true });
+let riverMeshes = null;
+function buildRivers() {
+  riverMeshes = [];
+  for (const r of RIVERS) {
+    const pos = [], uv = [], col = [], c = r.course;
+    for (let i = 0; i < r.segs.length; i++) {
+      const sg = r.segs[i], len = Math.hypot(sg.bx - sg.ax, sg.bz - sg.az) || 1;
+      if (Math.max(sg.l0, sg.l1) < SEA_LEVEL + .05) continue;
+      const mx = (sg.ax + sg.bx) / 2, mz = (sg.az + sg.bz) / 2;
+      if (r.lake && climate(mx, mz).lake < 0 || TARNS.some(([tx, tz, rr]) => Math.hypot(mx - tx, mz - tz) < rr)) continue;
+      // Square to the course at each end (averaged with the neighbouring segment)
+      const across = k => {
+        const a = c[Math.max(0, k - 1)], b = c[Math.min(c.length - 1, k + 1)], dx = b[0] - a[0], dz = b[1] - a[1], l = Math.hypot(dx, dz) || 1;
+        return [-dz / l, dx / l];
+      };
+      const [ux, uz] = across(i), [vx, vz] = across(i + 1), w = sg.w + .9, y0 = sg.l0 + .02, y1 = sg.l1 + .02;
+      const L = [sg.ax + ux * w, y0, sg.az + uz * w], R = [sg.ax - ux * w, y0, sg.az - uz * w];
+      const L2 = [sg.bx + vx * w, y1, sg.bz + vz * w], R2 = [sg.bx - vx * w, y1, sg.bz - vz * w];
+      pos.push(...L, ...R2, ...R, ...L, ...L2, ...R2);
+      const v0 = r.along[i] / 4, v1 = r.along[i + 1] / 4, u = w / 2;
+      uv.push(0, v0, u, v1, u, v0, 0, v0, 0, v1, u, v1);
+      const white = 1 + Math.min(.9, Math.max(0, (sg.l0 - sg.l1) / len - .012) * 40);   // rapids
+      for (let k = 0; k < 6; k++) col.push(white, white, white);
+    }
+    if (!pos.length) continue;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    geo.computeVertexNormals();
+    const m = new THREE.Mesh(geo, riverMat);
+    scene.add(m); riverMeshes.push(m);
+  }
 }
 
 // Stream chunks around the player: build the nearest missing meshes within a time budget, drop far ones
@@ -3790,7 +3933,7 @@ const ANIMAL = {
   squirrel: { walk: 1.6, run: 5, flee: 5, fleeDist: 0, roam: 5 },
   bird: { walk: .9, run: 9, flee: 5.5, fleeDist: 22, roam: 4 },
 };
-const okGround = (x, z) => { const h = terrainHeight(Math.floor(x), Math.floor(z)); return h > SEA + .5 && !structureAt(Math.floor(x), Math.floor(z)) && !roadAt(Math.floor(x), Math.floor(z)) ? h : null; };
+const okGround = (x, z) => { const h = terrainHeight(Math.floor(x), Math.floor(z)); return h > SEA + .5 && !isWet(x, z, h - .5) && !structureAt(Math.floor(x), Math.floor(z)) && !roadAt(Math.floor(x), Math.floor(z)) ? h : null; };
 
 // Invisible boxes that arrows are tested against. A deer's heart sits low in the chest, behind the
 // foreleg; the small animals get a box a little bigger than they look, so an arrow can find them.
@@ -4639,9 +4782,10 @@ const LEGEND = [['Ocean', MAP_COLORS.shallow], ['Beach', MAP_COLORS.beach], ['De
 
 function mapColor(x, z, h, biome, cl) {
   if (inCourtyard(x, z) || isRoad(x, z)) return MAP_COLORS.path;
-  if (h <= SEA) {
-    if (cl.cold > .6) return MAP_COLORS.ice;
-    const d = Math.min(1, (SEA - h) / 10), a = MAP_COLORS.shallow, b = MAP_COLORS.deep;
+  const wl = waterLevel(x, z, cl);
+  if (h < wl) {
+    if (cl.cold > .6 && wl <= SEA) return MAP_COLORS.ice;
+    const d = Math.min(1, (wl - h) / 10), a = MAP_COLORS.shallow, b = MAP_COLORS.deep;
     return [a[0] + (b[0] - a[0]) * d, a[1] + (b[1] - a[1]) * d, a[2] + (b[2] - a[2]) * d];
   }
   if (biome === DESERT && cl.red > .5) return MAP_COLORS.red;
@@ -4837,7 +4981,7 @@ mapCanvas.addEventListener('pointercancel', () => { drag = null; });
 
 function updateMaps() {
   const fx = Math.floor(P.pos.x), fz = Math.floor(P.pos.z), cl = climate(fx, fz), h = terrainHeight(fx, fz);
-  const biome = h <= SEA ? waterAt(fx, fz, cl).kind : BIOME_NAMES[biomeOf(cl, h)];
+  const biome = isWet(fx, fz, h, cl) ? waterAt(fx, fz, cl).kind : BIOME_NAMES[biomeOf(cl, h)];
   const where = `${P.underground ? 'underground' : biome} · ${Math.floor(P.pos.x)}, ${Math.floor(P.pos.z)}`;
   if (mapOpen) {
     bigMap.step(10);
@@ -5052,7 +5196,7 @@ function describeArea(gd) {
 
   // Which way the land changes: the nearest different biomes in eight directions
   // (rivers are too narrow to find this way; they're named separately below)
-  const kindAt = (x, z) => { const cl = climate(x, z), h = terrainHeight(x, z); if (h > SEA) return BIOME_PHRASE[biomeOf(cl, h)]; const w = waterAt(x, z, cl); return w.kind === 'river' ? null : w.phrase; };
+  const kindAt = (x, z) => { const cl = climate(x, z), h = terrainHeight(x, z); if (!isWet(x, z, h, cl)) return BIOME_PHRASE[biomeOf(cl, h)]; const w = waterAt(x, z, cl); return w.kind === 'river' ? null : w.phrase; };
   const here = kindAt(Math.floor(x0), Math.floor(z0));
   const seen = new Map();
   for (let d = 60; d <= 600; d += 30) for (let k = 0; k < 8; k++) {
@@ -5157,7 +5301,7 @@ function update(dt, t) {
   const len = Math.hypot(mx, mz);
   if (len > 1) { mx /= len; mz /= len; }
   const fx = Math.floor(P.pos.x), fz = Math.floor(P.pos.z);
-  P.inWater = get(fx, Math.floor(P.pos.y + .5), fz) === WATER;
+  P.inWater = P.pos.y + .5 < waterLevel(P.pos.x, P.pos.z) && groundY(P.pos.x, P.pos.z) < waterLevel(P.pos.x, P.pos.z);
   const speed = ((keys.ShiftLeft || keys.ShiftRight) ? 9 : 5) * (P.inWater ? .55 : 1);
   fwd.set(-Math.sin(P.yaw), 0, -Math.cos(P.yaw));
   right.set(Math.cos(P.yaw), 0, -Math.sin(P.yaw));
@@ -5232,7 +5376,8 @@ function frame() {
   sky.position.copy(camera.position);
   // Water: drifting ripples, and murky blue fog with the camera under the surface
   TEX.water.offset.set(clock.elapsedTime * .05, Math.sin(clock.elapsedTime * .4) * .1);
-  const under = get(Math.floor(camera.position.x), Math.floor(camera.position.y + .15), Math.floor(camera.position.z)) === WATER;
+  riverTex.offset.set(Math.sin(clock.elapsedTime * .3) * .05, -clock.elapsedTime * .35);   // rivers run downstream
+  const wlCam = waterLevel(camera.position.x, camera.position.z), under = camera.position.y + .15 < wlCam && groundY(camera.position.x, camera.position.z) < wlCam;
   updateSky(started && !mapOpen && !dlg.open ? dt : 0);
   if (under) scene.fog.color.setHex(0x0d2e52).lerp(env.horizon, .25); else scene.fog.color.copy(env.horizon);
   scene.fog.density = under ? .09 : .018 - env.daylight * .002;
@@ -5340,7 +5485,7 @@ function simulate(seconds) {
   env.speedIdx = keep;
 }
 updatePurse();
-window.__fort = { solid, arrows, hunters, shootArrow, aimVelocity, velFrom, killAnimal, startle, animals, rosterFor, tradeRun, stateOf, runs, tradeCarts, isTradeDay, isMarketDay, player, villageMemory, gameHours, millBusy, simulate, villages, activityFor, cottages, colliderGrid, solids, activeBridges, roadInfo, boatSpot, carts, animated, shapeOf, collides, roadsAtNode, layRoads, plans, PLACES, P, surfaceY, mapToWorld, terrainHeight, climate, discovered, objectBlock, groundY, chunkAt, roadAt, roadBetween, rawHeight, dlg, describeArea, MAIN_TITLE, lantern, guards, talk, saveGame, store, env, planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
+window.__fort = { solid, arrows, hunters, shootArrow, aimVelocity, velFrom, killAnimal, startle, animals, rosterFor, tradeRun, stateOf, runs, tradeCarts, isTradeDay, isMarketDay, player, villageMemory, gameHours, millBusy, simulate, villages, activityFor, cottages, colliderGrid, solids, activeBridges, roadInfo, boatSpot, carts, animated, shapeOf, collides, roadsAtNode, layRoads, plans, PLACES, P, surfaceY, mapToWorld, terrainHeight, climate, discovered, objectBlock, groundY, chunkAt, RIVERS, LAKE_LEVEL, TARNS, waterLevel, riverAt, roadAt, roadBetween, rawHeight, dlg, describeArea, MAIN_TITLE, lantern, guards, talk, saveGame, store, env, planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
 frame();
 </script>
 </body>

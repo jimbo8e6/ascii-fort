@@ -53,9 +53,11 @@ The places come from the world gazetteer (draft 1) and are set by hand on the pa
 
 ## Rivers, roads and discovery
 
-- **Rivers:** the rivers are traced by hand from the painting. Each sits in a valley sloping down to a channel cut just below sea level, so it fills with water. Valleys are much wider in the mountains, so a river leaves the Greyspine down a broad gorge.
-  - **The Vael** rises in a mountain tarn in the Greyspine and runs south through Greyhold Pass and the Hollow, gathering tributaries. One of them flows out of the Mistwater. The Vael splits into a delta above the desert and reaches the sea on the south-west coast. It grows from about 5 blocks wide at its source to 13 at its mouth.
-  - **The delta's side channels** fan out south and east and run dry in the sand.
+- **Rivers:** the rivers are traced by hand from the painting, and they flow downhill. Each has its own water level along its length, falling from its source to its mouth. The water's surface slopes with it, the ripples drift downstream, and where the river drops steeply it runs white over rapids. Each river sits in a valley sloping down to a channel below its water level; the valleys are wider in the mountains.
+  - **The Vael** rises in a mountain tarn in the Greyspine and runs south through Greyhold Pass and the Hollow, gathering tributaries. One of them flows out of the lake at Mistwater. The Vael splits into a delta above the desert, then runs down rapids to the sea on the south-west coast. It grows from about 5 blocks wide at its source to 13 at its mouth.
+  - **The delta's side channels** split off at the Vael's level, fan out south and east and run dry in the sand.
+  - **Levels:** a river's level follows the land along it, a little below it and smoothed, but never rises going downstream, so it cuts through any ridge in its way. It never falls faster than 3 blocks in 100. A tributary meets the river it joins at the same level; where it comes in lower, the main river drops to meet it from there on. The Vael meets the sea at sea level.
+  - **The lake at Mistwater** sits a block below the lowest point of its shore, and its outflow starts at that level. The tarns take the level of the river running through them.
 - **Roads:** the gazetteer's five roads, laid by hand in `ROADS` through places and waypoints. They wind gently between their stops.
   - **Graded:** each road's height is the land along it smoothed out, then eased so it never climbs steeper than about 1 in 8 (12%). Where it meets a hill it runs through a cutting; across a dip it rides an embankment. The cuttings and embankments blend back into the land within a few blocks, and never fill in water.
   - **A surface of its own:** like the bridges, the road is a mesh rather than blocks. It's a smooth strip of packed earth along the graded height, laid just over the ground, with dirt edges. You walk on it and carts drive on it, so it climbs a hill in one even slope.
@@ -204,7 +206,7 @@ The land is a smooth, continuous surface rather than blocks: real slopes and cur
 
 - **How it looks:** the ground is coloured by what the land is (grass, darker forest floor, sand and beaches, snow, red sand in the Rustwaste, packed earth in fort courtyards). It turns to bare rock as the slope steepens: sandstone in the desert, red rock on the mesas. It's lit with smooth shading, so hills catch the light.
 - **Walking:** you walk on the surface itself, smoothly up and down. Slopes steeper than about 50° (the mesa cliffs, the sharpest ridges) are walls you can't climb. Going downhill you stay on the ground rather than stepping off into the air.
-- **Water:** the sea, lakes and rivers are a flat surface just under sea level wherever the ground dips below it, so shorelines follow the land's curves.
+- **Water:** the sea is a flat surface just under sea level wherever the ground dips below it, so shorelines follow the land's curves. The lake and tarns are flat at their own levels, and rivers slope downstream (see *Rivers*). You can swim in any of them.
 - **No caves:** a smooth surface has no underside, so the caves are gone for now. They may come back later as separate cave models behind entrances.
 
 ## Guards and conversations
@@ -284,7 +286,8 @@ The world map (M) shows biomes, water depth and hill shading, with the fort and 
    - **Colour and lighting:** each corner gets a colour from its biome, blended towards rock by the slope. A faint noise texture adds grain, and normals come from the neighbouring heights, so shading runs smoothly across chunk edges.
    - **Collision:** `groundY` reads the same triangles, plus a road's surface where you're on one. The player, animals, hunters, carts and arrows all use it.
    - **The blocks underneath:** the chunk still holds whole-block columns of ground below the surface, for anything that asks about blocks. They're neither drawn nor collided with.
-   - **Water:** a flat surface just under sea level over every block cell where a corner dips below it.
+   - **Still water:** a flat surface over every block cell where a corner dips below the sea's level, the lake's or a tarn's.
+   - **Rivers:** one strip of water per river, down its course at its water level and a little wider than the channel so the edges tuck under the banks. Its texture scrolls downstream, and segments that drop steeply are tinted white. Anything that asks about water (swimming, bridges, trees, animals, the map, guards) uses the water level at that spot, not sea level.
 6. **Greedy meshing (buildings and trees).** The blocks standing on the ground (forts, ruins, stones, trees) become one mesh per chunk, containing only the faces that touch air. Neighbouring faces of the same material are merged into larger rectangles, with one geometry group per material and world-space UVs so the textures still tile once per block.
    - **Ambient occlusion:** each face corner is darkened by how many of the three blocks around it are solid, from fully open down to tucked into a corner. The result is stored as vertex colours. This shades inside corners and the base of walls.
    - **Sky light:** each face also stores how much open sky the air in front of it can see, so the insides of towers and the keep are darker. A small patch to the Lambert shader scales only the sun/moon and sky light by that value, leaving point lights (torches, lanterns) untouched.
