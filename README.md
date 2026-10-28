@@ -44,7 +44,7 @@ The places come from the world gazetteer (draft 1) and are set by hand on the pa
 | The Hollow | **the Victory Fields** (a field of monuments and grave mounds), **the Sunken Throne** (ruins, beside the Vael), **Oathstone** (one great standing stone), **Concord Landing** (village) |
 | The Vael Marches | **Hollin's Ferry**, **Kelford** and **Millbrook** (villages; Kelford and Millbrook have windmills and bakeries), **Castle Aldermere** and **Harrowgate Keep** (forts), **Greycrest** and **Scarrow Hovel** (villages) |
 | The Wenmere | **Aelith Vara** (the elves' city; see below), **Mistwater** (by the lake) and **Thornwick** (villages), **the Silent Grove** (a stone ring round a fallen altar) |
-| The Rustwaste | **Gor Marakh** (fort), **Ashen Camp** and **Dust Wells** (villages), **the Broken Bastion** (ruins) |
+| The Rustwaste | **Gor Marakh** (the orcs' stronghold; see below), **Ashen Camp** and **Dust Wells** (villages), **the Broken Bastion** (ruins) |
 | The Saltline | **Port Cassel** (village, at the Vael's mouth), **Gullcove** (village), **Wreck Point** (a tower on the western cape) |
 
 - **Village kinds:** a village with a windmill farms. One without lives by woodcutting and hunting.
@@ -243,6 +243,19 @@ The elves' city is built in giant trees, with little stone, round a shrine grove
 - **The elves:** elf wardens, tall and slim in long grey-green robes and cloaks, with pale hair and longbows. They watch the shrine, the paths and the platforms, and have their own greetings (*Peace on your road, stranger.*). Talking to one shows *Elf warden*.
 - **Not a village (yet):** Aelith Vara keeps its village marker but has no households or trade for now.
 - **How it's built:** a place's `style: 'elf'` gives a layout (`buildElfCity`) with one `elfcity` model (`makeElfCity`). The parts kit gained turned box colliders (`solidRot`), so stair steps, walkways and rails can be solid at any angle.
+
+## Gor Marakh
+
+The orcs' stronghold-town on the eastern plateau, the largest clan seat.
+
+- **The palisade:** a ring of sharpened stakes round a packed-earth town, with three log watchtowers on it.
+- **The gate:** between two log towers with hide roofs and fighting platforms. A beam hung with skulls and a red war banner spans it, and the timber gates stand open.
+- **The great hall:** the clan's log longhouse on a stone footing, with a steep hide roof and horned gables. Inside are a long fire pit and the warchief's seat flanked by bone.
+- **Forge pits:** two of them on one side, each a coal bed burning in a ring of dark stones, with an anvil stone, bellows and a weapon rack.
+- **The war yard:** on the other side, a roped fighting ring, straw training dummies and weapon racks.
+- **The town:** round huts of hide on log walls, red banners on poles, and iron braziers.
+- **The orcs:** orc warriors, big and broad, green-skinned with tusks and war paint, in leather and fur, carrying cleavers. They hold the gate, the town and the hall door, with their own greetings (*You walk in Gor Marakh. Walk carefully.*). Talking to one shows *Orc warrior*.
+- **How it's built:** `style: 'orc'` gives a layout (`buildOrcHold`) with one `orchold` model (`makeOrcHold`). The palisade is solid in short turned runs (`solidRot`).
 
 ## Trees
 
