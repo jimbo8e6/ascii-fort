@@ -34,24 +34,47 @@ The world is hand-made: one continent, translated from a painted map (`map/paint
 - **The marshes:** low ground in the south-west, pocked with pools and channels.
 - **Fort Greyhold** stands at Greyhold Pass, on the west bank of the Vael where it leaves the Greyspine. That's where every world starts.
 
+## Places
+
+The places come from the world gazetteer (draft 1) and are set by hand on the painted map, in `PLACES` in `index.html`. They're the same in every world. For now each uses one of the existing building kinds; the gazetteer's special buildings and peoples will come later.
+
+| Region | Places |
+|---|---|
+| The Greyspine | **Kharn Dolum** (fort, by the Vael's source), **Anvil's Rest** (village), **the Cold Gallery** (ruins) |
+| The Hollow | **the Victory Fields** (a field of monuments and grave mounds), **the Sunken Throne** (ruins, beside the Vael), **Oathstone** (one great standing stone), **Concord Landing** (village) |
+| The Vael Marches | **Hollin's Ferry**, **Kelford** and **Millbrook** (villages; Kelford and Millbrook have windmills and bakeries), **Castle Aldermere** and **Harrowgate Keep** (forts), **Greycrest** and **Scarrow Hovel** (villages) |
+| The Wenmere | **Aelith Vara**, **Mistwater** (by the lake) and **Thornwick** (villages), **the Silent Grove** (a stone ring round a fallen altar) |
+| The Rustwaste | **Gor Marakh** (fort), **Ashen Camp** and **Dust Wells** (villages), **the Broken Bastion** (ruins) |
+| The Saltline | **Port Cassel** (village, at the Vael's mouth), **Gullcove** (village), **Wreck Point** (a tower on the western cape) |
+
+- **Village kinds:** a village with a windmill farms. One without lives by woodcutting and hunting.
+- **Placement:** places along the Vael stand back from the water, and the River Road towns stay on its west bank.
+- **No random places any more:** the seed no longer adds forts, towers, ruins or villages. Smaller places will be added by hand.
+
 ## Rivers, roads and discovery
 
 - **Rivers:** the rivers are traced by hand from the painting. Each sits in a valley sloping down to a channel cut just below sea level, so it fills with water. Valleys are much wider in the mountains, so a river leaves the Greyspine down a broad gorge.
   - **The Vael** rises in a mountain tarn in the Greyspine and runs south through Greyhold Pass and the Hollow, gathering tributaries. One of them flows out of the Mistwater. The Vael splits into a delta above the desert and reaches the sea on the south-west coast. It grows from about 5 blocks wide at its source to 13 at its mouth.
   - **The delta's side channels** fan out south and east and run dry in the sand.
-- **Roads:** every fort, watchtower and village links to its two nearest neighbours within two regions (about 450 blocks), and the starting fort joins in too. The roads wind gently between them.
+- **Roads:** the gazetteer's five roads, laid by hand in `ROADS` through places and waypoints. They wind gently between their stops.
+  - **The River Road** runs down the Vael's west bank: Kharn Dolum, Fort Greyhold, past the Victory Fields, the Sunken Throne and Oathstone, then Concord Landing, Hollin's Ferry, Kelford, Millbrook, Castle Aldermere and Port Cassel.
+  - **The Hollow Road** runs from the forest north of Thornwick, past Oathstone, over the Vael at Oath Ford and past the Broken Bastion to Gor Marakh.
+  - **The Western Road** runs from Thornwick to Kelford.
+  - **The Kelford Road** crosses the Vael on Kelford's stone bridge, then goes to Greycrest and Dust Wells.
+  - **The Harrowgate road** joins Harrowgate Keep to Scarrow Hovel.
+  - **Crossing the Vael:** there are only two crossings. At **Oath Ford** the riverbed rises to a single block of water and the banks slope down to it, so you wade across. **Kelford's bridge** is always stone. Hollin's Ferry has no crossing yet; its ferry will come later. Tributaries get ordinary bridges.
   - **Bridges:** where a road crosses a river it runs straight over a bridge model, with clean straight edges at any angle. The deck is level with the higher bank and carries on level until it meets ground, so you never step down more than one block. The seed picks one of two kinds:
     - **Wooden:** a slatted deck on stringer beams, posted handrails with top and middle rails, and braced piles down to the riverbed.
     - **Stone:** elliptical arches (two or three on longer spans, with piers between), parapet walls with capstones and a paved deck. Iron-posted lanterns stand on the parapets, a pair at each end and then alternating sides every ~9 blocks. They glow steadily, share the torch light pool, and light the bridge at night. Built in sandstone in the desert. Spans up to 40 blocks are stone about 55% of the time. Longer ones are usually wooden trestles, but about 1 in 8 is a long multi-arched stone viaduct.
-    - **Collision** follows the real deck, and the rails and parapets stop you walking off the side. Boats fit underneath, and no road is built across open sea.
+    - **Collision** follows the real deck, and the rails and parapets stop you walking off the side. Boats fit underneath.
   - **Leaving places:** roads leave fort gates and tower doors straight outwards before turning, so they never cut across a structure's walls.
-  - Trees never grow on them, and they show on the map when zoomed in.
+  - Trees never grow on them. They show on the map at every zoom level.
   - A guard will tell you when a road leads to a place they mention.
-- **Discovery:** forts, watchtowers and ruins are hidden on the map until you've been near one. Then a banner announces it (*DISCOVERED — Ravenvale Tower*) and its marker appears. The starting fort is announced when you first enter a world. Discoveries are saved with each world.
+- **Discovery:** places are hidden on the map until you've been near one. Then a banner announces it (*DISCOVERED — Kelford*) and its marker appears. The starting fort is announced when you first enter a world. Discoveries are saved with each world.
 
 ## Villages
 
-Villages sit on the road network. The roads meet at a village square with a stone well, and cottages line each road on alternating sides, turned to face the street at any angle.
+Villages on a road have the road meeting at a village square with a stone well (a village off the roads gets a street of its own), and cottages line each road on alternating sides, turned to face the street at any angle.
 
 - **Cottages** are built as 3D models, not blocks:
   - **Outside:** a stone plinth, plaster walls with dark timber framing, framed windows with coloured shutters, an open door with a lantern beside it, and a pitched tiled roof with overhangs and a chimney with a pot.
@@ -61,7 +84,7 @@ Villages sit on the road network. The roads meet at a village square with a ston
   - **Fireplace:** a stone fireplace with a hearth, logs and a mantel.
 - **Fires:** most houses light the fire in the evening, through the night and early morning, and some cook at midday. A lit fire flickers and lights the room. At night its windows glow, and smoke drifts up from the chimney. When the fire's out there's no flame and no smoke.
 - **Solid:** walls, the plinth, floors, stairs and furniture are all solid. You go in through the door and climb the stairs, and you can't walk through tables or into the fire.
-- **Windmills:** about half of all villages have one, a tapered tower mill with a stone base, a door facing the square with a lantern, small windows, a pointed cap and turning sails.
+- **Windmills:** farming villages have one, a tapered tower mill with a stone base, a door facing the square with a lantern, small windows, a pointed cap and turning sails.
 - **Villagers have homes, names and jobs:** each cottage houses a family of one to three, e.g. *Ulric Hollins*.
   - **Jobs:** in a village with a windmill, the miller lives in the house nearest it. The head of about half the other households farms, and the rest keep house.
 - **Daily routine** (times vary a little per person):
@@ -197,7 +220,7 @@ Guards patrol the walls and courtyards and stand at the gates. They're friendly.
      - which way the land changes (sea, desert, snowfields, pine woods, grassland);
      - any cave mouth nearby, and a warning at night.
   2. **Goodbye.**
-- **Place names:** every fort, watchtower and ruin has a name generated from the seed, e.g. *Fort Greyhold* (the starting fort in the default world), *Ravenvale Tower*, *the ruins of Old Redholm*.
+- **Place names:** every place has its name from the gazetteer, e.g. *Fort Greyhold*, *Kelford*, *the Sunken Throne*.
 - **Speech bubbles** are drawn over the 3D view rather than inside it, so they stay readable in ASCII mode.
 - **Solid:** guards block your way, but you can always step away from one.
 
@@ -211,6 +234,7 @@ The game saves to this browser's local storage, automatically every 10 seconds a
 - **On the world map:** a list of your other saved worlds to jump between, and RESTART THIS WORLD to forget your progress in the current one.
 - **Limits:** saves stay on this device and browser. A private window, or a browser that blocks storage, simply won't remember; the game still runs.
 - If a newer version of the world generator puts a block where you saved, you're placed on top of it.
+- Saves from before the hand-made world are ignored, so those worlds start again at Fort Greyhold.
 
 ## Day and night
 
@@ -224,7 +248,7 @@ A full day lasts an hour of real time, or 3 minutes at 20× fast-forward (K). Th
 
 ## World seed and map
 
-The shape of the land comes from the painted map and is the same in every world. The seed decides the small-scale detail (hills, trees, caves) and where the forts, watchtowers, ruins and villages stand. Add `?seed=` to the URL to get a different one, e.g. `index.html?seed=42`. The default is 1337. The world map also has a seed box and a NEW WORLD button.
+The shape of the land, the places and the roads come from the painted map and the gazetteer, and are the same in every world. The seed decides the small-scale detail (hills, trees, caves, wildlife) and the villagers. Add `?seed=` to the URL to get a different one, e.g. `index.html?seed=42`. The default is 1337. The world map also has a seed box and a NEW WORLD button.
 
 The world map (M) shows biomes, water depth and hill shading, with the fort and your position and facing marked. Drag to pan, scroll or use +/− to zoom, from 256 to about 10,000 blocks across (the whole continent). Structure markers thin out when zoomed far out, and an N marker shows north, and CENTRE ON ME to jump back to yourself. A minimap in the top-left corner (N) follows you and shows the biome and coordinates you're at. Both are drawn from the same climate and height functions as the 3D world, a few rows per frame so the game never stalls.
 
@@ -242,18 +266,18 @@ The world map (M) shows biomes, water depth and hill shading, with the fort and 
    - **Blocks:** beaches form where land meets the sea, and steep slopes are bare rock. Underwater is sand, and empty space below sea level fills with water.
    - **Swimming:** water is a separate see-through mesh with drifting ripples. Below the surface you swim slowly and hold jump to rise, and the fog turns murky blue.
 3. **Chunks.** The world is split into 16×16×64 chunks. Each chunk is generated purely from the seed, so any chunk can be built on demand, including neighbours that the mesher or collision needs. Chunks within 6 of the player are meshed nearest-first, within a few milliseconds per frame. Far chunks are unloaded.
-4. **Structures.** The world is divided into 192×192-block regions, and each holds at most one structure, picked from the seed. About half of all regions (more counting the sea) are left empty; of the rest, roughly 10% are forts, 12% watchtowers, 10% ruins and 20% villages:
-   - **Forts:** 40, 44 or 48 blocks across, with a gate on a random side, corner towers, wall walks, stairs, a keep in larger ones, torches and guards.
+4. **Structures.** The world is divided into 192×192-block regions. Each place is filed under the region holding its corner, at most one per region, but its footprint and the flattened ground around it may reach into neighbouring regions, which also list it.
+   - **Forts:** 44 or 48 blocks across, with corner towers, wall walks, stairs, a keep in larger ones, torches and guards. The gate faces the place's road.
    - **Watchtowers:** 7×7, with spiral stairs inside up to a lookout platform.
    - **Ruins:** broken, overgrown walls with a fallen corner tower and rubble.
+   - **Standing stones:** a single great stone, a ring, or a field of monuments with grave mounds.
    - Desert structures are built of sandstone.
-   - A structure's plan (type, size, rotation, ground level) is cheap to work out. Its blocks are only built when a nearby chunk needs them.
-   - The ground is flattened under each structure and blended into the surroundings, all within its own region, so chunks never need neighbouring regions.
-   - Sites in water or on very rugged ground are skipped, and forts on rough ground become watchtowers.
+   - A place's plan (type, size, rotation, ground level) is worked out at startup. Its blocks are only built when a nearby chunk needs them.
+   - The ground is flattened under each place, at the average height of the land there (never below the water), and blended into the surroundings.
    - **Modelled buildings:** cottages and windmills are built from a parts kit that merges each building into one mesh per material. They use general colliders (oriented boxes and cylinders), which walking, landing and step-ups all respect.
    - All forts share one builder, including the starting fort, which comes out identical to the original hand-built version.
    - Torches and guards appear with the chunk they stand in. A fixed pool of 10 point lights moves to the nearest torches, so more forts never add rendering cost.
-   - Structures appear on the world map: red squares are forts, triangles are watchtowers and crosses are ruins.
+   - Places appear on the world map: red squares are forts, houses are villages, triangles are watchtowers, crosses are ruins and rings are standing stones.
 5. **Caves.** Three 3D Perlin noise fields are sampled every 4 blocks and blended between grid points, which keeps it cheap. Tunnels form where two fields are both near zero, giving long winding tubes, and caverns form where the third is high, deeper down.
    - A slow 2D noise decides where tunnels may reach the surface.
    - Crystals are placed using a hash on cave floors and ceilings.

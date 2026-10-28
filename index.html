@@ -595,6 +595,8 @@ function riverAt(x, z) {
   return { d: best, w };
 }
 
+// Oath Ford, where the Hollow Road wades the Vael: the riverbed rises to a single block of water
+const FORDS = [[707, 441]].map(([px, py]) => mapToWorld(px, py));
 // Little tarns the painting shows too small to measure: the Vael's source and a pool on a tributary
 const TARNS = [[737, 223, 7], [655, 389, 5]].map(([px, py, r]) => [...mapToWorld(px, py), r * MAP_SCALE]);
 
@@ -656,8 +658,12 @@ function rawHeight(x, z, cl = climate(x, z)) {
       const reach = 18 + 7 * rv.w + 150 * mtn + 30 * mesa;
       const valley = 1 - smoothstep(2, reach, rv.d), channel = 1 - smoothstep(-1.2, .3, rv.d);
       h += (SEA + 1.4 - h) * valley * .85;
-      h += (SEA - 1.6 - Math.min(2, rv.w * .3) - h) * channel;
+      let bed = SEA - 1.6 - Math.min(2, rv.w * .3);
+      for (const [fx, fz] of FORDS) bed += (SEA - 1 - bed) * (1 - smoothstep(10, 22, Math.hypot(x - fx, z - fz)));
+      h += (bed - h) * channel;
     }
+    // The banks slope gently down into a ford, so you can walk through and out the other side
+    for (const [fx, fz] of FORDS) { const d = Math.hypot(x - fx, z - fz); if (d < 40) h = Math.min(h, SEA - 1 + Math.max(0, d - 8) * .3); }
   }
   h += (G - h) * flatness(x, z);
   return Math.max(2, Math.min(H - 12, Math.round(h)));
@@ -804,8 +810,8 @@ function generateChunk(cx, cz) {
     }
   }
 
-  // Structure edits: the main fort (global list) and any procedural structure in this chunk's region
-  const lists = [edits.get(chunkKey(cx, cz)), planFor(regionOf(ox), regionOf(oz))?.edits().get(chunkKey(cx, cz))];
+  // Structure edits: the main fort (global list) and any place that reaches into this chunk's region
+  const lists = [edits.get(chunkKey(cx, cz)), ...placesIn(regionOf(ox), regionOf(oz)).map(p => p.edits().get(chunkKey(cx, cz)))];
   for (const list of lists) if (list) for (let i = 0; i < list.length; i += 2) {
     const p = list[i];
     data[(p & 15) + ((p >> 4) & 15) * CHUNK + (p >> 8) * 256] = list[i + 1];
@@ -933,6 +939,29 @@ function buildRuins(set, { N, mat, rnd }) {
   return { torches: [], guards: [] };
 }
 
+// Standing stones: one great stone (Oathstone), a ring round a fallen altar (the Silent Grove), or
+// a field of monuments, one for each side's version of the battle (the Victory Fields)
+function buildStones(set, { N, stones }, rnd) {
+  const { fill, clear } = blockTools(set, ROCK), C = N / 2;
+  clear(-1, N + 1, 0, 9, -1, N + 1);
+  const stone = (x, z, h, w = 1) => fill(x, x + w, 0, h, z, z + w);
+  if (stones === 'single') stone(C - 1, C - 1, 6, 2);
+  else if (stones === 'ring') {
+    for (let k = 0; k < 9; k++) {
+      const a = k / 9 * Math.PI * 2, x = Math.round(C + Math.cos(a) * (C - 2)), z = Math.round(C + Math.sin(a) * (C - 2));
+      if (rnd() < .8) stone(x, z, 2 + (rnd() * 3 | 0)); else set(x, 0, z, ROCK);   // the odd one has fallen
+    }
+    fill(C - 1, C + 1, 0, 1, C - 1, C + 1, SLAB_OF.get(ROCK));
+  } else {
+    for (let k = 0; k < 4; k++) {
+      const a = (k + rnd() * .5) / 4 * Math.PI * 2, r = C * (.35 + rnd() * .4);
+      stone(Math.round(C + Math.cos(a) * r), Math.round(C + Math.sin(a) * r), 3 + (rnd() * 3 | 0), 2);
+    }
+    for (let i = 0; i < 10; i++) set(rnd() * N | 0, 0, rnd() * N | 0, SLAB_OF.get(DIRT));   // grave mounds
+  }
+  return { torches: [], guards: [] };
+}
+
 // Village: roads meet at a square with a well; cottages line the roads on alternating sides, doors
 // facing the road. Built unrotated, in coordinates local to the plan's origin. Cottages need a few
 // blocks of clearance from every road, so streets stay open.
@@ -1002,8 +1031,9 @@ function buildVillage(set, plan, rnd) {
     for (const k of cells) used[k] = 1;
     models.push({ kind: 'cottage', x: cx, y: 0, z: cz, angle: yaw, w, d, storeys, seed: rnd() * 1e9 | 0 });
   }
-  // A windmill (tower mill) at the edge of about half of all villages, door towards the square
-  if (rnd() < .68) for (let k = 0, a0 = rnd() * Math.PI * 2; k < 16; k++) {
+  // A windmill (tower mill) at the edge of a farming village, door towards the square
+  const millRoll = rnd() < .68;
+  if (plan.mill ?? millRoll) for (let k = 0, a0 = rnd() * Math.PI * 2; k < 16; k++) {
     const a = a0 + k * Math.PI / 8, cx = Math.round(C + Math.cos(a) * (C - 9)), cz = Math.round(C + Math.sin(a) * (C - 9));
     if (!free(cx - 3, cx + 3, cz - 3, cz + 3)) continue;
     for (let z = cz - 4; z <= cz + 4; z++) for (let x = cx - 4; x <= cx + 4; x++) used[x + z * N] = 1;
@@ -1028,15 +1058,8 @@ function buildVillage(set, plan, rnd) {
 }
 
 
-// The main fort at the start, on ground level G
-// Generated place names: 'Fort Ashwick', 'Greywatch Tower', 'the ruins of Old Merrow'
-const NAME_A = ['Ash', 'Grey', 'Hal', 'Iron', 'Raven', 'Stone', 'Wolf', 'Thorn', 'Elder', 'Black', 'Mar', 'Cold', 'Brack', 'Dun', 'Wyn', 'Holl', 'Ost', 'Kel', 'Red', 'Wester'];
-const NAME_B = ['wick', 'den', 'mere', 'hold', 'ford', 'gate', 'moor', 'watch', 'crest', 'barrow', 'fell', 'stead', 'rook', 'vale', 'ridge', 'holm'];
-function placeName(type, rnd) {
-  const base = NAME_A[rnd() * NAME_A.length | 0] + NAME_B[rnd() * NAME_B.length | 0];
-  return type === 1 ? `Fort ${base}` : type === 2 ? `${base} Tower` : type === 4 ? base : `the ruins of Old ${base}`;   // 1 fort, 2 tower, 3 ruins, 4 village
-}
-const MAIN_TITLE = placeName(1, mulberry32(SEED ^ 0x5eed));
+// The main fort at the start: Fort Greyhold, which holds Greyhold Pass
+const MAIN_TITLE = 'Fort Greyhold';
 
 const MAIN_FORT = buildFort((x, y, z, v) => setEdit(x + F0, y + G, z + F0, v), {
   N: F1 - F0, wall: WALL, mat: BRICK,
@@ -1044,53 +1067,86 @@ const MAIN_FORT = buildFort((x, y, z, v) => setEdit(x + F0, y + G, z + F0, v), {
 });
 
 // ---------------------------------------------------------------------------
-// Procedural structures: at most one per REGION x REGION area, placed so that its
-// footprint and the flattened ground around it stay inside the region
+// Places: the named places of the world gazetteer, set by hand on the painted map. Each is filed
+// under the 192-block region holding its origin corner (one per region), but its footprint and the
+// flattened ground around it may reach into neighbouring regions.
 // ---------------------------------------------------------------------------
 const REGION = 192;
-const FORT = 1, TOWER = 2, RUINS = 3, VILLAGE = 4;
-const STRUCT_NAMES = ['', 'fort', 'watchtower', 'ruins', 'village'];
+const FORT = 1, TOWER = 2, RUINS = 3, VILLAGE = 4, STONES = 5;
+const STRUCT_NAMES = ['', 'fort', 'watchtower', 'ruins', 'village', 'standing stones'];
 const regionOf = v => Math.floor(v / REGION);
-const plans = new Map();
+
+// at: image pixel on the painted map. gate: the side a fort's gate or a tower's door faces.
+// mill: a village with a windmill farms; one without lives by woodcutting and hunting.
+// Places on the Vael stand back from the water, River Road towns on the west bank.
+const PLACES = [
+  // The Greyspine
+  { name: 'Kharn Dolum', type: FORT, at: [724, 207], N: 48, gate: 'S' },
+  { name: "Anvil's Rest", type: VILLAGE, at: [655, 238], mill: false },
+  { name: 'the Cold Gallery', type: RUINS, at: [930, 250], N: 24 },
+  // The Hollow
+  { name: 'the Victory Fields', type: STONES, at: [706, 338], N: 22, stones: 'field' },
+  { name: 'the Sunken Throne', type: RUINS, at: [668, 415], N: 30 },
+  { name: 'Oathstone', type: STONES, at: [690, 444], N: 8, stones: 'single' },
+  { name: 'Concord Landing', type: VILLAGE, at: [672, 522], mill: false },
+  // The Vael Marches
+  { name: "Hollin's Ferry", type: VILLAGE, at: [706, 563], mill: false },
+  { name: 'Kelford', type: VILLAGE, at: [681, 641], mill: true },
+  { name: 'Millbrook', type: VILLAGE, at: [671, 670], mill: true },
+  { name: 'Castle Aldermere', type: FORT, at: [620, 708], N: 48, gate: 'E' },
+  { name: 'Greycrest', type: VILLAGE, at: [830, 610], mill: false },
+  { name: 'Harrowgate Keep', type: FORT, at: [547, 703], N: 44, gate: 'E' },
+  { name: 'Scarrow Hovel', type: VILLAGE, at: [600, 690], mill: false },
+  // The Wenmere
+  { name: 'Aelith Vara', type: VILLAGE, at: [230, 420], mill: false },
+  { name: 'the Silent Grove', type: STONES, at: [190, 335], N: 16, stones: 'ring' },
+  { name: 'Mistwater', type: VILLAGE, at: [522, 452], mill: false },
+  { name: 'Thornwick', type: VILLAGE, at: [570, 575], mill: false },
+  // The Rustwaste
+  { name: 'Gor Marakh', type: FORT, at: [1150, 400], N: 48, gate: 'W' },
+  { name: 'Ashen Camp', type: VILLAGE, at: [1100, 600], mill: false },
+  { name: 'Dust Wells', type: VILLAGE, at: [930, 760], mill: false },
+  { name: 'the Broken Bastion', type: RUINS, at: [900, 440], N: 28 },
+  // The Saltline
+  { name: 'Port Cassel', type: VILLAGE, at: [515, 900], mill: false },
+  { name: 'Gullcove', type: VILLAGE, at: [706, 969], mill: false },
+  { name: 'Wreck Point', type: TOWER, at: [184, 872], gate: 'E' },
+];
+const PLACE_N = { [FORT]: 44, [TOWER]: 7, [RUINS]: 20, [VILLAGE]: 56, [STONES]: 12 };
+const GATE_ROT = { [FORT]: { S: 0, W: 1, N: 2, E: 3 }, [TOWER]: { W: 0, N: 1, E: 2, S: 3 } };   // matches rotateLocal
+
+const plans = new Map(), placeRegions = new Map();   // home region -> plan; region -> plans reaching into it
+const placesIn = (rx, rz) => placeRegions.get(chunkKey(rx, rz)) || [];
+const planFor = (rx, rz) => plans.get(chunkKey(rx, rz)) || null;
+for (const p of PLACES) {
+  const type = p.type, N = p.N || PLACE_N[type], S = type === TOWER ? 7 : N, [cx, cz] = mapToWorld(...p.at);
+  const ox = Math.round(cx - S / 2), oz = Math.round(cz - S / 2);
+  const pad = type === FORT ? 4 : 2, blend = type === FORT || type === VILLAGE ? 14 : 9;
+  // Stand on the average of the natural ground over the footprint, clear of the water
+  let sum = 0, n = 0;
+  for (let z = -pad; z <= S + pad; z += 4) for (let x = -pad; x <= S + pad; x += 4) { sum += rawHeight(ox + x, oz + z); n++; }
+  const base = Math.max(SEA + 2, Math.min(H - 24, Math.round(sum / n))), rnd = mulberry32(hash2(ox, oz) * 1e9 | 0);
+  const plan = {
+    type, N, ox, oz, base, pad, blend, rot: GATE_ROT[type]?.[p.gate] ?? 0, seed: rnd() * 1e9 | 0,
+    mat: climate(cx, cz).desert > .5 ? SANDSTONE : BRICK, towerH: 11 + (rnd() * 4 | 0), mill: p.mill, stones: p.stones,
+    name: STRUCT_NAMES[type], title: p.name, cx: ox + S / 2, cz: oz + S / 2, rx: regionOf(ox), rz: regionOf(oz),
+    _edits: null, decor: null, edits() { return this._edits || buildPlan(this); },
+  };
+  p.plan = plan;
+  const key = chunkKey(plan.rx, plan.rz);
+  if (plans.has(key) || !plan.rx && !plan.rz) console.warn(`${p.name} shares a region with ${plans.get(key)?.title || MAIN_TITLE}`);
+  plans.set(key, plan);
+  const R = pad + blend;
+  for (let rz = regionOf(oz - R); rz <= regionOf(oz + S + R); rz++) for (let rx = regionOf(ox - R); rx <= regionOf(ox + S + R); rx++) {
+    const k = chunkKey(rx, rz);
+    if (!placeRegions.has(k)) placeRegions.set(k, []);
+    placeRegions.get(k).push(plan);
+  }
+}
 
 // Rotate a local point (in an S x S footprint) by rot quarter turns
 function rotateLocal(x, z, S, rot) {
   return rot === 0 ? [x, z] : rot === 1 ? [S - z, x] : rot === 2 ? [S - x, S - z] : [z, S - x];
-}
-
-function planFor(rx, rz) {
-  const key = chunkKey(rx, rz);
-  if (plans.has(key)) return plans.get(key);
-  let plan = null;
-  if (rx !== 0 || rz !== 0) {                            // region (0, 0) holds the main fort
-    const rnd = mulberry32(Math.imul(rx, 73856093) ^ Math.imul(rz, 19349663) ^ SEED);
-    const r = rnd();
-    // About half of all regions are left empty
-    let type = r < .1 ? FORT : r < .22 ? TOWER : r < .32 ? RUINS : r < .52 ? VILLAGE : 0;
-    if (type) {
-      const N = type === FORT ? 40 + 4 * (rnd() * 3 | 0) : type === TOWER ? 7 : type === VILLAGE ? 56 : 16 + (rnd() * 10 | 0);
-      const ox = rx * REGION + 50 + Math.floor(rnd() * (REGION - 100 - N));
-      const oz = rz * REGION + 50 + Math.floor(rnd() * (REGION - 100 - N));
-      const pad = type === FORT ? 4 : 2, blend = type === FORT || type === VILLAGE ? 14 : 9;
-      // Sample the natural ground over the footprint
-      let sum = 0, n = 0, lo = Infinity, hi = -Infinity;
-      for (let z = -pad; z <= N + pad; z += 4) for (let x = -pad; x <= N + pad; x += 4) {
-        const h = rawHeight(ox + x, oz + z); sum += h; n++; lo = Math.min(lo, h); hi = Math.max(hi, h);
-      }
-      const cl = climate(ox + N / 2, oz + N / 2), base = Math.round(sum / n);
-      if (lo <= SEA || base <= SEA + 1 || base > H - 24) type = 0;                 // no building in water
-      else if (type === FORT && hi - lo > 16) type = TOWER;                             // too rugged for a fort
-      else if (type === VILLAGE && hi - lo > 12) type = 0;
-      if (type) plan = {
-        type, N, ox, oz, base, pad, blend, rot: type === VILLAGE ? 0 : rnd() * 4 | 0, seed: rnd() * 1e9 | 0,
-        mat: cl.desert > .5 ? SANDSTONE : BRICK, towerH: 11 + (rnd() * 4 | 0),
-        name: STRUCT_NAMES[type], title: placeName(type, rnd), cx: ox + N / 2, cz: oz + N / 2,
-        _edits: null, decor: null, edits() { return this._edits || buildPlan(this); },
-      };
-    }
-  }
-  plans.set(key, plan);
-  return plan;
 }
 
 // Build a plan's blocks (once) into per-chunk edit lists, and its torches/guards in world space
@@ -1109,6 +1165,7 @@ function buildPlan(plan) {
       crates: [[6, 0, 6], [7, 0, 6], [6, 1, 6], [plan.N - 8, 0, plan.N / 2], [plan.N - 8, 0, plan.N / 2 + 1]] })
     : plan.type === TOWER ? buildTower(set, { mat: plan.mat, h: plan.towerH })
     : plan.type === VILLAGE ? buildVillage(set, plan, rnd)
+    : plan.type === STONES ? buildStones(set, plan, rnd)
     : buildRuins(set, { N: plan.N, mat: plan.mat, rnd });
   const toWorld = ([x, y, z]) => { const [lx, lz] = rotateLocal(x, z, S, plan.rot); return [plan.ox + lx, plan.base + y, plan.oz + lz]; };
   plan.decor = {
@@ -1130,113 +1187,113 @@ function buildPlan(plan) {
 }
 
 // ---------------------------------------------------------------------------
-// Roads: dirt tracks linking each fort or watchtower (and the starting fort) to the ones in the
-// four neighbouring regions. Each road is a gently winding polyline; it becomes a plank bridge
-// over rivers, and isn't built at all across a long stretch of water.
+// Roads: the gazetteer's roads, laid by hand. Each runs through a list of stops: places, where it
+// ends at a fort's gate, a tower's door or a village's square, and waypoints on the painted map
+// that keep it on the right bank. A road is split into legs between the places it links. Each leg
+// winds gently through its waypoints, bridges the rivers it crosses (it wades them at a ford) and
+// is filed under every region it passes through.
 // ---------------------------------------------------------------------------
 const ROAD_HALF = 1.6;                            // half width in blocks
-const roadCache = new Map(), regionRoads = new Map();
+const ROADS = [
+  // The whole length of the Vael on its west bank: grain goes north on it, metal south
+  { name: 'the River Road', stops: ['Kharn Dolum', [705, 228], [690, 255], [688, 282], [698, 308], 'Fort Greyhold', [698, 322], [688, 340],
+    [672, 362], [650, 375], [640, 395], [648, 425], [662, 440], [680, 447], [674, 475], 'Concord Landing', "Hollin's Ferry", 'Kelford', 'Millbrook',
+    'Castle Aldermere', [632, 722], [604, 744], [585, 778], [565, 815], [545, 852], [528, 880], 'Port Cassel'] },
+  // East-west across the Hollow: from the forest north of Thornwick, past Oathstone, over Oath Ford,
+  // past the Broken Bastion to Gor Marakh
+  { name: 'the Hollow Road', stops: [[545, 520], [600, 495], [645, 462], [680, 447], [708, 441], [760, 446], [830, 440], [885, 452], [960, 435],
+    [1060, 410], 'Gor Marakh'] },
+  { name: 'the Western Road', stops: ['Thornwick', 'Kelford'] },
+  // Over the Vael by Kelford's stone bridge, then east to Greycrest and Dust Wells
+  { name: 'the Kelford Road', stops: ['Kelford', [705, 633], [760, 620], 'Greycrest', [880, 690], 'Dust Wells'], stone: [[702, 634]] },
+  { name: 'the Harrowgate road', stops: ['Harrowgate Keep', 'Scarrow Hovel'] },
+];
+const MAIN_PLACE = { title: MAIN_TITLE, rx: 0, rz: 0 };
 
-// Where a region's roads meet: a fort's gate, a tower's door side, or the end of the starting road
-function roadNode(rx, rz) {
-  if (rx === 0 && rz === 0) return [CX + .5, ROAD_END - 8];
-  const plan = planFor(rx, rz);
-  if (!plan || plan.type === RUINS) return null;
+// Where a place's roads meet: a fort's gate, a tower's door side, a village's square, or the end of
+// the starting fort's road. Forts and towers add the way out, so roads leave them straight.
+function roadNode(plan) {
+  if (plan === MAIN_PLACE) return [CX + .5, ROAD_END - 8];
   if (plan.type === VILLAGE) return [plan.cx, plan.cz];
   if (plan.type === FORT) {
     const [lx, lz] = rotateLocal(plan.N / 2, plan.N + 4, plan.N, plan.rot);
-    return [plan.ox + lx, plan.oz + lz, ...DIR_VEC[rotateDir(2, plan.rot)]];      // + the way out of the gate
+    return [plan.ox + lx, plan.oz + lz, ...DIR_VEC[rotateDir(2, plan.rot)]];
   }
   const [lx, lz] = rotateLocal(-3, 2.5, 7, plan.rot);
-  return [plan.ox + lx, plan.oz + lz, ...DIR_VEC[rotateDir(1, plan.rot)]];        // + the way out of the door
+  return [plan.ox + lx, plan.oz + lz, ...DIR_VEC[rotateDir(1, plan.rot)]];
 }
 
-// The road between two neighbouring regions (or null): a polyline of points every ~6 blocks
-function roadBetween(ax, az, bx, bz) {
-  if (ax > bx || ax === bx && az > bz) [ax, az, bx, bz] = [bx, bz, ax, az];
-  const key = `${ax},${az},${bx},${bz}`;
-  if (roadCache.has(key)) return roadCache.get(key);
-  let road = null;
-  const a = roadNode(ax, az), b = roadNode(bx, bz);
-  if (a && b) {
-    // Leave a gate or door straight outwards before turning, so a road never cuts across its own walls
-    const out = (n, k) => n.length > 2 ? [n[0] + n[2] * k, n[1] + n[3] * k] : null;
-    const a1 = out(a, 12), b1 = out(b, 12), s0 = a1 || a, s1 = b1 || b;
-    const dx = s1[0] - s0[0], dz = s1[1] - s0[1], len = Math.hypot(dx, dz) || 1, n = Math.max(2, Math.ceil(len / 6));
-    const px = -dz / len, pz = dx / len, pts = [];
-    if (a1) pts.push(a[0], a[1]);
-    let wet = 0, maxWet = 0;
-    for (let i = 0; i <= n + (b1 ? 1 : 0); i++) {
-      let x, z;
-      if (i > n) [x, z] = b;
-      else {
-        const t = i / n, bend = Math.sin(t * Math.PI) * 14 * noiseC(ax * 3.1 + bx + t * 2.2, az * 1.7 + bz);   // winding, pinned at both ends
-        x = s0[0] + dx * t + px * bend; z = s0[1] + dz * t + pz * bend;
+// A leg's line: a curve through its control points, a point every ~6 blocks, with a gentle wobble
+// between control points (none at them, so it still meets gates and waypoints exactly)
+function traceLeg(ctrl, seed) {
+  const pts = [];
+  for (let i = 0; i < ctrl.length - 1; i++) {
+    const p0 = ctrl[Math.max(0, i - 1)], p1 = ctrl[i], p2 = ctrl[i + 1], p3 = ctrl[Math.min(ctrl.length - 1, i + 2)];
+    const len = Math.hypot(p2[0] - p1[0], p2[1] - p1[1]), steps = Math.max(1, Math.ceil(len / 6));
+    const amp = Math.min(8, len * .04), nx = -(p2[1] - p1[1]) / (len || 1), nz = (p2[0] - p1[0]) / (len || 1);
+    for (let s = 0; s < steps; s++) {
+      const t = s / steps, t2 = t * t, t3 = t2 * t;
+      const cr = k => .5 * (2 * p1[k] + (p2[k] - p0[k]) * t + (2 * p0[k] - 5 * p1[k] + 4 * p2[k] - p3[k]) * t2 + (3 * p1[k] - p0[k] - 3 * p2[k] + p3[k]) * t3);
+      const bend = Math.sin(t * Math.PI) * amp * noiseC(seed * 50 + i * 3.1 + t * 2.2, seed * 20);
+      pts.push(cr(0) + nx * bend, cr(1) + nz * bend);
+    }
+  }
+  pts.push(...ctrl.at(-1));
+  return pts;
+}
+
+// All the legs, laid out once on first use
+let roadLegs = null;
+const legsByRegion = new Map(), legsByNode = new Map();
+function layRoads() {
+  if (roadLegs) return roadLegs;
+  roadLegs = [];
+  const byName = new Map(PLACES.map(p => [p.name, p.plan]));
+  byName.set(MAIN_TITLE, MAIN_PLACE);
+  const ends = n => n.length > 2 ? [[n[0], n[1]], [n[0] + n[2] * 12, n[1] + n[3] * 12]] : [[n[0], n[1]]];
+  const finish = (leg, b) => {
+    leg.b = b;
+    leg.pts = traceLeg(leg.ctrl, leg.seed);
+    let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+    for (let i = 0; i < leg.pts.length; i += 2) { x0 = Math.min(x0, leg.pts[i]); x1 = Math.max(x1, leg.pts[i]); z0 = Math.min(z0, leg.pts[i + 1]); z1 = Math.max(z1, leg.pts[i + 1]); }
+    leg.box = [x0 - 3, z0 - 3, x1 + 3, z1 + 3];
+    planBridges(leg);
+    roadLegs.push(leg);
+    for (const p of [leg.a, leg.b]) if (p) {
+      const k = chunkKey(p.rx, p.rz);
+      if (!legsByNode.has(k)) legsByNode.set(k, []);
+      legsByNode.get(k).push(leg);
+    }
+    for (let rz = regionOf(leg.box[1]); rz <= regionOf(leg.box[3]); rz++) for (let rx = regionOf(leg.box[0]); rx <= regionOf(leg.box[2]); rx++) {
+      const k = chunkKey(rx, rz);
+      if (!legsByRegion.has(k)) legsByRegion.set(k, []);
+      legsByRegion.get(k).push(leg);
+    }
+  };
+  for (const road of ROADS) {
+    road.stoneAt = (road.stone || []).map(p => mapToWorld(...p));
+    let leg = null;
+    for (const stop of road.stops) {
+      if (typeof stop === 'string') {
+        const plan = byName.get(stop), n = roadNode(plan);
+        if (leg) { leg.ctrl.push(...ends(n).reverse()); finish(leg, plan); }
+        leg = { road, a: plan, ctrl: ends(n), seed: hash2(Math.floor(n[0]), Math.floor(n[1])) };
+      } else {
+        const w = mapToWorld(...stop);
+        if (!leg) leg = { road, a: null, ctrl: [], seed: hash2(Math.floor(w[0]), Math.floor(w[1])) };
+        leg.ctrl.push(w);
       }
-      pts.push(x, z);
-      wet = rawHeight(Math.floor(x), Math.floor(z)) <= SEA ? wet + 1 : 0;
-      maxWet = Math.max(maxWet, wet);
     }
-    if (maxWet <= 6) {                                   // bridges over rivers, never across the sea
-      let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
-      for (let i = 0; i < pts.length; i += 2) { x0 = Math.min(x0, pts[i]); x1 = Math.max(x1, pts[i]); z0 = Math.min(z0, pts[i + 1]); z1 = Math.max(z1, pts[i + 1]); }
-      road = { pts, box: [x0 - 3, z0 - 3, x1 + 3, z1 + 3], seed: hash2(ax * 7919 + bx * 31, az * 104729 + bz * 17) };
-      planBridges(road);
-    }
+    if (leg && leg.ctrl.length > 1 && typeof road.stops.at(-1) !== 'string') finish(leg, null);   // runs out into open country
   }
-  roadCache.set(key, road);
-  return road;
+  return roadLegs;
 }
-
-// Road graph: every fort, watchtower and village links to its two nearest neighbours within two
-// regions (and the starting fort's road end joins in too). Links are symmetric.
-const linkCache = new Map(), nodeRoadCache = new Map();
-function linksOf(rx, rz) {
-  const key = chunkKey(rx, rz);
-  if (linkCache.has(key)) return linkCache.get(key);
-  let out = [];
-  const a = roadNode(rx, rz);
-  if (a) {
-    const cand = [];
-    for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) {
-      if (!dx && !dz) continue;
-      const b = roadNode(rx + dx, rz + dz);
-      if (b) cand.push([rx + dx, rz + dz, Math.hypot(b[0] - a[0], b[1] - a[1])]);
-    }
-    out = cand.filter(c => c[2] < REGION * 2.4).sort((p, q) => p[2] - q[2]).slice(0, 2).map(c => [c[0], c[1]]);
-  }
-  linkCache.set(key, out);
-  return out;
-}
-// Roads that end at a node (both its own picks and nodes that picked it)
-function roadsAtNode(rx, rz) {
-  const key = chunkKey(rx, rz);
-  if (nodeRoadCache.has(key)) return nodeRoadCache.get(key);
-  const set = new Set(), out = [];
-  for (const [bx, bz] of linksOf(rx, rz)) set.add(bx + ',' + bz);
-  for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) {
-    if ((dx || dz) && linksOf(rx + dx, rz + dz).some(([x, z]) => x === rx && z === rz)) set.add((rx + dx) + ',' + (rz + dz));
-  }
-  for (const k of set) { const [bx, bz] = k.split(',').map(Number); const r = roadBetween(rx, rz, bx, bz); if (r) out.push(r); }
-  nodeRoadCache.set(key, out);
-  return out;
-}
-
-// All roads that touch a region: any such road has an end within three regions of it
-function roadsForRegion(rx, rz) {
-  const key = chunkKey(rx, rz);
-  if (!regionRoads.has(key)) {
-    const seen = new Set(), out = [], x0 = rx * REGION, z0 = rz * REGION, x1 = x0 + REGION, z1 = z0 + REGION;
-    for (let dz = -3; dz <= 3; dz++) for (let dx = -3; dx <= 3; dx++) for (const r of roadsAtNode(rx + dx, rz + dz)) {
-      if (seen.has(r)) continue;
-      seen.add(r);
-      const [bx0, bz0, bx1, bz1] = r.box;
-      if (bx1 >= x0 && bx0 <= x1 && bz1 >= z0 && bz0 <= z1) out.push(r);
-    }
-    regionRoads.set(key, out);
-  }
-  return regionRoads.get(key);
-}
+// Legs that end at the place filed under this region
+function roadsAtNode(rx, rz) { layRoads(); return legsByNode.get(chunkKey(rx, rz)) || []; }
+// The leg linking the places of two regions, or null
+const roadBetween = (ax, az, bx, bz) => roadsAtNode(ax, az).find(r => [r.a, r.b].some(p => p && p.rx === bx && p.rz === bz) && (ax !== bx || az !== bz)) || null;
+// All legs that pass through a region
+function roadsForRegion(rx, rz) { layRoads(); return legsByRegion.get(chunkKey(rx, rz)) || []; }
 
 // Is this column on a road?
 // Road at this column: null if none, otherwise the bridge deck height there (0 = ordinary road)
@@ -1336,7 +1393,7 @@ function buildStoneBridge(b) {
 
 // Work out a road's bridges once, when the road is made: where it dips to the water, a level deck
 // at the higher bank's height runs straight from bank to bank (the road is straightened to match)
-function planBridges(road, rx, rz) {
+function planBridges(road) {
   const p = road.pts, n = p.length / 2 - 1, g = [], low = [], deck = new Array(n).fill(0);
   for (let i = 0; i <= n; i++) g.push(rawHeight(Math.floor(p[i * 2]), Math.floor(p[i * 2 + 1])));
   for (let i = 0; i < n; i++) {                        // lowest ground along each segment
@@ -1353,6 +1410,9 @@ function planBridges(road, rx, rz) {
     if (low[i] > SEA || deck[i]) continue;
     let a = i, b = i;
     while (b + 1 < n && low[b + 1] <= SEA) b++;
+    // At a ford the road wades across instead
+    const mx = (p[a * 2] + p[b * 2 + 2]) / 2, mz = (p[a * 2 + 1] + p[b * 2 + 3]) / 2;
+    if (FORDS.some(([fx, fz]) => Math.hypot(fx - mx, fz - mz) < 40)) { i = b; continue; }
     const level = Math.max(g[a], g[b + 1], SEA + 1);
     // Carry on while the ground at the next point, or anywhere along the next segment, is lower than the deck
     while (a > 0 && (g[a] < level || low[a - 1] < level - 1)) a--;
@@ -1366,7 +1426,7 @@ function planBridges(road, rx, rz) {
     for (let k = a; k <= b; k++) bed = Math.min(bed, low[k]);
     const cl = climate(Math.floor(ax), Math.floor(az));
     road.bridges.push({ ax, az, bx, bz, len, deck: level, bed, dirx: (bx - ax) / len, dirz: (bz - az) / len,
-      type: seed < (len <= 40 ? .55 : .12) ? 'stone' : 'wood',   // long stone viaducts are rare
+      type: road.road?.stoneAt.some(([sx, sz]) => Math.hypot(sx - (ax + bx) / 2, sz - (az + bz) / 2) < 60) || seed < (len <= 40 ? .55 : .12) ? 'stone' : 'wood',   // long stone viaducts are rare
       mat: cl.desert > .5 ? SANDSTONE : BRICK, mesh: null });
     i = b;
   }
@@ -1440,13 +1500,15 @@ function bridgeHit(x, y, z) {
 
 // Flattening around a structure: weight 1 inside the padded footprint, fading over `blend` blocks
 function structureAt(x, z) {
-  const plan = planFor(regionOf(x), regionOf(z));
-  if (!plan) return null;
-  const S = plan.type === TOWER ? 7 : plan.N;
-  const dx = Math.max(plan.ox - plan.pad - x, 0, x - (plan.ox + S + plan.pad));
-  const dz = Math.max(plan.oz - plan.pad - z, 0, z - (plan.oz + S + plan.pad));
-  const d = Math.hypot(dx, dz);
-  return d >= plan.blend ? null : { plan, w: 1 - smoothstep(0, plan.blend, d), inside: d === 0 };
+  let best = null;
+  for (const plan of placesIn(regionOf(x), regionOf(z))) {
+    const S = plan.type === TOWER ? 7 : plan.N;
+    const dx = Math.max(plan.ox - plan.pad - x, 0, x - (plan.ox + S + plan.pad));
+    const dz = Math.max(plan.oz - plan.pad - z, 0, z - (plan.oz + S + plan.pad));
+    const d = Math.hypot(dx, dz);
+    if (d < plan.blend && (!best || d < best.d)) best = { plan, w: 1 - smoothstep(0, plan.blend, d), inside: d === 0, d };
+  }
+  return best;
 }
 
 // ---------------------------------------------------------------------------
@@ -3331,13 +3393,10 @@ function tradeRun(plan) {
   let run = null;
   const R = rosterFor(plan);
   if (R.kind === 'farming' && R.bakery) {
-    const rx = regionOf(plan.ox), rz = regionOf(plan.oz), mine = roadsAtNode(rx, rz);
     let best = Infinity;
-    for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) {
-      const q = planFor(rx + dx, rz + dz);
-      if (!q || q.type !== VILLAGE || q === plan) continue;
-      const road = roadBetween(rx, rz, rx + dx, rz + dz);
-      if (!road || !mine.includes(road) || rosterFor(q).kind !== 'forest') continue;
+    for (const road of roadsAtNode(plan.rx, plan.rz)) {
+      const q = road.a === plan ? road.b : road.a;
+      if (!q || q.type !== VILLAGE || rosterFor(q).kind !== 'forest') continue;
       const d = Math.hypot(q.cx - plan.cx, q.cz - plan.cz);
       if (d < best) { best = d; run = { from: plan, to: q, road }; }
     }
@@ -3354,12 +3413,7 @@ function tradeRun(plan) {
 }
 // Which farming village's cart comes to this forest village
 function suppliersOf(plan) {
-  const rx = regionOf(plan.ox), rz = regionOf(plan.oz), out = [];
-  for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) {
-    const q = planFor(rx + dx, rz + dz);
-    if (q && q.type === VILLAGE && q !== plan && tradeRun(q)?.to === plan) out.push(q);
-  }
-  return out;
+  return roadsAtNode(plan.rx, plan.rz).map(r => r.a === plan ? r.b : r.a).filter(q => q?.type === VILLAGE && tradeRun(q)?.to === plan);
 }
 const andList = a => a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' and ' + a.at(-1);
 const pay = (from, to, n) => { n = Math.max(0, Math.min(n, from.coins)); from.coins -= n; to.coins += n; return n; };
@@ -4118,23 +4172,23 @@ function huntLine(p) {
 
 // Torches and guards of procedural structures live with the chunk they stand in
 function addChunkDecor(c) {
-  const plan = planFor(regionOf(c.cx * CHUNK), regionOf(c.cz * CHUNK));
   c.decor = [];
   for (const a of spawnAnimals(c)) c.decor.push(['animal', a]);
   const boat = boatSpot(c);
   if (boat) c.decor.push(['model', makeBoat(boat.x, boat.z, boat.sea, hash2(c.cx, c.cz * 3))]);
-  if (!plan) return;
-  plan.edits();
   const mine = (x, z) => Math.floor(x / CHUNK) === c.cx && Math.floor(z / CHUNK) === c.cz;
-  for (const [x, y, z] of plan.decor.torches) if (mine(x, z)) c.decor.push(['torch', addTorch(x, y, z)]);
-  for (const m of plan.decor.models) if (mine(m.pos[0], m.pos[2])) c.decor.push(['building', m.kind === 'cottage' ? makeCottage(m) : m.kind === 'stall' ? makeStall(m) : makeTowerMill(m)]);
-  if (plan.decor.village && mine(plan.cx, plan.cz)) {               // the village's people live with its central chunk
-    plan.decor.village.cottages = plan.decor.models.filter(m => m.kind === 'cottage');
-    plan.decor.village.mill = plan.decor.models.find(m => m.kind === 'windmill');
-    plan.decor.village.stall = plan.decor.models.find(m => m.kind === 'stall');
-    c.decor.push(['village', startVillage(plan)]);
+  for (const plan of placesIn(regionOf(c.cx * CHUNK), regionOf(c.cz * CHUNK))) {
+    plan.edits();
+    for (const [x, y, z] of plan.decor.torches) if (mine(x, z)) c.decor.push(['torch', addTorch(x, y, z)]);
+    for (const m of plan.decor.models) if (mine(m.pos[0], m.pos[2])) c.decor.push(['building', m.kind === 'cottage' ? makeCottage(m) : m.kind === 'stall' ? makeStall(m) : makeTowerMill(m)]);
+    if (plan.decor.village && mine(plan.cx, plan.cz)) {               // the village's people live with its central chunk
+      plan.decor.village.cottages = plan.decor.models.filter(m => m.kind === 'cottage');
+      plan.decor.village.mill = plan.decor.models.find(m => m.kind === 'windmill');
+      plan.decor.village.stall = plan.decor.models.find(m => m.kind === 'stall');
+      c.decor.push(['village', startVillage(plan)]);
+    }
+    for (const gd of plan.decor.guards) if (mine(gd.a[0], gd.a[2])) c.decor.push(['guard', addGuard(gd.a, gd.b, gd.speed, gd.face ?? 0, { title: plan.title, plan, kind: gd.kind, color: gd.color })]);
   }
-  for (const gd of plan.decor.guards) if (mine(gd.a[0], gd.a[2])) c.decor.push(['guard', addGuard(gd.a, gd.b, gd.speed, gd.face ?? 0, { title: plan.title, plan, kind: gd.kind, color: gd.color })]);
 }
 function removeChunkDecor(c) {
   for (const [kind, obj] of c.decor || []) kind === 'animal' ? removeAnimal(obj) : kind === 'torch' ? removeTorch(obj) : kind === 'model' ? removeModel(obj) : kind === 'building' ? removeBuilding(obj) : kind === 'village' ? stopVillage(obj) : removeGuard(obj);
@@ -4513,14 +4567,27 @@ class MapView {
         ctx.fillStyle = 'rgb(120,200,230)'; ctx.strokeStyle = '#05060d';
         ctx.beginPath(); ctx.moveTo(sx - r, sz + r); ctx.lineTo(sx - r, sz - r * .1); ctx.lineTo(sx, sz - r); ctx.lineTo(sx + r, sz - r * .1); ctx.lineTo(sx + r, sz + r); ctx.closePath();
         ctx.fill(); ctx.stroke();
+      } else if (type === STONES) {                        // a ring of stones
+        const r = 2.4 * k;
+        ctx.strokeStyle = 'rgb(190,170,230)';
+        ctx.beginPath(); ctx.arc(sx, sz, r, 0, Math.PI * 2); ctx.stroke();
       } else {
         const r = 2.5 * k;
         ctx.strokeStyle = 'rgb(205,200,190)';
         ctx.beginPath(); ctx.moveTo(sx - r, sz - r); ctx.lineTo(sx + r, sz + r); ctx.moveTo(sx + r, sz - r); ctx.lineTo(sx - r, sz + r); ctx.stroke();
       }
     };
-    // Zoomed far out there are too many to show: only forts at 32 blocks per pixel, none beyond
-    if (scale <= 32) for (const plan of plans.values()) {
+    // Roads as lines once zoomed out past the scale where they're drawn into the map itself
+    if (scale > 4) {
+      ctx.strokeStyle = 'rgba(150,104,64,.9)'; ctx.lineWidth = Math.max(1.2, k * .6); ctx.lineJoin = 'round';
+      for (const leg of layRoads()) {
+        ctx.beginPath();
+        for (let i = 0; i < leg.pts.length; i += 2) { const [sx, sz] = toScreen(leg.pts[i], leg.pts[i + 1]); i ? ctx.lineTo(sx, sz) : ctx.moveTo(sx, sz); }
+        ctx.stroke();
+      }
+    }
+    // Zoomed far out only forts and villages are shown
+    if (scale <= 40) for (const plan of plans.values()) {
       if (plan && isDiscovered(plan) && (scale <= 16 || plan.type === FORT || plan.type === VILLAGE) && Math.abs(plan.cx - cx) < half && Math.abs(plan.cz - cz) < half) marker(plan.type, plan.cx, plan.cz, plan.N);
     }
     marker(FORT, CX, CX, 52);
@@ -4551,7 +4618,7 @@ let mapOpen = false, miniOn = true;
 document.getElementById('mapLegend').innerHTML = LEGEND.map(([n, c]) =>
   `<span><i style="background:rgb(${c})"></i>${n}</span>`).join('') +
   '<span><i style="border:2px solid rgb(220,80,55);background:rgba(190,70,50,.35)"></i>Fort</span>' +
-  '<span><b style="color:rgb(120,200,230)">&#8962;</b> Village</span><span><b style="color:rgb(240,170,70)">&#9650;</b> Watchtower</span><span><b style="color:rgb(205,200,190)">&#10005;</b> Ruins</span>';
+  '<span><b style="color:rgb(120,200,230)">&#8962;</b> Village</span><span><b style="color:rgb(240,170,70)">&#9650;</b> Watchtower</span><span><b style="color:rgb(205,200,190)">&#10005;</b> Ruins</span><span><b style="color:rgb(190,170,230)">&#9711;</b> Stones</span>';
 document.getElementById('mapSeed').value = SEED;
 
 function renderBigMap() { bigMap.request(mapState.cx, mapState.cz, MAP_SCALES[mapState.scaleIdx]); }
@@ -4811,10 +4878,10 @@ function describeArea(gd) {
   places.forEach(p => { p.d = Math.hypot(p.x - x0, p.z - z0); });
   places.sort((a, b) => a.d - b.d);
   const tail = { [VILLAGE]: ['Friendly folk live there.', 'You can get a warm meal there.'], [FORT]: ['They keep a garrison there.', 'Good walls on that one.'], [TOWER]: ['You can see for miles from the top.', 'Climb it if you want a look around.'],
-    [RUINS]: ['Nothing but old stones now.', "Nobody's lived there in an age."] };
+    [RUINS]: ['Nothing but old stones now.', "Nobody's lived there in an age."], [STONES]: ['Old stones, older than any of us.', 'People still leave offerings there.'] };
   for (const p of places.slice(0, 2).filter(p => p.d < 700)) {
     const link = gd.home && roadBetween(hx, hz, p.rx, p.rz), byRoad = link && roadsAtNode(hx, hz).includes(link);
-    out.push(`${cap(p.title)} ${p.type === RUINS ? 'lie' : 'lies'} ${paces(p.d)} to the ${compass(p.x - x0, p.z - z0)}. ${byRoad ? 'Follow the road and you can\'t miss it.' : pick(tail[p.type])}`);
+    out.push(`${cap(p.title)} ${/s$/.test(p.title) ? 'lie' : 'lies'} ${paces(p.d)} to the ${compass(p.x - x0, p.z - z0)}. ${byRoad ? 'Follow the road and you can\'t miss it.' : pick(tail[p.type])}`);
   }
 
   // Which way the land changes: the nearest different biomes in eight directions
@@ -5021,7 +5088,7 @@ function saveSettings() {
 function saveGame() {
   if (savingOff) return;
   for (const V of villages) villageMemory.set(placeKey(V.plan), snapshotVillage(V));
-  const save = { v: 1, seed: SEED, x: P.pos.x, y: P.pos.y, z: P.pos.z, yaw: P.yaw, pitch: P.pitch, discovered: [...discovered],
+  const save = { v: 2, seed: SEED, x: P.pos.x, y: P.pos.y, z: P.pos.z, yaw: P.yaw, pitch: P.pitch, discovered: [...discovered],
     villages: Object.fromEntries(villageMemory), player: { coins: player.coins, inv: { ...player.inv } },
     time: env.time, day: env.day, savedAt: Date.now() };
   if (!store.set('world:' + SEED, save)) return;
@@ -5049,14 +5116,14 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) saveG
 }
 
 // Restore this world's save, or start at the fort
-const saved = store.get('world:' + SEED);
+const saved = (s => s?.v === 2 ? s : null)(store.get('world:' + SEED));   // saves from before the hand-made world are dropped
 if (saved?.villages && typeof saved.villages === 'object') for (const [k, v] of Object.entries(saved.villages)) if (Array.isArray(v?.houses)) villageMemory.set(k, v);
 if (Array.isArray(saved?.discovered)) for (const k of saved.discovered) {
   discovered.add(k);
   const [rx, rz] = String(k).split(',').map(Number);
   if (Number.isFinite(rz)) planFor(rx, rz);              // so the marker can be drawn straight away
 }
-if (saved?.v === 1 && [saved.x, saved.y, saved.z].every(Number.isFinite)) {
+if ([saved?.x, saved?.y, saved?.z].every(Number.isFinite)) {
   P.pos.set(saved.x, saved.y, saved.z);
   P.yaw = P.homeYaw = saved.yaw || 0; P.pitch = saved.pitch || 0;
   if (!params.has('time')) { env.time = saved.time; env.day = saved.day || 1; }
@@ -5100,7 +5167,7 @@ function simulate(seconds) {
   env.speedIdx = keep;
 }
 updatePurse();
-window.__fort = { solid, arrows, hunters, shootArrow, aimVelocity, velFrom, killAnimal, startle, animals, rosterFor, tradeRun, stateOf, runs, tradeCarts, isTradeDay, isMarketDay, player, villageMemory, gameHours, millBusy, simulate, villages, activityFor, cottages, colliderGrid, solids, activeBridges, roadInfo, boatSpot, carts, animated, shapeOf, collides, roadsAtNode, linksOf, discovered, roadAt, roadBetween, rawHeight, dlg, describeArea, MAIN_TITLE, lantern, guards, talk, saveGame, store, env, planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
+window.__fort = { solid, arrows, hunters, shootArrow, aimVelocity, velFrom, killAnimal, startle, animals, rosterFor, tradeRun, stateOf, runs, tradeCarts, isTradeDay, isMarketDay, player, villageMemory, gameHours, millBusy, simulate, villages, activityFor, cottages, colliderGrid, solids, activeBridges, roadInfo, boatSpot, carts, animated, shapeOf, collides, roadsAtNode, layRoads, plans, PLACES, P, surfaceY, mapToWorld, terrainHeight, climate, discovered, roadAt, roadBetween, rawHeight, dlg, describeArea, MAIN_TITLE, lantern, guards, talk, saveGame, store, env, planFor, structureAt, REGION, toggleMap, mapState, P, camera, scene, chunks, get, surfaceY, SEED, climate, terrainHeight, biomeOf, BIOME_NAMES };
 frame();
 </script>
 </body>
