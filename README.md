@@ -43,7 +43,7 @@ The places come from the world gazetteer (draft 1) and are set by hand on the pa
 | The Greyspine | **Kharn Dolum** (the dwarves' hold, by the Vael's source; see below), **Anvil's Rest** (village), **the Cold Gallery** (ruins) |
 | The Hollow | **the Victory Fields** (a field of monuments and grave mounds), **the Sunken Throne** (ruins, beside the Vael), **Oathstone** (one great standing stone), **Concord Landing** (village) |
 | The Vael Marches | **Hollin's Ferry**, **Kelford** and **Millbrook** (villages; Kelford and Millbrook have windmills and bakeries), **Castle Aldermere** and **Harrowgate Keep** (forts), **Greycrest** and **Scarrow Hovel** (villages) |
-| The Wenmere | **Aelith Vara**, **Mistwater** (by the lake) and **Thornwick** (villages), **the Silent Grove** (a stone ring round a fallen altar) |
+| The Wenmere | **Aelith Vara** (the elves' city; see below), **Mistwater** (by the lake) and **Thornwick** (villages), **the Silent Grove** (a stone ring round a fallen altar) |
 | The Rustwaste | **Gor Marakh** (fort), **Ashen Camp** and **Dust Wells** (villages), **the Broken Bastion** (ruins) |
 | The Saltline | **Port Cassel** (village, at the Vael's mouth), **Gullcove** (village), **Wreck Point** (a tower on the western cape) |
 
@@ -230,6 +230,19 @@ The dwarf capital is a hold cut into a mountain, the first place with buildings 
 - **The great hall:** carved into the rock and lined in dark stone, with two rows of pillars running back to a dais and a high seat. Four forges stand along the walls, each with a stone hearth, a fire burning, a hood and chimney, and an anvil beside it.
 - **The dwarves:** dwarf guards, short and broad, bearded, in mail under an iron helm and carrying axes. They keep the outer gate, the forecourt and the hall, and they have their own greetings (*Well met, surface-dweller.*). Talking to one shows *Dwarf guard*.
 - **How it's built:** a place's `style` picks its layout. Kharn Dolum's (`buildHold`) gives a single `hold` model (`makeHold`). The rock is solid round the hall; the crags are lumpy icosahedra roughened by the hold's seed and kept above the hall's ceiling.
+
+## Aelith Vara
+
+The elves' city is built in giant trees, with little stone, round a shrine grove.
+
+- **The great trees:** five huge trees, up to 30 blocks tall, with flared roots, heavy boughs and great crowns of leaves.
+- **Tree-built halls:** a wooden platform rings each trunk 6 blocks up, with a rail round it. On the largest stands the great hall: a ring of pale columns under a golden dome, with a raised seat by the trunk. The others carry open pavilions under roofs of leaves.
+- **Getting about:** walkways with rails join the platforms, and stairs of floating half steps on slender stems wind up round three of the trunks. You can climb them and walk the walkways.
+- **The shrine grove:** a pool in a pale stone rim under a carved wooden arch, with a pale tree beside it and a ring of lantern posts.
+- **Lights:** moon-pale lanterns glow on the platforms and round the shrine.
+- **The elves:** elf wardens, tall and slim in long grey-green robes and cloaks, with pale hair and longbows. They watch the shrine, the paths and the platforms, and have their own greetings (*Peace on your road, stranger.*). Talking to one shows *Elf warden*.
+- **Not a village (yet):** Aelith Vara keeps its village marker but has no households or trade for now.
+- **How it's built:** a place's `style: 'elf'` gives a layout (`buildElfCity`) with one `elfcity` model (`makeElfCity`). The parts kit gained turned box colliders (`solidRot`), so stair steps, walkways and rails can be solid at any angle.
 
 ## Trees
 

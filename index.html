@@ -1039,7 +1039,7 @@ const PLACES = [
   { name: 'Harrowgate Keep', type: FORT, at: [547, 703], N: 44, gate: 'E' },
   { name: 'Scarrow Hovel', type: VILLAGE, at: [600, 690], mill: false },
   // The Wenmere
-  { name: 'Aelith Vara', type: VILLAGE, at: [230, 420], mill: false },
+  { name: 'Aelith Vara', type: VILLAGE, at: [230, 420], N: 72, style: 'elf' },
   { name: 'the Silent Grove', type: STONES, at: [190, 335], N: 16, stones: 'ring' },
   { name: 'Mistwater', type: VILLAGE, at: [522, 452], mill: false },
   { name: 'Thornwick', type: VILLAGE, at: [570, 575], mill: false },
@@ -1106,6 +1106,7 @@ function buildPlan(plan) {
     : plan.type === FORT ? buildFort({ N: plan.N, wall: 6 + (rnd() * 2 | 0), mat: plan.mat, keep: plan.N >= 44,
       crates: [[6, 0, 6], [7, 0, 6], [6, 1, 6], [plan.N - 8, 0, plan.N / 2], [plan.N - 8, 0, plan.N / 2 + 1]] })
     : plan.type === TOWER ? buildTower({ mat: plan.mat, h: plan.towerH })
+    : plan.style === 'elf' ? buildElfCity(plan)
     : plan.type === VILLAGE ? buildVillage(set, plan, rnd)
     : plan.type === STONES ? buildStones(plan, rnd)
     : buildRuins(plan, rnd);
@@ -2245,6 +2246,15 @@ function makeGuard(kind = 'guard', color = 0x3c6e8a, job = null) {
       g.add(box(.1, .1, .08, (color & 0xfefefe) >> 1 | 0x404040, 0, 1.7, -.2));
     }
     sack = box(.42, .5, .3, 0xc8a860, 0, 1.25, -.3); sack.visible = false; g.add(sack);   // a sack carried on the back
+  } else if (kind === 'elf') {
+    // An elf warden: tall and slim, in a long grey-green robe and cloak, pale hair, with a bow
+    g.add(box(.44, .72, .28, 0x5a7a62, 0, 1.15, 0));                                 // robe
+    g.add(box(.46, .55, .3, 0x4a6a52, 0, .62, 0));                                   // the robe's long skirt
+    g.add(box(.48, .95, .06, 0x3e5a46, 0, 1.0, -.17));                               // cloak
+    g.add(box(.32, .3, .32, 0xe8e0c0, 0, 1.73, -.03)); g.add(box(.3, .35, .08, 0xe8e0c0, 0, 1.45, -.15));   // hair
+    g.add(box(.48, .03, .2, 0xc8a85a, 0, 1.5, 0));                                    // silver-gilt clasp
+    g.add(box(.04, 1.2, .04, 0xd8ccae, -.32, 1.2, .12));                              // a pale longbow
+    g.scale.set(.92, 1.12, .92);
   } else if (kind === 'dwarf') {
     // A dwarf: short and broad, bearded, in mail under an iron helm, with an axe
     g.add(box(.62, .72, .4, 0x5a5e68, 0, 1.15, 0));                                  // mail
@@ -2494,6 +2504,8 @@ class Kit {
     this.box(key, x1 - x0, y1 - y0, z1 - z0, (x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
     if (solid) this.solid(x0, y0, z0, x1, y1, z1);
   }
+  // A box collider turned by a (as a box part's ry), centred on (cx, cz) with half sizes hx, hz
+  solidRot(cx, cz, hx, hz, y0, y1, a) { this.cols.push({ cx, cz, hx, hz, y0, y1, a }); }
   solid(x0, y0, z0, x1, y1, z1) { this.cols.push({ cx: (x0 + x1) / 2, cz: (z0 + z1) / 2, hx: Math.abs(x1 - x0) / 2, hz: Math.abs(z1 - z0) / 2, y0, y1 }); }
   cyl(key, r0, r1, h, x, y, z, seg = 10, solid = false) {
     const g = scaleUV(new THREE.CylinderGeometry(r0, r1, h, seg), Math.PI * (r0 + r1), h); g.translate(x, y + h / 2, z); this.add(key, g);
@@ -2505,7 +2517,8 @@ class Kit {
     for (const [key, geos] of this.parts) { const m = new THREE.Mesh(mergeGeos(geos), buildingMat(key)); group.add(m); meshes[key] = m; }
     group.position.set(ox, oy, oz); group.rotation.y = yaw;
     const c = Math.cos(yaw), s = Math.sin(yaw);
-    const colliders = this.cols.map(k => ({ ...k, x: ox + k.cx * c + k.cz * s, z: oz - k.cx * s + k.cz * c, y0: oy + k.y0, y1: oy + k.y1, c, s }));
+    const colliders = this.cols.map(k => ({ ...k, x: ox + k.cx * c + k.cz * s, z: oz - k.cx * s + k.cz * c, y0: oy + k.y0, y1: oy + k.y1,
+      c: k.a ? Math.cos(yaw + k.a) : c, s: k.a ? Math.sin(yaw + k.a) : s }));
     return { group, meshes, colliders, toWorld: (lx, ly, lz) => [ox + lx * c + lz * s, oy + ly, oz - lx * s + lz * c] };
   }
 }
@@ -3110,8 +3123,138 @@ function makeHold(m) {
   return out;
 }
 
+// Aelith Vara, the elves' city: halls built in giant trees round a shrine grove, with little stone.
+// Each great tree has a platform ringing its trunk with an open hall on it (the great hall, on the
+// biggest tree, is a ring of columns under a golden dome); walkways join the platforms, and stairs
+// wind up round three of the trunks. In front, the shrine grove: a pool under a carved arch, a pale
+// tree and a ring of glowing lanterns. Layout: N across, the shrine on the +z side.
+const ELF = { deck: 6, trees: [[.5, .42, 2.6, 30, 8.5, true], [.22, .3, 1.8, 24, 5.5], [.78, .3, 1.8, 25, 5.5], [.25, .7, 2, 24, 5.5], [.75, .7, 2, 26, 5.5]],
+  walks: [[0, 1], [0, 2], [1, 3], [2, 4], [0, 3], [0, 4]], stairs: [0, 3, 4] };
+function buildElfCity({ N }) {
+  const C = N / 2, d = ELF.deck, at = i => [ELF.trees[i][0] * N, ELF.trees[i][1] * N];
+  const elf = (a, b, speed, face) => ({ a, b, speed, face, kind: 'elf' });
+  const [x0, z0] = at(0), [x3, z3] = at(3), [x4, z4] = at(4);
+  return {
+    torches: [],
+    guards: [
+      elf([C - 4, 0, N * .86], [C + 4, 0, N * .86], .8),
+      elf([x0 - 5, d, z0 + 1], [x0 + 5, d, z0 + 1], .7),
+      elf([x3 + 2, 0, z3 + 5], [x4 - 2, 0, z4 + 5], .9),
+      elf([x0, d, z0 - 6.5], null, 0, [0, -1]),
+    ],
+    models: [{ kind: 'elfcity', x: C, y: 0, z: C, N, angle: 0 }],
+  };
+}
+function makeElfCity(m) {
+  const K = new Kit(), N = m.N, C = N / 2, rnd = mulberry32(N * 104729 + 7), D = ELF.deck;
+  const bark = '#5a4632', wood = 'floor', pale = '#d8ccae', gold = '#c8a85a', leaf = ['#3e6a3a', '#4a7a3a', '#56824a'];
+  const L = (x, z) => [x - C, z - C];                                   // layout to model coordinates
+  const ball = (key, x, y, z, rx, ry, rz) => { const g = new THREE.IcosahedronGeometry(1, 1); g.scale(rx, ry, rz); g.translate(x, y, z); K.add(key, g); };
+  const glows = [];
+  const trees = ELF.trees.map(([fx, fz, r, h, pr, great]) => { const [x, z] = L(fx * N, fz * N); return { x, z, r, h, pr, great }; });
+  // Where each platform is joined (walkways and stairs), so the rail leaves a gap there
+  const gaps = trees.map(() => []);
+  for (const [a, b] of ELF.walks) {
+    const A = trees[a], B = trees[b], ang = Math.atan2(B.z - A.z, B.x - A.x);
+    gaps[a].push(ang); gaps[b].push(ang + Math.PI);
+  }
+  const stairAt = i => Math.PI / 2 + (i ? (trees[i].x < 0 ? -.5 : .5) : 0);   // stairs come down on the shrine side
+  for (const i of ELF.stairs) gaps[i].push(stairAt(i));
+
+  trees.forEach((t, i) => {
+    // The trunk, flared at the roots, and a great crown of leaves
+    K.cyl(bark, t.r, t.r * 1.15, t.h, t.x, 0, t.z, 9, true);
+    for (let k = 0; k < 6; k++) {
+      const a = k / 6 * Math.PI * 2 + rnd(), g = new THREE.ConeGeometry(t.r * .7, 3.2, 5);
+      g.rotateZ(-.55); g.rotateY(-a); g.translate(t.x + Math.cos(a) * t.r * 1.1, 1.1, t.z + Math.sin(a) * t.r * 1.1); K.add(bark, g);
+    }
+    for (let k = 0; k < 5; k++) {                                       // boughs
+      const a = rnd() * Math.PI * 2, y = t.h * (.62 + rnd() * .3), len = t.r * 3.5;
+      K.box(bark, len, t.r * .45, t.r * .45, t.x + Math.cos(a) * len / 2, y, t.z + Math.sin(a) * len / 2, -a, 0);
+    }
+    const cr = t.r * 4.4;
+    ball(leaf[0], t.x, t.h + cr * .1, t.z, cr, cr * .55, cr);
+    for (let k = 0; k < 5; k++) {
+      const a = k / 5 * Math.PI * 2 + rnd(), rr = cr * (.55 + rnd() * .2);
+      ball(leaf[1 + (k & 1)], t.x + Math.cos(a) * cr * .6, t.h - cr * .15 + rnd() * cr * .3, t.z + Math.sin(a) * cr * .6, rr, rr * .6, rr);
+    }
+    // The platform ringing the trunk, its rim, and a rail of posts with gaps where it's joined
+    K.cyl(wood, t.pr, t.pr, .35, t.x, D - .35, t.z, 20);
+    K.cols.push({ cyl: true, cx: t.x, cz: t.z, r: t.pr, y0: D - 1.4, y1: D });
+    K.cyl(bark, t.pr + .1, t.pr + .1, .25, t.x, D - .6, t.z, 20);
+    const posts = Math.round(t.pr * 2 * Math.PI / 1.4);
+    for (let k = 0; k < posts; k++) {
+      const a = k / posts * Math.PI * 2, a2 = (k + 1) / posts * Math.PI * 2;
+      if (gaps[i].some(g => Math.abs(Math.atan2(Math.sin(a - g), Math.cos(a - g))) < .3 || Math.abs(Math.atan2(Math.sin(a2 - g), Math.cos(a2 - g))) < .3)) continue;
+      const px = t.x + Math.cos(a) * (t.pr - .15), pz = t.z + Math.sin(a) * (t.pr - .15), qx = t.x + Math.cos(a2) * (t.pr - .15), qz = t.z + Math.sin(a2) * (t.pr - .15);
+      K.box(pale, .12, 1, .12, px, D + .5, pz);
+      K.box(pale, Math.hypot(qx - px, qz - pz), .1, .1, (px + qx) / 2, D + 1, (pz + qz) / 2, -Math.atan2(qz - pz, qx - px));
+      K.solidRot((px + qx) / 2, (pz + qz) / 2, Math.hypot(qx - px, qz - pz) / 2, .1, D, D + 1.05, -Math.atan2(qz - pz, qx - px));
+    }
+    // The hall on the platform: the great hall's columns and golden dome, or a leaf-roofed pavilion
+    if (t.great) {
+      const hr = t.pr - 1.6;
+      for (let k = 0; k < 10; k++) { const a = k / 10 * Math.PI * 2 + .31; K.cyl(pale, .22, .28, 5, t.x + Math.cos(a) * hr, D, t.z + Math.sin(a) * hr, 8); }
+      K.cyl(pale, hr + .5, hr + .5, .5, t.x, D + 5, t.z, 20);
+      const dome = new THREE.SphereGeometry(hr + .3, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2); dome.translate(t.x, D + 5.5, t.z); K.add(gold, dome);
+      K.cyl(gold, .1, .25, 2.2, t.x, D + 5.5 + hr + .2, t.z, 6);
+      K.cyl('#6a4a30', 1.4, 1.6, .5, t.x + Math.cos(-Math.PI / 2) * (t.r + 1.6), D, t.z - (t.r + 1.6), 10, true);   // the high seat's dais
+    } else {
+      const hr = t.pr - 1.4;
+      for (let k = 0; k < 6; k++) { const a = k / 6 * Math.PI * 2; K.cyl(pale, .14, .18, 3.6, t.x + Math.cos(a) * hr, D, t.z + Math.sin(a) * hr, 6); }
+      const roof = new THREE.ConeGeometry(hr + 1.2, 2.6, 6); roof.translate(t.x, D + 3.6 + 1.3, t.z); K.add(leaf[2], roof);
+    }
+    glows.push([t.x + t.pr * .7, D + 1.6, t.z + t.pr * .2], [t.x - t.pr * .5, D + 1.6, t.z - t.pr * .5]);
+  });
+  // Walkways between platforms, with rails
+  for (const [a, b] of ELF.walks) {
+    const A = trees[a], B = trees[b], ang = Math.atan2(B.z - A.z, B.x - A.x), cx = Math.cos(ang), sz = Math.sin(ang);
+    const sx = A.x + cx * (A.pr - .4), sz0 = A.z + sz * (A.pr - .4), ex = B.x - cx * (B.pr - .4), ez = B.z - sz * (B.pr - .4);
+    const len = Math.hypot(ex - sx, ez - sz0), mx = (sx + ex) / 2, mz = (sz0 + ez) / 2;
+    K.box(wood, len, .2, 1.8, mx, D - .1, mz, -ang);
+    K.solidRot(mx, mz, len / 2, .9, D - 1.2, D, -ang);
+    for (const s of [-1, 1]) {
+      const ox = -sz * s * .9, oz = cx * s * .9;
+      K.box(pale, len, .08, .08, mx + ox, D + .95, mz + oz, -ang);
+      K.solidRot(mx + ox, mz + oz, len / 2, .06, D, D + 1, -ang);
+      for (let k = 0; k <= Math.round(len / 2.5); k++) { const f = k / Math.round(len / 2.5); K.box(pale, .1, 1, .1, sx + (ex - sx) * f + ox, D + .5, sz0 + (ez - sz0) * f + oz); }
+    }
+  }
+  // Stairs winding up round the outside of three platforms: floating half steps on slender stems
+  for (const i of ELF.stairs) {
+    const t = trees[i], rs = t.pr + .9, top = stairAt(i), dA = 1.15 / rs, steps = Math.round(D / .5);
+    for (let k = 1; k <= steps; k++) {
+      const a = top - (steps - k) * dA * (t.x < 0 ? -1 : 1), x = t.x + Math.cos(a) * rs, z = t.z + Math.sin(a) * rs, y = k * .5;
+      K.box(wood, 1.5, .25, 1.15, x, y - .125, z, -a);
+      K.solidRot(x, z, .75, .575, y - .5, y, -a);
+      if (k > 2) K.cyl(bark, .08, .1, y - .25, x, 0, z, 5);
+    }
+  }
+  // The shrine grove: a pool, a carved arch before it, a pale tree, and lanterns round about
+  const [sx, sz] = L(C, N * .84);
+  const pool = new THREE.CylinderGeometry(3.4, 3.4, .05, 20); pool.translate(sx, .06, sz); K.add('#3a6a8a', pool);
+  K.cyl(pale, 3.7, 3.8, .25, sx, 0, sz, 20);
+  for (const s of [-1, 1]) K.cyl(pale, .3, .38, 4.6, sx + s * 2.6, 0, sz + 4.4, 8, true);
+  K.box(pale, 7.2, .45, .6, sx, 4.65, sz + 4.4); K.box(pale, 6.2, .3, .5, sx, 4.05, sz + 4.4);
+  K.cyl(pale, .16, .26, 4.5, sx, 0, sz, 7);
+  ball('#c8d8b0', sx, 5.4, sz, 2.2, 1.6, 2.2); ball('#b8d0a0', sx + .9, 4.6, sz + .4, 1.3, 1, 1.3);
+  for (let k = 0; k < 7; k++) {
+    const a = k / 7 * Math.PI * 2, x = sx + Math.cos(a) * 6.5, z = sz + Math.sin(a) * 6.5;
+    K.cyl(pale, .07, .1, 1.5, x, 0, z, 5);
+    glows.push([x, 1.65, z]);
+  }
+  const out = placeModel(K, m), c = Math.cos(m.angle), s = Math.sin(m.angle);
+  // Moon-pale lanterns that glow on their own
+  const orbs = new THREE.Group();
+  for (const [x, y, z] of glows) { const o = new THREE.Mesh(ELF_ORB, ELF_GLOW); o.position.set(m.pos[0] + x * c + z * s, m.pos[1] + y, m.pos[2] - x * s + z * c); orbs.add(o); }
+  scene.add(orbs);
+  out.extra = [orbs];
+  return out;
+}
+const ELF_ORB = new THREE.IcosahedronGeometry(.22, 1), ELF_GLOW = new THREE.MeshBasicMaterial({ color: 0xcfe8ff });
+
 // Each kind of modelled building, by the kind its layout gives
-const MODEL_MAKERS = { cottage: makeCottage, stall: makeStall, windmill: makeTowerMill, fort: makeFort, hold: makeHold, tower: makeWatchtower, ruins: makeRuins, stones: makeStones };
+const MODEL_MAKERS = { cottage: makeCottage, stall: makeStall, windmill: makeTowerMill, fort: makeFort, hold: makeHold, elfcity: makeElfCity, tower: makeWatchtower, ruins: makeRuins, stones: makeStones };
 
 // The starting fort stands for good
 {
@@ -5294,6 +5437,8 @@ const LINES = {
   farewell: ['Safe travels.', 'Mind how you go.', 'Off you go, then.'],
   villager: ['Hello there!', 'Welcome, stranger.', 'Lovely day for it.', 'Mind the chickens.'],
   villagerNight: ['Evening.', "Late to be about, isn't it?", 'Stay near the lamps.'],
+  elf: ['Peace on your road, stranger.', 'Walk softly under the eaves.', 'The trees remember all who pass.', 'Be welcome in Aelith Vara.'],
+  elfNight: ['The stars are kind tonight.', 'Few walk the Wenmere after dark.', 'Rest by the shrine, if you are weary.'],
   dwarf: ['Well met, surface-dweller.', 'Mind your step on the stone.', 'The forges never rest.', 'Welcome to Kharn Dolum.'],
   dwarfNight: ['The mountain keeps no hours.', 'Late for a climb, friend.', 'Warm yourself by the forges.'],
 };
@@ -5354,8 +5499,8 @@ function updateGuards(dt) {
         say(gd, `Welcome back! You've been away ${d < 1 ? 'a while' : d < 1.5 ? 'a day' : `${Math.round(d)} days`}.`, 4);
         continue;
       }
-      const d = gd.home?.kind === 'dwarf';
-      say(gd, pick(v ? (night ? LINES.villagerNight : LINES.villager) : d ? (night ? LINES.dwarfNight : LINES.dwarf) : night ? LINES.greetNight : LINES.greet)); gd.greeted = true;
+      const folk = { dwarf: [LINES.dwarf, LINES.dwarfNight], elf: [LINES.elf, LINES.elfNight] }[gd.home?.kind];
+      say(gd, pick(v ? (night ? LINES.villagerNight : LINES.villager) : folk ? folk[night ? 1 : 0] : night ? LINES.greetNight : LINES.greet)); gd.greeted = true;
     }
     if (gd.lostT > 5) gd.greeted = false;
     if (sees && dist < TALK_RANGE && (!talkTarget || dist < talkTarget.dist)) talkTarget = { gd, dist };
@@ -5406,7 +5551,7 @@ function talk() {
 function openDialogue(gd) {
   dlg.open = true; dlg.gd = gd; dlg.area = null;
   if (document.pointerLockElement) document.exitPointerLock();
-  const p = gd.home?.person, role = p ? `${p.name} \u00b7 ${p.job === 'merchant' ? 'merchant from ' + p.from : p.job === 'carter' ? 'carter from ' + p.from : JOB_NAMES[p.job]}` : gd.home?.kind === 'villager' ? 'Villager' : gd.home?.kind === 'dwarf' ? 'Dwarf guard' : 'Guard';
+  const p = gd.home?.person, role = p ? `${p.name} \u00b7 ${p.job === 'merchant' ? 'merchant from ' + p.from : p.job === 'carter' ? 'carter from ' + p.from : JOB_NAMES[p.job]}` : gd.home?.kind === 'villager' ? 'Villager' : gd.home?.kind === 'dwarf' ? 'Dwarf guard' : gd.home?.kind === 'elf' ? 'Elf warden' : 'Guard';
   dlgEl.querySelector('.who').textContent = gd.home ? `${role} \u00b7 ${gd.home.title}` : role;
   const night = env.daylight < .35;
   showDialogue(night ? 'Evening, traveller. Something you need?' : 'Good day. What can I do for you?');
