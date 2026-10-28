@@ -41,7 +41,7 @@ The places come from the world gazetteer (draft 1) and are set by hand on the pa
 | Region | Places |
 |---|---|
 | The Greyspine | **Kharn Dolum** (the dwarves' hold, by the Vael's source; see below), **Anvil's Rest** (village), **the Cold Gallery** (ruins) |
-| The Hollow | **the Victory Fields** (a field of monuments and grave mounds), **the Sunken Throne** (ruins, beside the Vael), **Oathstone** (one great standing stone), **Concord Landing** (village) |
+| The Hollow | **the Victory Fields** (a field of monuments and grave mounds), **the Sunken Throne** (the ancient capital's ruins; see below), **Oathstone** (one great standing stone), **Concord Landing** (village) |
 | The Vael Marches | **Hollin's Ferry**, **Kelford** and **Millbrook** (villages; Kelford and Millbrook have windmills and bakeries), **Castle Aldermere** and **Harrowgate Keep** (forts), **Greycrest** and **Scarrow Hovel** (villages) |
 | The Wenmere | **Aelith Vara** (the elves' city; see below), **Mistwater** (by the lake) and **Thornwick** (villages), **the Silent Grove** (a stone ring round a fallen altar) |
 | The Rustwaste | **Gor Marakh** (the orcs' stronghold; see below), **Ashen Camp** and **Dust Wells** (villages), **the Broken Bastion** (ruins) |
@@ -256,6 +256,17 @@ The orcs' stronghold-town on the eastern plateau, the largest clan seat.
 - **The town:** round huts of hide on log walls, red banners on poles, and iron braziers.
 - **The orcs:** orc warriors, big and broad, green-skinned with tusks and war paint, in leather and fur, carrying cleavers. They hold the gate, the town and the hall door, with their own greetings (*You walk in Gor Marakh. Walk carefully.*). Talking to one shows *Orc warrior*.
 - **How it's built:** `style: 'orc'` gives a layout (`buildOrcHold`) with one `orchold` model (`makeOrcHold`). The palisade is solid in short turned runs (`solidRot`).
+
+## The Sunken Throne
+
+The ancient capital, where the old race ruled and the war ended, is a ruin of pale, weathered stone, unlike any other in the world.
+
+- **The great hall:** vast walls two blocks thick, sunk into the ground and broken to jagged stumps of every height, some scorched black. A great doorway still stands at the front.
+- **The colonnade:** two rows of colossal columns built in drums. Some stand at full height under their capitals; the rest have fallen, their drums lying in a line where they toppled.
+- **The throne:** at the far end, on a dais of three steps, the cracked throne still sits. The top of its back has fallen down the steps, and faint glyphs glow pale blue on what remains.
+- **Outside:** a colossal crowned stone head lies sunk to the chin, tipped back. Along the approach stand inscribed stelae, some upright and some fallen, the most writing anywhere in the world.
+- **Scorch marks** blacken the ground, and rubble lies everywhere.
+- **How it's built:** `style: 'throne'` gives one `throne` model (`makeThrone`), in a new pale `marble` texture. The broken heights, fallen drums, stelae and rubble come from the place's seed.
 
 ## Trees
 

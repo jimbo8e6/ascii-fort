@@ -326,6 +326,13 @@ Object.assign(TEX, {
     for (let y = 3; y < s; y += 7) g.fillRect(0, y, s, 2);
   }),
   redSand: canvasTexture(32, (g, s) => noiseFill(g, s, [172, 108, 66], 22)),
+  marble: canvasTexture(32, (g, s) => {                 // the old race's pale, weathered stone
+    noiseFill(g, s, [190, 184, 168], 16);
+    g.strokeStyle = 'rgba(120,112,100,.35)';
+    for (let i = 0; i < 3; i++) { g.beginPath(); g.moveTo(rand() * s, 0); g.bezierCurveTo(rand() * s, s / 3, rand() * s, s * 2 / 3, rand() * s, s); g.stroke(); }
+    g.fillStyle = 'rgba(60,56,50,.5)';
+    for (let i = 0; i < 6; i++) g.fillRect(rand() * s | 0, rand() * s | 0, 2, 1);
+  }),
   water: canvasTexture(32, (g, s) => {
     noiseFill(g, s, [44, 86, 150], 26);
     g.strokeStyle = 'rgba(150,190,240,.55)';
@@ -1027,7 +1034,7 @@ const PLACES = [
   { name: 'the Cold Gallery', type: RUINS, at: [930, 250], N: 24 },
   // The Hollow
   { name: 'the Victory Fields', type: STONES, at: [706, 338], N: 22, stones: 'field' },
-  { name: 'the Sunken Throne', type: RUINS, at: [668, 415], N: 30 },
+  { name: 'the Sunken Throne', type: RUINS, at: [668, 415], N: 56, style: 'throne' },
   { name: 'Oathstone', type: STONES, at: [690, 444], N: 8, stones: 'single' },
   { name: 'Concord Landing', type: VILLAGE, at: [672, 522], mill: false },
   // The Vael Marches
@@ -1104,6 +1111,7 @@ function buildPlan(plan) {
   const rnd = mulberry32(plan.seed);
   const extra = plan.style === 'hold' ? buildHold(plan)
     : plan.style === 'orc' ? buildOrcHold(plan)
+    : plan.style === 'throne' ? buildThrone(plan)
     : plan.type === FORT ? buildFort({ N: plan.N, wall: 6 + (rnd() * 2 | 0), mat: plan.mat, keep: plan.N >= 44,
       crates: [[6, 0, 6], [7, 0, 6], [6, 1, 6], [plan.N - 8, 0, plan.N / 2], [plan.N - 8, 0, plan.N / 2 + 1]] })
     : plan.type === TOWER ? buildTower({ mat: plan.mat, h: plan.towerH })
@@ -2466,7 +2474,7 @@ function updateModels(dt) {
 // material, and general colliders (boxes and cylinders) make walls, floors, stairs and furniture
 // solid for walking, landing and step-ups.
 // ---------------------------------------------------------------------------
-const BDEF = { plaster: 'plaster', timber: 'timber', stone: 'rock', roof: 'roof', floor: 'deckPlank', wood: 'plank', log: 'log', castle: 'brick', sandstone: 'sandstone', crate: 'wood' };
+const BDEF = { plaster: 'plaster', timber: 'timber', stone: 'rock', roof: 'roof', floor: 'deckPlank', wood: 'plank', log: 'log', castle: 'brick', sandstone: 'sandstone', crate: 'wood', marble: 'marble' };
 const BMAT = {};
 // Material keys: a texture name, or '#rrggbb' for a plain colour; ':in' marks an interior surface,
 // drawn darker since it gets less daylight
@@ -3381,8 +3389,99 @@ function makeOrcHold(m) {
   return out;
 }
 
+// The Sunken Throne, the ancient capital where the old race ruled and the war ended: a vast hall of
+// pale stone half sunk into the ground, its walls broken to jagged stumps and its colonnade of
+// colossal columns standing to every height or lying where they fell. At the far end the cracked
+// throne still sits on its stepped dais, faint glyphs glowing on it. Outside, a colossal crowned
+// head lies half buried, and inscribed stelae (the most texts anywhere) stand or lie along the
+// approach. Scorch marks blacken the ground. Layout: N across, the approach on +z.
+const buildThrone = ({ N, seed }) => ({ torches: [], guards: [], models: [{ kind: 'throne', x: N / 2, y: 0, z: N / 2, N, seed, angle: 0 }] });
+const THRONE_GLOW = new THREE.MeshBasicMaterial({ color: 0x9fd8ff });
+function makeThrone(m) {
+  const K = new Kit(), N = m.N, C = N / 2, rnd = mulberry32(m.seed), { blk } = kitTools(K, C);
+  const stone = 'marble', burnt = '#2a2420', dark = '#4a443c';
+  const glyphs = [];
+  const drum = (x, y, z, r, h, key = stone) => K.cyl(key, r * (.97 + rnd() * .06), r, h, x - C, y, z - C, 12);
+  // A drum lying on its side, turned a
+  const fallen = (x, z, r, a, key = stone) => {
+    const g = scaleUV(new THREE.CylinderGeometry(r, r, 2.1, 12), r * 6, 2.1); g.rotateZ(Math.PI / 2); g.rotateY(-a); g.translate(x - C, r - .25, z - C); K.add(key, g);
+    K.solidRot(x - C, z - C, 1.05, r * .9, 0, r * 1.7, -a);
+  };
+  // Walls: two thick, built in short runs, each broken off at its own height, their feet sunk below ground
+  const wallRun = (x0, z0, x1, z1, doorA, doorB) => {
+    const alongX = x1 - x0 > z1 - z0, a0 = alongX ? x0 : z0, a1 = alongX ? x1 : z1;
+    for (let a = a0; a < a1; a += 2) {
+      if (doorA !== undefined && a + 2 > doorA && a < doorB) continue;
+      const h = rnd() < .12 ? 0 : 2 + Math.pow(rnd(), .7) * 11;
+      if (!h) continue;
+      const seg = (b0, b1, y1) => alongX ? blk(stone, b0, -2, z0, b1, y1, z1) : blk(stone, x0, -2, b0, x1, y1, b1);
+      seg(a, a + 2, h);
+      if (rnd() < .5) seg(a + .4 + rnd() * .6, a + 1.4 + rnd() * .6, h + .6 + rnd() * 1.4);    // a jagged top
+      if (rnd() < .3) alongX ? blk(burnt, a + .2, h * .3, z1 - .02, a + 1.8, h * .8, z1 + .03, false) : blk(burnt, x1 - .02, h * .3, a + .2, x1 + .03, h * .8, a + 1.8, false);   // scorched
+    }
+  };
+  const hx0 = C - 12, hx1 = C + 12, hz0 = 6, hz1 = N - 8;
+  wallRun(hx0, hz0, hx1, hz0 + 2);
+  wallRun(hx0, hz0 + 2, hx0 + 2, hz1);
+  wallRun(hx1 - 2, hz0 + 2, hx1, hz1);
+  wallRun(hx0, hz1 - 2, hx1, hz1, C - 5, C + 5);
+  for (const s of [-1, 1]) blk(stone, C + s * 5 - (s > 0 ? 0 : 1.6), -2, hz1 - 2.6, C + s * 5 + (s > 0 ? 1.6 : 0), 12 + rnd() * 2, hz1 + .6);   // the great doorway's jambs
+  // The colonnade: colossal columns in drums, standing to any height; the rest of each lies beside it
+  for (const x of [C - 6.5, C + 6.5]) for (let z = hz0 + 9; z < hz1 - 4; z += 6.5) {
+    const r = 1.1, standing = rnd() < .15 ? 0 : 1 + (rnd() * 5 | 0);
+    blk(stone, x - 1.6, -.4, z - 1.6, x + 1.6, .5, z + 1.6);
+    for (let k = 0; k < standing; k++) drum(x, .5 + k * 2.2, z, r, 2.2, k === standing - 1 && rnd() < .4 ? dark : stone);
+    K.cols.push({ cyl: true, cx: x - C, cz: z - C, r, y0: 0, y1: .5 + standing * 2.2 });
+    if (standing === 5) blk(stone, x - 1.6, 11.5, z - 1.6, x + 1.6, 12.4, z + 1.6);
+    else {
+      const a = rnd() * Math.PI * 2;
+      for (let k = 0; k < 5 - standing; k++) fallen(x + Math.cos(a) * (2.5 + k * 2.3), z + Math.sin(a) * (2.5 + k * 2.3), r, a + (rnd() - .5) * .3, rnd() < .3 ? dark : stone);
+    }
+  }
+  // The dais, three half steps, and the cracked throne on it
+  blk(stone, C - 6, 0, hz0 + 2, C + 6, .5, hz0 + 9); blk(stone, C - 5, 0, hz0 + 2, C + 5, 1, hz0 + 8); blk(stone, C - 4, 0, hz0 + 2, C + 4, 1.5, hz0 + 7);
+  const tz = hz0 + 3;
+  blk(stone, C - 2, 1.5, tz, C + 2, 2.8, tz + 3);                                    // seat
+  blk(stone, C - 2.4, 1.5, tz - .9, C + 2.4, 8, tz);                                 // the back, broken off
+  for (const s of [-1, 1]) blk(stone, C + s * 2 - (s > 0 ? 0 : .5), 1.5, tz, C + s * 2 + (s > 0 ? .5 : 0), 3.8, tz + 3);   // arms
+  K.box(stone, 4.4, 3.2, .9, 1.6, 1.9, tz - C + 5.8, .5, 1.25);                         // the top of the back, fallen down the steps
+  for (let row = 0; row < 4; row++) for (let k = 0; k < 6; k++) if (rnd() < .8) glyphs.push([C - 1.8 + k * .7 + rnd() * .1, 3.6 + row * 1.05, tz + .02]);
+  // A colossal crowned head lies half buried outside, tipped on its side
+  const hx = C + 17, hz = N - 3;
+  const head = new THREE.Group(); head.position.set(hx - C, .9, hz - C); head.rotation.set(-.45, -.5, .3);   // sunk to the chin, tipped back
+  const part = (geo, key, x, y, z, sx, sy, sz) => { const g = geo.clone(); g.scale(sx, sy, sz); g.translate(x, y, z); head.updateMatrixWorld(); g.applyMatrix4(head.matrixWorld); K.add(key, scaleUV(g, sx * 2, sy * 2)); };
+  const ico = new THREE.IcosahedronGeometry(1, 1), cyl = new THREE.CylinderGeometry(1, 1, 1, 10);
+  part(ico, stone, 0, 0, 0, 2.5, 3, 2.6);                                              // the head
+  part(ico, stone, 0, -1.6, .5, 1.9, 1.6, 2.1);                                        // jaw and beard
+  part(ico, stone, 0, -.1, 2.35, .45, .8, .55);                                        // nose
+  for (const s of [-1, 1]) part(ico, dark, s * .9, .6, 2.15, .45, .25, .2);            // eyes
+  part(cyl, dark, 0, 2.3, 0, 2.6, 1.2, 2.7);                                           // crown band
+  for (let k = 0; k < 6; k++) { const a = k / 6 * Math.PI * 2; part(new THREE.ConeGeometry(1, 1, 4), dark, Math.cos(a) * 2.2, 3.3, Math.sin(a) * 2.3, .45, 1, .45); }   // its points
+  K.cols.push({ cyl: true, cx: hx - C, cz: hz - C, r: 2.6, y0: 0, y1: 4 });
+  // Stelae along the approach, inscribed, some standing and some fallen
+  for (let k = 0; k < 8; k++) {
+    const s = k % 2 ? 1 : -1, x = C + s * (7 + rnd() * 3), z = N + 2 - (k >> 1) * 3.2 - rnd(), up = rnd() < .6;
+    if (up) {
+      const tilt = (rnd() - .5) * .25;
+      K.box(stone, 1.8, 3.2, .5, x - C, 1.3, z - C, 0, tilt); K.solid(x - C - .9, 0, z - C - .3, x - C + .9, 2.9, z - C + .3);
+      for (let row = 0; row < 6; row++) for (let j = 0; j < 4; j++) if (rnd() < .85) K.box(dark, .25, .14, .04, x - C - .6 + j * .4, .6 + row * .38, z - C + .27);
+    } else {
+      K.box(stone, 1.8, .5, 3.2, x - C, .2, z - C, rnd() * .6); K.solid(x - C - 1, 0, z - C - 1.6, x - C + 1, .45, z - C + 1.6);
+      for (let row = 0; row < 6; row++) for (let j = 0; j < 4; j++) if (rnd() < .6) K.box(dark, .25, .04, .14, x - C - .6 + j * .4, .47, z - C - 1 + row * .38);
+    }
+  }
+  // Scorch marks and rubble
+  for (let k = 0; k < 14; k++) { const g = new THREE.CylinderGeometry(1, 1, .04, 9); g.scale(1.5 + rnd() * 3.5, 1, 1.5 + rnd() * 3.5); g.rotateY(rnd() * 3); g.translate(rnd() * N - C, .04, rnd() * N - C); K.add(burnt, g); }
+  for (let k = 0; k < N * 2; k++) { const sz = .3 + rnd() * .9; K.box(rnd() < .2 ? dark : stone, sz * (1 + rnd()), sz, sz * (1 + rnd()), rnd() * (N + 8) - 4 - C, sz * .3, rnd() * (N + 8) - 4 - C, rnd() * 3, (rnd() - .5) * .5); }
+  const out = placeModel(K, m), c = Math.cos(m.angle), s = Math.sin(m.angle);
+  const g = new THREE.Group(), gg = new THREE.BoxGeometry(.32, .5, .04);
+  for (const [x, y, z] of glyphs) { const o = new THREE.Mesh(gg, THRONE_GLOW); o.position.set(m.pos[0] + (x - C) * c + (z - C) * s, m.pos[1] + y, m.pos[2] - (x - C) * s + (z - C) * c); o.rotation.y = m.angle; g.add(o); }
+  scene.add(g); out.extra = [g];
+  return out;
+}
+
 // Each kind of modelled building, by the kind its layout gives
-const MODEL_MAKERS = { cottage: makeCottage, stall: makeStall, windmill: makeTowerMill, fort: makeFort, hold: makeHold, elfcity: makeElfCity, orchold: makeOrcHold, tower: makeWatchtower, ruins: makeRuins, stones: makeStones };
+const MODEL_MAKERS = { cottage: makeCottage, stall: makeStall, windmill: makeTowerMill, fort: makeFort, hold: makeHold, elfcity: makeElfCity, orchold: makeOrcHold, throne: makeThrone, tower: makeWatchtower, ruins: makeRuins, stones: makeStones };
 
 // The starting fort stands for good
 {
