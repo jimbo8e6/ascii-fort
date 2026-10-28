@@ -202,12 +202,22 @@ These are placed by the seed like everything else:
 
 ## The ground
 
-The land is a smooth, continuous surface rather than blocks: real slopes and curves, with no stair-steps. Buildings and trees still stand on it as blocks for now.
+The land is a smooth, continuous surface rather than blocks: real slopes and curves, with no stair-steps. Buildings still stand on it as blocks for now.
 
 - **How it looks:** the ground is coloured by what the land is (grass, darker forest floor, sand and beaches, snow, red sand in the Rustwaste, packed earth in fort courtyards). It turns to bare rock as the slope steepens: sandstone in the desert, red rock on the mesas. It's lit with smooth shading, so hills catch the light.
 - **Walking:** you walk on the surface itself, smoothly up and down. Slopes steeper than about 50° (the mesa cliffs, the sharpest ridges) are walls you can't climb. Going downhill you stay on the ground rather than stepping off into the air.
 - **Water:** the sea is a flat surface just under sea level wherever the ground dips below it, so shorelines follow the land's curves. The lake and tarns are flat at their own levels, and rivers slope downstream (see *Rivers*). You can swim in any of them.
 - **No caves:** a smooth surface has no underside, so the caves are gone for now. They may come back later as separate cave models behind entrances.
+
+## Trees
+
+Trees and cacti are low-poly models with flat-shaded facets, each turned and tinted a little differently.
+
+- **Pines** fill the forests: three stacked cones on a tapering trunk, 9–14 blocks tall. In the snowfields they're shorter and white-tipped.
+- **Oaks** stand here and there on the grassland, 6–9 blocks tall, with a lumpy round crown.
+- **Cacti** dot the deserts: ribbed green columns with one or two arms.
+- **Solid:** you can't walk through a trunk. Crowns block arrows and line of sight, so a hunter or a guard can't see or shoot through a tree. Squirrels climb the trunks.
+- No trees grow on roads, in water, on very steep or very high ground, or inside places.
 
 ## Guards and conversations
 
@@ -288,10 +298,11 @@ The world map (M) shows biomes, water depth and hill shading, with the fort and 
    - **The blocks underneath:** the chunk still holds whole-block columns of ground below the surface, for anything that asks about blocks. They're neither drawn nor collided with.
    - **Still water:** a flat surface over every block cell where a corner dips below the sea's level, the lake's or a tarn's.
    - **Rivers:** one strip of water per river, down its course at its water level and a little wider than the channel so the edges tuck under the banks. Its texture scrolls downstream, and segments that drop steeply are tinted white. Anything that asks about water (swimming, bridges, trees, animals, the map, guards) uses the water level at that spot, not sea level.
-6. **Greedy meshing (buildings and trees).** The blocks standing on the ground (forts, ruins, stones, trees) become one mesh per chunk, containing only the faces that touch air. Neighbouring faces of the same material are merged into larger rectangles, with one geometry group per material and world-space UVs so the textures still tile once per block.
+6. **Greedy meshing (buildings).** The blocks standing on the ground (forts, ruins, stones) become one mesh per chunk, containing only the faces that touch air. Neighbouring faces of the same material are merged into larger rectangles, with one geometry group per material and world-space UVs so the textures still tile once per block.
    - **Ambient occlusion:** each face corner is darkened by how many of the three blocks around it are solid, from fully open down to tucked into a corner. The result is stored as vertex colours. This shades inside corners and the base of walls.
    - **Sky light:** each face also stores how much open sky the air in front of it can see, so the insides of towers and the keep are darker. A small patch to the Lambert shader scales only the sun/moon and sky light by that value, leaving point lights (torches, lanterns) untouched.
    - Faces only merge when their corner shading matches. Each quad is split along the diagonal that keeps a dark corner from smearing across it.
+   - **Trees:** each chunk records its trees (position, kind, trunk and crown size) when it's generated. When it's drawn, copies of four base shapes (a tapering trunk, a cone, a ball and a column) are scaled, turned and merged into one flat-shaded mesh with vertex colours. Trunks become cylinder colliders. `treeHit` tests trunks and crowns (a cone for a pine, a squashed ball for an oak) for arrows, hunters' shots and guards' sight.
 7. **Shaped blocks.** As well as full cubes, the grid holds slabs (half blocks), stairs and sloped roof wedges.
    - Each one records its base block (for textures), its shape and the direction it rises.
    - **Structures:** fort and watchtower stairs use stair blocks (rotated with the structure), and grave mounds and the Silent Grove's altar are slabs.

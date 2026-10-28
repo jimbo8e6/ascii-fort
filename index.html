@@ -832,35 +832,30 @@ function generateChunk(cx, cz) {
     if (deck && h > deck) { for (let y = deck; y < h; y++) put(lx, y, lz, AIR); put(lx, deck - 1, lz, PATH); }   // cut the approach level
   }
 
-  // Trees and cacti, including ones rooted just outside this chunk whose leaves reach in
-  for (let tz = -M; tz < CHUNK + M; tz++) for (let tx = -M; tx < CHUNK + M; tx++) {
+  // Trees and cacti: recorded here, drawn as models (meshTrees). Each stands on the lowest corner of
+  // its block, sunk a little so no root shows. kind, trunk height and radius, crown height and radius.
+  const trees = [];
+  for (let tz = 0; tz < CHUNK; tz++) for (let tx = 0; tx < CHUNK; tx++) {
     const x = ox + tx, z = oz + tz, r0 = hash2(x, z);
     if (r0 > .05) continue;                                                     // cheap early out
     const i = at(tx, tz), h = hm[i], biome = bm[i];
     if (biome === OCEAN || h <= SEA + 1 || h > G + 24 || flatness(x, z) > .05 || structureAt(x, z) || roadAt(x, z) || isWet(x, z, h - 1)) continue;
     if (Math.abs(h - hAt(tx + 1, tz)) + Math.abs(h - hAt(tx, tz + 1)) > 2) continue;
-    const r = hash2(z, x);
+    const r = hash2(z, x), r2 = hash2(x * 3 + 7, z * 5 - 11), y = Math.min(hf[i], hf[at(tx + 1, tz)], hf[at(tx, tz + 1)], hf[at(tx + 1, tz + 1)]) - .25;
+    const t = { x: x + .5, z: z + .5, y, seed: r2 };
     if (biome === FOREST || biome === SNOWY) {
       if (r0 > (biome === FOREST ? .05 * (.25 + .75 * forest(x, z)) : .022)) continue;
-      const leaves = biome === SNOWY ? SNOW_LEAVES : LEAVES, th = 5 + (r * 4 | 0), topY = h + th + 1;
-      for (let y = h; y < topY; y++) put(tx, y, tz, LOG);
-      for (let y = h + 2; y <= topY; y++) {
-        const rad = Math.min(3, (topY - y + 1) >> 1);
-        for (let dz = -rad; dz <= rad; dz++) for (let dx = -rad; dx <= rad; dx++)
-          if (dx * dx + dz * dz <= rad * rad + rad * .6) put(tx + dx, y, tz + dz, leaves, true);
-      }
+      const tall = biome === SNOWY ? 7 + r * 4 : 9 + r * 5;
+      Object.assign(t, { kind: biome === SNOWY ? 'snowpine' : 'pine', trunkH: tall * .3, trunkR: .22 + tall * .012, crownH: tall * .78, crownR: tall * .24 });
     } else if (biome === PLAINS) {
       if (r0 > .006) continue;
-      const th = 4 + (r * 2 | 0), cy = h + th;                                  // round oak
-      for (let y = h; y < cy; y++) put(tx, y, tz, LOG);
-      for (let dy = -2; dy <= 1; dy++) for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) {
-        if (dx * dx + dz * dz + dy * dy * 1.5 > 5.2 || hash2(x + dx * 7, z + dz * 13 + dy * 31) < .12) continue;
-        put(tx + dx, cy + dy, tz + dz, OAK_LEAVES, true);
-      }
+      const tall = 6 + r * 3;
+      Object.assign(t, { kind: 'oak', trunkH: tall * .45, trunkR: .3 + r * .1, crownH: tall * .62, crownR: 2.6 + r * 1.2 });
     } else if (biome === DESERT) {
       if (r0 > .005) continue;
-      for (let y = h; y < h + 2 + (r * 3 | 0); y++) put(tx, y, tz, CACTUS);
-    }
+      Object.assign(t, { kind: 'cactus', trunkH: 2 + r * 2.2, trunkR: .26, crownH: 0, crownR: .9 });
+    } else continue;
+    trees.push(t);
   }
 
   // Structure edits: the main fort (global list) and any place that reaches into this chunk's region
@@ -875,7 +870,7 @@ function generateChunk(cx, cz) {
   const corners = new Float32Array(17 * 17), cols = new Int16Array(CHUNK * CHUNK);
   for (let z = 0; z <= CHUNK; z++) for (let x = 0; x <= CHUNK; x++) corners[x + z * 17] = hf[at(x, z)];
   for (let z = 0; z < CHUNK; z++) for (let x = 0; x < CHUNK; x++) cols[x + z * CHUNK] = hm[at(x, z)];
-  return { data, corners, cols };
+  return { data, corners, cols, trees };
 }
 
 // ---------------------------------------------------------------------------
@@ -1700,6 +1695,24 @@ function groundY(x, z) {
   const r = roadSurface(x, z);
   return r && !r.deck && r.d < ROAD_HALF ? Math.max(g, r.p + .04) : g;
 }
+// Is a point inside a tree: its trunk, or its crown (a cone for a pine, a squashed ball for an oak)?
+function treeHit(x, y, z) {
+  const cx = Math.floor(x) >> 4, cz = Math.floor(z) >> 4;
+  for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+    const c = chunks.get(chunkKey(cx + dx, cz + dz));
+    if (c) for (const t of c.trees) {
+      const d = Math.hypot(x - t.x, z - t.z), up = y - t.y;
+      if (d > t.crownR + .5 || up < 0) continue;
+      if (up < t.trunkH + (t.kind === 'cactus' ? 0 : t.crownH * .5) && d < t.trunkR) return true;
+      if (t.kind === 'oak') { const cy = (up - t.trunkH - t.crownH * .45) / (t.crownH * .5); if (d * d / (t.crownR * t.crownR) + cy * cy < 1) return true; }
+      else if (t.kind !== 'cactus') { const k = (up - t.trunkH) / t.crownH; if (k > 0 && k < 1 && d < t.crownR * (1 - k)) return true; }
+    }
+  }
+  return false;
+}
+// Does anything block sight or an arrow here: the ground, a block, or a tree?
+const obstructed = (x, y, z) => y < groundY(x, z) || solid(objectBlock(Math.floor(x), Math.floor(y), Math.floor(z))) || treeHit(x, y, z);
+
 // Where to stand in a column: on top of the highest block, or on the ground
 function surfaceY(x, z) {
   for (let y = H - 1; y >= 0; y--) if (solid(objectBlock(x, y, z))) return Math.max(y + 1, groundY(x + .5, z + .5));
@@ -2137,6 +2150,71 @@ function buildRivers() {
   }
 }
 
+// Trees and cacti as low-poly models, all of a chunk's merged into one mesh with flat-shaded facets.
+// A pine is three stacked cones on a tapering trunk (white-tipped in the snowfields), an oak a lumpy
+// crown of four balls, a cactus a ribbed column with an arm or two. Each is turned and tinted a
+// little by its own seed. Trunks are solid (meshTrees returns their colliders).
+const treeMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+const TREE_GEO = {
+  trunk: new THREE.CylinderGeometry(.65, 1, 1, 6).translate(0, .5, 0).toNonIndexed(),
+  cone: new THREE.ConeGeometry(1, 1, 7).translate(0, .5, 0).toNonIndexed(),
+  ball: new THREE.IcosahedronGeometry(1, 1),
+  column: new THREE.CylinderGeometry(1, 1, 1, 8).translate(0, .5, 0).toNonIndexed(),
+};
+const srgb = (r, g, b) => new THREE.Color().setRGB(r / 255, g / 255, b / 255, THREE.SRGBColorSpace);
+const TREE_RGB = { bark: srgb(92, 66, 44), pine: srgb(38, 72, 46), oak: srgb(70, 112, 48), snow: srgb(222, 228, 238), cactus: srgb(70, 124, 60) };
+function meshTrees(c) {
+  if (!c.trees.length) return { mesh: null, colliders: [] };
+  const pos = [], col = [], colliders = [], m = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), tint = new THREE.Color();
+  // One part: a base shape scaled, turned and placed; snowy colours its upper share white
+  const part = (geo, x, y, z, sx, sy, sz, rotY, color, snowy = 0, rotZ = 0) => {
+    q.setFromEuler(new THREE.Euler(0, rotY, rotZ));
+    m.compose(new THREE.Vector3(x, y, z), q, new THREE.Vector3(sx, sy, sz));
+    const p = geo.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      v.fromBufferAttribute(p, i);
+      const top = snowy && v.y > 1 - snowy;
+      v.applyMatrix4(m);
+      pos.push(v.x, v.y, v.z);
+      const cc = top ? TREE_RGB.snow : color;
+      col.push(cc.r, cc.g, cc.b);
+    }
+  };
+  for (const t of c.trees) {
+    const rot = t.seed * 6.283, shade = .85 + t.seed * .3, { x, y, z } = t;
+    const green = tint.copy(t.kind === 'oak' ? TREE_RGB.oak : t.kind === 'cactus' ? TREE_RGB.cactus : TREE_RGB.pine).multiplyScalar(shade).clone();
+    if (t.kind === 'cactus') {
+      part(TREE_GEO.column, x, y, z, t.trunkR, t.trunkH + .25, t.trunkR, rot, green);
+      for (let k = 0; k < (t.seed < .5 ? 1 : 2); k++) {
+        const a = rot + k * Math.PI, ay = y + .25 + t.trunkH * (.4 + k * .15), dx = Math.cos(a), dz = Math.sin(a);
+        part(TREE_GEO.column, x + dx * .45, ay, z + dz * .45, .16, .55, .16, 0, green, 0, Math.PI / 2);   // the stub out
+        part(TREE_GEO.column, x + dx * .55, ay - .05, z + dz * .55, .17, .7 + t.seed * .5, .17, 0, green);  // and up
+      }
+    } else if (t.kind === 'oak') {
+      part(TREE_GEO.trunk, x, y, z, t.trunkR, t.trunkH + t.crownH * .35, t.trunkR, rot, TREE_RGB.bark);
+      const cy = y + t.trunkH + t.crownH * .45;
+      part(TREE_GEO.ball, x, cy, z, t.crownR, t.crownH * .5, t.crownR, rot, green);
+      for (let k = 0; k < 3; k++) {
+        const a = rot + k * 2.1, rr = t.crownR * .55;
+        part(TREE_GEO.ball, x + Math.cos(a) * rr, cy + (k - 1) * .4, z + Math.sin(a) * rr, rr * 1.1, rr * .9, rr * 1.1, a, tint.copy(green).multiplyScalar(.9 + k * .08).clone());
+      }
+    } else {
+      const snowy = t.kind === 'snowpine' ? .45 : 0;
+      part(TREE_GEO.trunk, x, y, z, t.trunkR, t.trunkH + t.crownH * .5, t.trunkR, rot, TREE_RGB.bark);
+      for (let k = 0; k < 3; k++)
+        part(TREE_GEO.cone, x, y + t.trunkH + k * t.crownH * .27, z, t.crownR * (1 - k * .27), t.crownH * (.5 - k * .06), t.crownR * (1 - k * .27), rot + k, green, snowy);
+    }
+    colliders.push({ cyl: true, x, z, r: t.trunkR, y0: y - 1, y1: y + t.trunkH + (t.kind === 'cactus' ? .25 : t.crownH * .4) });
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  geo.computeVertexNormals();
+  const mesh = new THREE.Mesh(geo, treeMat);
+  mesh.matrixAutoUpdate = false;
+  return { mesh, colliders };
+}
+
 // Stream chunks around the player: build the nearest missing meshes within a time budget, drop far ones
 const VIEW = 6;              // view radius in chunks
 let lastCenter = '';
@@ -2155,9 +2233,10 @@ function streamChunks(px, pz, budgetMs) {
     for (const [k, c] of chunks) {
       const ddx = c.cx - pcx, ddz = c.cz - pcz, d2 = ddx * ddx + ddz * ddz;
       if (c.built && d2 > (VIEW + 2) ** 2) {
-        for (const m of [c.mesh, c.water, c.ground]) if (m) { scene.remove(m); m.geometry.dispose(); }
+        for (const m of [c.mesh, c.water, c.ground, c.treeMesh]) if (m) { scene.remove(m); m.geometry.dispose(); }
         removeChunkDecor(c);
-        c.mesh = c.water = c.ground = null; c.built = false;
+        removeColliders(c.treeColliders || []);
+        c.mesh = c.water = c.ground = c.treeMesh = c.treeColliders = null; c.built = false;
       }
       if (d2 > (VIEW + 4) ** 2) chunks.delete(k);
     }
@@ -2167,8 +2246,10 @@ function streamChunks(px, pz, budgetMs) {
     const [cx, cz] = buildQueue.pop();
     const c = chunkAt(cx, cz);
     if (c.built) continue;
-    c.mesh = meshChunk(c); c.water = meshWater(c); c.ground = meshGround(c); c.built = true;
-    for (const m of [c.mesh, c.water, c.ground]) if (m) scene.add(m);
+    const tr = meshTrees(c);
+    c.mesh = meshChunk(c); c.water = meshWater(c); c.ground = meshGround(c); c.treeMesh = tr.mesh; c.treeColliders = tr.colliders; c.built = true;
+    for (const m of [c.mesh, c.water, c.ground, c.treeMesh]) if (m) scene.add(m);
+    addColliders(tr.colliders);
     addChunkDecor(c);
   }
 }
@@ -4035,11 +4116,7 @@ function spawnAnimals(c) {
     for (let i = 0, n = 1 + (r() * 3 | 0); i < n; i++) put('rabbit', x + (r() - .5) * 4, z + (r() - .5) * 4, { look });
   }
   if (r() < odds.squirrel) {                                                     // squirrels live by a tree trunk
-    const trunks = [];
-    for (let i = 0; i < 60 && trunks.length < 6; i++) {
-      const lx = r() * 16 | 0, lz = r() * 16 | 0, gh = terrainHeight(ox + lx, oz + lz);
-      if (gh < H - 2 && c.data[lx + lz * CHUNK + gh * 256] === LOG) trunks.push([ox + lx + .5, oz + lz + .5, gh]);
-    }
+    const trunks = c.trees.filter(t => t.kind !== 'cactus').slice(0, 6).map(t => [t.x, t.z, t.y + .25, t.trunkR + .08]);
     for (const t of trunks.slice(0, 1 + (r() * 2 | 0))) put('squirrel', t[0] + 1.2, t[1] + .4, { tree: t });
   }
   if (r() < odds.bird) {
@@ -4067,7 +4144,7 @@ function startle(a, from = P.pos) {
   const group = a.herd ? [...animals].filter(b => b.herd === a.herd) : [a];
   for (const b of group) {
     if (b.state === 'flee' || b.state === 'fly' || b.state === 'up' || b.state === 'dead' || b.state === 'fall') continue;
-    if (b.kind === 'squirrel' && b.tree) { b.state = 'toTree'; b.target = [b.tree[0] + .3, b.tree[1]]; continue; }
+    if (b.kind === 'squirrel' && b.tree) { b.state = 'toTree'; b.target = [b.tree[0] + b.tree[3], b.tree[1]]; continue; }
     const t = pickTarget(b, from);
     if (!t) continue;
     b.target = t; b.state = b.kind === 'bird' ? 'fly' : 'flee'; b.from = [b.x, b.y, b.z]; b.flyT = 0; b.fleeFrom = { x: from.x, z: from.z };
@@ -4145,7 +4222,7 @@ function updateAnimals(dt) {
       if (k >= 1) { a.state = 'idle'; a.t = 3 + Math.random() * 4; }
     } else if (a.state === 'up' || a.state === 'down') {                // the squirrel up its tree, and back down when you've gone
       a.climb = Math.max(0, Math.min(1, a.climb + (a.state === 'up' ? dt : -dt) * .8));
-      a.y = a.tree[2] + a.climb * 3.4; a.x = a.tree[0] + .3; a.z = a.tree[1];
+      a.y = a.tree[2] + a.climb * 3.4; a.x = a.tree[0] + a.tree[3]; a.z = a.tree[1];
       if (a.state === 'up' && a.climb >= 1 && d > 12) a.state = 'down';
       if (a.state === 'down' && a.climb <= 0) { a.state = 'idle'; a.t = 2; }
     }
@@ -4228,7 +4305,7 @@ function updateArrows(dt) {
     let groundT = null;
     for (let k = 0, n = Math.ceil(len / .2); k <= n; k++) {
       _v.lerpVectors(a0, a1, k / n);
-      if (_v.y < groundY(_v.x, _v.z) || solid(objectBlock(Math.floor(_v.x), Math.floor(_v.y), Math.floor(_v.z)))) { groundT = k / n * len; break; }
+      if (obstructed(_v.x, _v.y, _v.z)) { groundT = k / n * len; break; }
     }
     // Any animal on the way
     let best = null;
@@ -4331,7 +4408,7 @@ function clearShot(a, b) {
   const n = Math.ceil(a.distanceTo(b) / .25);
   for (let k = 1; k < n - 1; k++) {
     const t = k / n;
-    if (solid(get(Math.floor(a.x + (b.x - a.x) * t), Math.floor(a.y + (b.y - a.y) * t), Math.floor(a.z + (b.z - a.z) * t)))) return false;
+    if (obstructed(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t)) return false;
   }
   return true;
 }
@@ -5021,7 +5098,7 @@ function canSee(ax, ay, az, bx, by, bz) {
   const d = Math.hypot(bx - ax, by - ay, bz - az), n = Math.ceil(d * 3);
   for (let i = 1; i < n; i++) {
     const t = i / n;
-    if (solid(get(Math.floor(ax + (bx - ax) * t), Math.floor(ay + (by - ay) * t), Math.floor(az + (bz - az) * t)))) return false;
+    if (obstructed(ax + (bx - ax) * t, ay + (by - ay) * t, az + (bz - az) * t)) return false;
   }
   return true;
 }
