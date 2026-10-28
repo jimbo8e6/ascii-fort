@@ -1022,7 +1022,7 @@ const regionOf = v => Math.floor(v / REGION);
 // Places on the Vael stand back from the water, River Road towns on the west bank.
 const PLACES = [
   // The Greyspine
-  { name: 'Kharn Dolum', type: FORT, at: [724, 207], N: 48, gate: 'S' },
+  { name: 'Kharn Dolum', type: FORT, at: [724, 207], N: 48, gate: 'S', style: 'hold' },
   { name: "Anvil's Rest", type: VILLAGE, at: [655, 238], mill: false },
   { name: 'the Cold Gallery', type: RUINS, at: [930, 250], N: 24 },
   // The Hollow
@@ -1069,7 +1069,7 @@ for (const p of PLACES) {
   const base = Math.max(SEA + 2, Math.min(H - 24, Math.round(sum / n))), rnd = mulberry32(hash2(ox, oz) * 1e9 | 0);
   const plan = {
     type, N, ox, oz, base, pad, blend, rot: GATE_ROT[type]?.[p.gate] ?? 0, seed: rnd() * 1e9 | 0,
-    mat: climate(cx, cz).desert > .5 ? SANDSTONE : BRICK, towerH: 11 + (rnd() * 4 | 0), mill: p.mill, stones: p.stones,
+    mat: climate(cx, cz).desert > .5 ? SANDSTONE : BRICK, towerH: 11 + (rnd() * 4 | 0), mill: p.mill, stones: p.stones, style: p.style,
     name: STRUCT_NAMES[type], title: p.name, cx: ox + S / 2, cz: oz + S / 2, rx: regionOf(ox), rz: regionOf(oz),
     _edits: null, decor: null, edits() { return this._edits || buildPlan(this); },
   };
@@ -1102,7 +1102,8 @@ function buildPlan(plan) {
     out.get(k).push((wx & 15) | (wz & 15) << 4 | wy << 8, v);
   };
   const rnd = mulberry32(plan.seed);
-  const extra = plan.type === FORT ? buildFort({ N: plan.N, wall: 6 + (rnd() * 2 | 0), mat: plan.mat, keep: plan.N >= 44,
+  const extra = plan.style === 'hold' ? buildHold(plan)
+    : plan.type === FORT ? buildFort({ N: plan.N, wall: 6 + (rnd() * 2 | 0), mat: plan.mat, keep: plan.N >= 44,
       crates: [[6, 0, 6], [7, 0, 6], [6, 1, 6], [plan.N - 8, 0, plan.N / 2], [plan.N - 8, 0, plan.N / 2 + 1]] })
     : plan.type === TOWER ? buildTower({ mat: plan.mat, h: plan.towerH })
     : plan.type === VILLAGE ? buildVillage(set, plan, rnd)
@@ -2244,6 +2245,14 @@ function makeGuard(kind = 'guard', color = 0x3c6e8a, job = null) {
       g.add(box(.1, .1, .08, (color & 0xfefefe) >> 1 | 0x404040, 0, 1.7, -.2));
     }
     sack = box(.42, .5, .3, 0xc8a860, 0, 1.25, -.3); sack.visible = false; g.add(sack);   // a sack carried on the back
+  } else if (kind === 'dwarf') {
+    // A dwarf: short and broad, bearded, in mail under an iron helm, with an axe
+    g.add(box(.62, .72, .4, 0x5a5e68, 0, 1.15, 0));                                  // mail
+    g.add(box(.64, .1, .42, 0x4a3018, 0, 1.0, 0));                                   // belt
+    g.add(box(.3, .42, .08, 0x8a5a2a, 0, 1.38, .18));                                // beard
+    g.add(box(.38, .16, .38, 0x4a4c54, 0, 1.84, 0)); g.add(box(.06, .14, .34, 0x4a4c54, 0, 1.7, .03));   // helm and nasal
+    g.add(box(.06, 1.3, .06, 0x5a4028, .4, 1.15, .1)); g.add(box(.08, .36, .3, 0x9a9aa0, .4, 1.7, .22));  // axe
+    g.scale.set(1.1, .78, 1.1);
   } else {
     g.add(box(.5, .7, .3, 0x8a2020, 0, 1.15, 0));           // tabard
     g.add(box(.36, .14, .36, 0x777a80, 0, 1.84, 0));        // helmet
@@ -2997,8 +3006,112 @@ function makeFort(m) {
   return placeModel(K, m);
 }
 
+// Kharn Dolum, the dwarves' hold: a great hall carved into a stepped mountain of rock. The one way
+// in is a walled forecourt behind an outer gatehouse, then a great gate in a dressed stone facade,
+// flanked by two giant statues of dwarves with axes. Inside, rows of pillars run to a dais, with
+// forges glowing along the walls. Layout in the fort's frame: N across, the approach on +z.
+function buildHold({ N }) {
+  const C = N / 2, F = N - 12;                     // F: the facade
+  const dwarf = (a, b, speed, face) => ({ a, b, speed, face, kind: 'dwarf' });
+  return {
+    torches: [[C - 4.2, 4.2, F + 1.8], [C + 4.2, 4.2, F + 1.8], [C - 3.6, 3.4, N + .3], [C + 3.6, 3.4, N + .3],
+      [C - 3.4, 3.6, 22], [C + 3.4, 3.6, 22], [C, 3.6, 11.4]],
+    guards: [
+      dwarf([C - 3.2, 0, N + 2], null, 0, [0, 1]), dwarf([C + 3.2, 0, N + 2], null, 0, [0, 1]),
+      dwarf([C - 5, 0, F + 5], [C + 5, 0, F + 5], 1.0),
+      dwarf([C, 0, F - 3], [C, 0, 15], 1.1),
+    ],
+    models: [{ kind: 'hold', x: C, y: 0, z: C, N, angle: 0 }],
+  };
+}
+function makeHold(m) {
+  const K = new Kit(), N = m.N, C = N / 2, F = N - 12, rnd = mulberry32(N * 7919), { blk, holed, merlons } = kitTools(K, C);
+  const rock = 'stone', dressed = 'castle', inside = 'stone:in', iron = '#2e2e34';
+  const hx0 = C - 7, hx1 = C + 7, hz0 = 10, HH = 10;            // the hall: x hx0..hx1, z hz0..F, y 0..HH
+  // The mountain: solid rock round the hall, then rough tiers stepping up to a peak
+  blk(rock, 0, 0, 2, hx0, 16, F); blk(rock, hx1, 0, 2, N, 16, F);
+  blk(rock, hx0, 0, 2, hx1, 16, hz0); blk(rock, hx0, HH, hz0, hx1, 16, F);
+  // Rough crags heaped over the rock: lumpy low-poly masses, roughened by the hold's own seed
+  const crag = (x, z, y0, r, h) => {
+    const g = new THREE.IcosahedronGeometry(1, 1), p = g.attributes.position, seen = new Map();
+    for (let i = 0; i < p.count; i++) {
+      const k = `${p.getX(i).toFixed(3)},${p.getY(i).toFixed(3)},${p.getZ(i).toFixed(3)}`;
+      if (!seen.has(k)) seen.set(k, .78 + rnd() * .44);                    // the same push for shared corners
+      const f = seen.get(k);
+      p.setXYZ(i, p.getX(i) * f, Math.max(0, p.getY(i)) * f, p.getZ(i) * f);
+    }
+    const R = r * 1.22;                                                         // never down into the hall
+    if (x + R > hx0 && x - R < hx1 && z + R > hz0 && z - R < F) y0 = Math.max(y0, 16);
+    g.scale(r, h, r); g.translate(x - C, y0, z - C); g.computeVertexNormals();
+    K.add(rock, scaleUV(g, r * .6, h * .3));
+  };
+  crag(C, hz0 + 4, 16, 19, 18);                                                     // the peak
+  // Flanks and back heaped with crags down to the ground, so the hold looks cut into the mountain
+  for (let z = 4; z <= F - 2; z += 7) for (const x of [0, N]) crag(x + (rnd() - .5) * 3, z, 0, 6.5 + rnd() * 2, 17 + rnd() * 6);
+  for (let x = 6; x <= N - 6; x += 7) crag(x, 1 + (rnd() - .5) * 2, 0, 6.5 + rnd() * 2, 18 + rnd() * 7);
+  for (let z = 8; z <= F - 6; z += 8) for (const x of [7, N - 7]) crag(x, z, 10, 7 + rnd() * 2, 12 + rnd() * 5);
+  crag(C, F - 8, 16, 9, 6);
+  // The hall's inside, lined in darker stone
+  blk(inside, hx0, 0, hz0, hx0 + .05, HH, F, false); blk(inside, hx1 - .05, 0, hz0, hx1, HH, F, false);
+  blk(inside, hx0, 0, hz0, hx1, HH, hz0 + .05, false); blk(inside, hx0, HH - .05, hz0, hx1, HH, F, false);
+  blk('#4a4a50', hx0, -.05, hz0, hx1, .03, F, false);
+  for (const x of [C - 4, C + 4]) for (const z of [15, 21, 27, 33]) {
+    blk(inside, x - .6, 0, z - .6, x + .6, HH, z + .6);
+    blk(inside, x - .8, 0, z - .8, x + .8, .5, z + .8, false); blk(inside, x - .8, HH - .6, z - .8, x + .8, HH, z + .8, false);
+  }
+  blk(inside, C - 4.5, 0, hz0, C + 4.5, 1, hz0 + 3); blk(inside, C - 4.5, 0, hz0 + 3, C + 4.5, .5, hz0 + 3.8);      // the dais
+  blk('#5a3a2a', C - 1, 1, hz0 + .6, C + 1, 3.2, hz0 + 1.6);                                                     // the high seat
+  // Forges along the walls: a stone hearth with a hood and chimney, an anvil beside it, a fire burning
+  const fires = [];
+  for (const side of [-1, 1]) for (const z of [17, 29]) {
+    const x0 = side < 0 ? hx0 : hx1 - 2.6, x1 = x0 + 2.6, cx = (x0 + x1) / 2;
+    blk(inside, x0, 0, z - 1.3, x1, 1.1, z + 1.3);
+    blk(inside, x0 - .1, 2.6, z - 1.5, x1 + .1, 3.4, z + 1.5, false);
+    blk(inside, cx - .6, 3.4, z - .6, cx + .6, HH, z + .6, false);
+    const ax = side < 0 ? x1 + 1.2 : x0 - 1.2;
+    blk(iron, ax - .3, 0, z - .2, ax + .3, .7, z + .2); blk(iron, ax - .35, .7, z - .55, ax + .35, .95, z + .55);
+    fires.push([cx, 1.45, z]);
+  }
+  // The facade: dressed stone with the great gate, pilasters, a cornice and a band of runes
+  holed(dressed, 0, F, N, F + 1.5, 0, 16, [[C - 3, C + 3, 0, 7]]);
+  for (let x = 2; x < N - 1; x += 6) if (Math.abs(x + .6 - C) > 4) blk(dressed, x, 0, F + 1.5, x + 1.2, 15.5, F + 2.1);
+  blk(dressed, -.3, 15.4, F - .2, N + .3, 16.4, F + 2.5, false);
+  for (const s of [-1, 1]) { blk(dressed, C + s * 3 - (s > 0 ? .9 : 0), 6.2, F, C + s * 3 + (s < 0 ? .9 : 0), 7, F + 1.5, false); blk(dressed, C + s * 3 - (s > 0 ? .5 : 0), 5.5, F, C + s * 3 + (s < 0 ? .5 : 0), 6.2, F + 1.5, false); }
+  blk('#3a3e48', C - 5.5, 8, F + 1.5, C + 5.5, 9.2, F + 1.65, false);
+  for (let x = C - 5; x < C + 5; x += .7) blk('#9a9070', x, 8.3 + rnd() * .3, F + 1.66, x + .12 + rnd() * .2, 8.75 + rnd() * .2, F + 1.7, false);   // runes
+  for (const s of [-1, 1]) blk(iron, C + s * 3 - (s > 0 ? .3 : 0), 0, F - 4, C + s * 3 + (s < 0 ? .3 : 0), 7, F, true);   // the gates, open
+  // Two giant dwarves with axes either side of the gate
+  for (const s of [-1, 1]) {
+    const x = C + s * 7.5, z = F + 3.6;
+    blk(dressed, x - 1.8, 0, z - 1.8, x + 1.8, 1.4, z + 1.8);
+    blk(dressed, x - 1.1, 1.4, z - .7, x - .2, 4.2, z + .7); blk(dressed, x + .2, 1.4, z - .7, x + 1.1, 4.2, z + .7);   // legs
+    blk(dressed, x - 1.4, 4.2, z - .9, x + 1.4, 8, z + .9);                                                              // body
+    blk(dressed, x - .7, 8, z - .7, x + .7, 9.4, z + .7);                                                                 // head
+    blk(dressed, x - .65, 5.6, z + .9, x + .65, 8.4, z + 1.25, false);                                                    // beard
+    blk(dressed, x - .85, 9.2, z - .85, x + .85, 9.9, z + .85, false);                                                    // helm
+    const hx = x - s * 1.9;
+    blk(dressed, hx - .25, 1.4, z + .1, hx + .25, 4.2 + 3.5, z + .55, false);                                             // axe haft
+    blk(dressed, hx - .2, 6.4, z - .5, hx + .2, 8.4, z + 1.2, false);                                                     // and blade
+    blk(dressed, x - s * 1.4 - .4, 5.4, z - .3, x - s * 1.4 + .4, 7.6, z + .5, false);                                    // arm on the haft
+  }
+  // The approach: a walled forecourt, and an outer gatehouse with the only gate in
+  for (const s of [-1, 1]) {
+    const w0 = s < 0 ? C - 9 : C + 8;
+    blk(dressed, w0, 0, F + 1.5, w0 + 1, 3.6, N - 2);
+    merlons(dressed, w0, w0 + 1, Math.ceil(F + 2), N - 2, 3.6);
+    const t0 = s < 0 ? C - 9 : C + 3;
+    blk(dressed, t0, 0, N - 2.5, t0 + 6, 7, N + .5);
+    merlons(dressed, t0, t0 + 6, N - 2, N + 1, 7);
+  }
+  blk(dressed, C - 3, 5, N - 2.5, C + 3, 7, N + .5);
+  merlons(dressed, C - 3, C + 3, N - 2, N + 1, 7);
+  const out = placeModel(K, m), c = Math.cos(m.angle), s = Math.sin(m.angle);
+  out.torches = fires.map(([x, y, z]) => addFire(m.pos[0] + (x - C) * c + (z - C) * s, m.pos[1] + y, m.pos[2] - (x - C) * s + (z - C) * c));
+  return out;
+}
+
 // Each kind of modelled building, by the kind its layout gives
-const MODEL_MAKERS = { cottage: makeCottage, stall: makeStall, windmill: makeTowerMill, fort: makeFort, tower: makeWatchtower, ruins: makeRuins, stones: makeStones };
+const MODEL_MAKERS = { cottage: makeCottage, stall: makeStall, windmill: makeTowerMill, fort: makeFort, hold: makeHold, tower: makeWatchtower, ruins: makeRuins, stones: makeStones };
 
 // The starting fort stands for good
 {
@@ -5181,6 +5294,8 @@ const LINES = {
   farewell: ['Safe travels.', 'Mind how you go.', 'Off you go, then.'],
   villager: ['Hello there!', 'Welcome, stranger.', 'Lovely day for it.', 'Mind the chickens.'],
   villagerNight: ['Evening.', "Late to be about, isn't it?", 'Stay near the lamps.'],
+  dwarf: ['Well met, surface-dweller.', 'Mind your step on the stone.', 'The forges never rest.', 'Welcome to Kharn Dolum.'],
+  dwarfNight: ['The mountain keeps no hours.', 'Late for a climb, friend.', 'Warm yourself by the forges.'],
 };
 const pick = a => a[Math.floor(Math.random() * a.length)];
 const bubbleBox = document.getElementById('bubbles');
@@ -5239,7 +5354,8 @@ function updateGuards(dt) {
         say(gd, `Welcome back! You've been away ${d < 1 ? 'a while' : d < 1.5 ? 'a day' : `${Math.round(d)} days`}.`, 4);
         continue;
       }
-      say(gd, pick(v ? (night ? LINES.villagerNight : LINES.villager) : night ? LINES.greetNight : LINES.greet)); gd.greeted = true;
+      const d = gd.home?.kind === 'dwarf';
+      say(gd, pick(v ? (night ? LINES.villagerNight : LINES.villager) : d ? (night ? LINES.dwarfNight : LINES.dwarf) : night ? LINES.greetNight : LINES.greet)); gd.greeted = true;
     }
     if (gd.lostT > 5) gd.greeted = false;
     if (sees && dist < TALK_RANGE && (!talkTarget || dist < talkTarget.dist)) talkTarget = { gd, dist };
@@ -5290,7 +5406,7 @@ function talk() {
 function openDialogue(gd) {
   dlg.open = true; dlg.gd = gd; dlg.area = null;
   if (document.pointerLockElement) document.exitPointerLock();
-  const p = gd.home?.person, role = p ? `${p.name} \u00b7 ${p.job === 'merchant' ? 'merchant from ' + p.from : p.job === 'carter' ? 'carter from ' + p.from : JOB_NAMES[p.job]}` : gd.home?.kind === 'villager' ? 'Villager' : 'Guard';
+  const p = gd.home?.person, role = p ? `${p.name} \u00b7 ${p.job === 'merchant' ? 'merchant from ' + p.from : p.job === 'carter' ? 'carter from ' + p.from : JOB_NAMES[p.job]}` : gd.home?.kind === 'villager' ? 'Villager' : gd.home?.kind === 'dwarf' ? 'Dwarf guard' : 'Guard';
   dlgEl.querySelector('.who').textContent = gd.home ? `${role} \u00b7 ${gd.home.title}` : role;
   const night = env.daylight < .35;
   showDialogue(night ? 'Evening, traveller. Something you need?' : 'Good day. What can I do for you?');

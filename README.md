@@ -40,7 +40,7 @@ The places come from the world gazetteer (draft 1) and are set by hand on the pa
 
 | Region | Places |
 |---|---|
-| The Greyspine | **Kharn Dolum** (fort, by the Vael's source), **Anvil's Rest** (village), **the Cold Gallery** (ruins) |
+| The Greyspine | **Kharn Dolum** (the dwarves' hold, by the Vael's source; see below), **Anvil's Rest** (village), **the Cold Gallery** (ruins) |
 | The Hollow | **the Victory Fields** (a field of monuments and grave mounds), **the Sunken Throne** (ruins, beside the Vael), **Oathstone** (one great standing stone), **Concord Landing** (village) |
 | The Vael Marches | **Hollin's Ferry**, **Kelford** and **Millbrook** (villages; Kelford and Millbrook have windmills and bakeries), **Castle Aldermere** and **Harrowgate Keep** (forts), **Greycrest** and **Scarrow Hovel** (villages) |
 | The Wenmere | **Aelith Vara**, **Mistwater** (by the lake) and **Thornwick** (villages), **the Silent Grove** (a stone ring round a fallen altar) |
@@ -219,6 +219,17 @@ Forts are stone models rather than blocks: brick, or sandstone in the desert.
 - **Stairs:** two flights of stone half steps either side of the gate, up to the walkway.
 - **The keep:** a hollow keep in the courtyard with a doorway, window slits and battlements. Stacks of crates stand about.
 - **Solid:** walls, towers, stairs, gates and crates are all solid. You walk the wall walks and climb the stairs, and guards patrol the walls. Walls block arrows and line of sight.
+
+## Kharn Dolum
+
+The dwarf capital is a hold cut into a mountain, the first place with buildings of its own.
+
+- **The mountain:** a craggy peak of rough rock heaped over the hold, down to the ground on its flanks and back.
+- **The one way in:** a walled forecourt behind an outer gatehouse, then a dressed stone facade with pilasters, a cornice and a band of runes over the great gate. The iron gates stand open.
+- **Statues:** two giant dwarves with axes stand either side of the gate.
+- **The great hall:** carved into the rock and lined in dark stone, with two rows of pillars running back to a dais and a high seat. Four forges stand along the walls, each with a stone hearth, a fire burning, a hood and chimney, and an anvil beside it.
+- **The dwarves:** dwarf guards, short and broad, bearded, in mail under an iron helm and carrying axes. They keep the outer gate, the forecourt and the hall, and they have their own greetings (*Well met, surface-dweller.*). Talking to one shows *Dwarf guard*.
+- **How it's built:** a place's `style` picks its layout. Kharn Dolum's (`buildHold`) gives a single `hold` model (`makeHold`). The rock is solid round the hall; the crags are lumpy icosahedra roughened by the hold's seed and kept above the hall's ceiling.
 
 ## Trees
 
