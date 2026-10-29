@@ -781,7 +781,8 @@ const terrainHeight = (x, z, cl) => Math.round(terrainHeightF(x, z, cl));
 const OCEAN = 0, DESERT = 1, PLAINS = 2, FOREST = 3, SNOWY = 4;
 const BIOME_NAMES = ['ocean', 'desert', 'plains', 'forest', 'snowy'];
 function biomeOf(cl, h) {
-  if (h <= SEA) return OCEAN;
+  // Under the sea's surface: the same test as the water (h is the ground's whole-block height)
+  if (h < SEA_LEVEL) return OCEAN;
   if (cl.desert > .5) return DESERT;
   if (cl.cold > .5 || h > G + 25) return SNOWY;
   return cl.wet > .5 ? FOREST : PLAINS;
@@ -5435,6 +5436,7 @@ const MAP_COLORS = {
   beach: [210, 194, 142], rock: [128, 126, 124], path: [156, 124, 88], bridge: [120, 84, 50], ice: [150, 182, 210],
   shallow: [72, 124, 184], deep: [22, 48, 92], fort: [190, 70, 50], red: [176, 98, 60],
 };
+MAP_COLORS[OCEAN] = MAP_COLORS.shallow;
 const LEGEND = [['Ocean', MAP_COLORS.shallow], ['Beach', MAP_COLORS.beach], ['Desert', MAP_COLORS[DESERT]],
   ['Red desert', MAP_COLORS.red], ['Plains', MAP_COLORS[PLAINS]], ['Forest', MAP_COLORS[FOREST]], ['Snow', MAP_COLORS[SNOWY]],
   ['Rock', MAP_COLORS.rock]];
@@ -5451,7 +5453,7 @@ function mapColor(x, z, h, biome, cl) {
   if (biome === DESERT || biome === SNOWY) return MAP_COLORS[biome];
   if (h <= SEA + 1 && cl.e < .04 || cl.e < .015 && h <= SEA + 3) return MAP_COLORS.beach;
   if (h > G + 22) return MAP_COLORS.rock;
-  return MAP_COLORS[biome];
+  return MAP_COLORS[biome] || MAP_COLORS[PLAINS];                 // never without a colour
 }
 
 // A map image rendered progressively (a few rows per frame) into an offscreen canvas.
@@ -5481,7 +5483,13 @@ class MapView {
     this.bx = cx; this.bz = cz; this.bscale = scale;
     this.job = { row: 0, img: new ImageData(this.size, this.size), prevRow: new Float32Array(this.size) };
   }
+  // Render a few more rows. If drawing throws, the job is dropped (and the error logged once), so a
+  // bad tile can never stop the game; the next view starts afresh.
   step(budgetMs) {
+    try { this.stepRows(budgetMs); }
+    catch (e) { this.job = null; if (!this.failed) console.error('Map drawing failed:', e); this.failed = true; }
+  }
+  stepRows(budgetMs) {
     const job = this.job;
     if (!job) return;
     const t0 = performance.now(), size = this.size, r0 = job.row, d = job.img.data;
@@ -6032,12 +6040,20 @@ function update(dt, t) {
   updateBridges(dt);
 }
 
+// Errors in one frame are logged once each and the game carries on: the next frame is always asked for
+// first, and the maps are kept apart so a map problem can't stop the world being drawn
+const frameErrors = new Set();
+function reportOnce(where, e) { const k = where + ':' + e?.message; if (!frameErrors.has(k)) { frameErrors.add(k); console.error(`Error in ${where}:`, e); } }
 function frame() {
+  requestAnimationFrame(frame);
+  try { frameBody(); } catch (e) { reportOnce('frame', e); }
+}
+function frameBody() {
   const dt = Math.min(clock.getDelta(), .05);
   streamChunks(P.pos.x, P.pos.z, 6);
   update(started && !mapOpen && !dlg.open ? dt : 0, clock.elapsedTime);
   updateBubbles();
-  updateMaps();
+  try { updateMaps(); } catch (e) { reportOnce('maps', e); }
   if (!started) { P.yaw = P.homeYaw + Math.sin(clock.elapsedTime * .15) * .25; camera.rotation.set(P.pitch, P.yaw, 0); }
   sky.position.copy(camera.position);
   // Water: drifting ripples, and murky blue fog with the camera under the surface
@@ -6058,7 +6074,6 @@ function frame() {
   } else {
     renderer.render(scene, camera);
   }
-  requestAnimationFrame(frame);
 }
 // ---------------------------------------------------------------------------
 // Saving: settings, plus one save per world seed (position, view, time). Autosaves every
