@@ -169,11 +169,11 @@ const RULES = {
   serialHang: .6,            // a caught serial killer is hanged, otherwise imprisoned for life
   // Lesser crimes: yearly chance per adult (poaching mostly by hunters), and of being caught
   crimes: { theft: { rate: .004, caught: .35 }, assault: { rate: .002, caught: .5 }, poaching: { rate: .0015, hunter: .03, caught: .3 } },
-  // Prison sentences in years for a human, multiplied per race. Dwarves' and orcs' follow their lifespans
-  // (300 and 60 years against a human's 80); elves' are kept gentler than their 600 years would make them,
-  // so a thieving elf isn't locked away for decades
+  // Prison sentences in years for a human, multiplied per race. Orcs' follow their lifespan (60 years
+  // against a human's 80); dwarves' and elves' are kept gentler than their 300 and 600 years would make
+  // them, so a thieving dwarf or elf isn't locked away for decades
   sentences: { murder: [15, 40], theft: [1, 4], assault: [2, 6], poaching: [1, 3] },
-  sentenceScale: { human: 1, dwarf: 3.75, orc: .75, elf: 1.5 },
+  sentenceScale: { human: 1, dwarf: 2, orc: .75, elf: 1.5 },
   prisonIllness: 2,          // illness is this much likelier in the cells
   // The cells beneath the castles: dwarves and orcs go to their own holds, everyone else to the nearest
   // human castle (Harrowgate Keep for the west and the Wenmere, Castle Aldermere for the rest)
