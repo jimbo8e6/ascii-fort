@@ -25,6 +25,7 @@
   a { color: var(--link); cursor: pointer; text-decoration: none; } a:hover { text-decoration: underline; }
   .star { color: var(--star); }
   .office { color: var(--office); }
+  a.office { cursor: pointer; text-decoration: underline dotted; }
   .dim { color: var(--dim); }
   h2 { font-size: 15px; margin: 4px 0 8px; color: var(--accent); }
   h3 { font-size: 13px; margin: 16px 0 6px; color: var(--dim); text-transform: uppercase; letter-spacing: .08em; }
@@ -1145,7 +1146,9 @@ $('races').addEventListener('change', e => { const { r, k } = e.target.dataset, 
 const name = id => { const p = H.people[id]; return `${p.name} ${p.surname}`; };
 const link = id => id === null ? '<span class="dim">unknown</span>' : `<a data-id="${id}">${name(id)}</a>${H.people[id].notable ? ' <span class="star">★</span>' : ''}`;
 const life = p => `${p.birth}–${p.death ?? ''}`;
-const brief = id => { const p = H.people[id], t = p.death === null ? titles(H, id) : []; return `${link(id)} <span class="dim">${p.race}${p.heritage.length > 1 ? '*' : ''} ${life(p)}${p.trade ? ' · ' + p.trade : ''}</span>${t.length ? ` <span class="office">${t.join(', ')}</span>` : ''}`; };
+// A title, as a link to the office's own page (everyone who has held it, and how)
+const officeLink = (place, office) => `<a class="office" data-office="${place}|${office}">${office} of ${place}</a>`;
+const brief = (id, withTitles = true) => { const p = H.people[id], t = p.death === null && withTitles ? H._holds[id] || [] : []; return `${link(id)} <span class="dim">${p.race}${p.heritage.length > 1 ? '*' : ''} ${life(p)}${p.trade ? ' · ' + p.trade : ''}</span>${t.length ? ' ' + t.map(k => officeLink(...k.split('|'))).join(', ') : ''}`; };
 const died = p => ['murder', 'execution', 'challenge'].includes(p.deathKind) ? p.cause : 'of ' + p.cause;
 
 function stats() {
@@ -1172,7 +1175,7 @@ function search() {
     : q === 'prison' ? Object.values(prisoners(H)).flat()
     : H.people.filter(p => !q || `${p.name} ${p.surname}`.toLowerCase().includes(q)).map(p => p.id);
   if (q === 'offices' || q === 'office') {
-    $('results').innerHTML = officeHolders(H).map(o => `<div><span class="office">${o.office} of ${o.place}</span> ${o.p === null ? `<span class="dim">vacant${o.since !== null ? ' since ' + o.since : ''}</span>` : brief(o.p) + ` <span class="dim">since ${o.since}</span>`}</div>`).join('');
+    $('results').innerHTML = officeHolders(H).map(o => `<div>${officeLink(o.place, o.office)} ${o.p === null ? `<span class="dim">vacant${o.since !== null ? ' since ' + o.since : ''}</span>` : brief(o.p, false) + ` <span class="dim">since ${o.since}</span>`}</div>`).join('');
     return;
   }
   if (!q) ids = [...H.people.filter(p => p.notable).map(p => p.id), ...H._living.slice(-40)];
@@ -1208,14 +1211,14 @@ function show(id) {
     <div>${p.race}${p.heritage.length > 1 ? ` <span class="temp">(family of ${p.heritage.join(', ')}; race chosen by a temporary rule)</span>` : ''}, ${p.sex === 'f' ? 'female' : 'male'}, born ${p.birth} in ${p.birthPlace}${p.death !== null ? `, died ${p.death} aged ${p.death - p.birth}, ${died(p)}` : `, alive, aged ${H.year - p.birth}`} · constitution ${p.constitution.toFixed(2)}</div>
     <div>${p.trade || 'no trade yet'} · lives in ${p.place} · generation ${p.gen}</div>
     ${crime ? `<h3>The truth about a death</h3><div class="crime">${crime}</div>` : ''}
-    ${offs.length ? `<h3>Offices</h3><div>${offs.map(h => `${h.from}–${h.to ?? ''}: <span class="office">${h.office} of ${h.place}</span> <span class="dim">${h.how}${h.after !== undefined ? ' from ' + link(h.after) : ''}${h.by !== undefined ? ' by ' + link(h.by) : ''}${h.for !== undefined ? ' for ' + link(h.for) : ''}${h.why ? '; ' + h.why : ''}</span>`).join('<br>')}</div>` : ''}
+    ${offs.length ? `<h3>Offices</h3><div>${offs.map(h => `${h.from}–${h.to ?? ''}: ${officeLink(h.place, h.office)} <span class="dim">${h.how}${h.after !== undefined ? ' from ' + link(h.after) : ''}${h.by !== undefined ? ' by ' + link(h.by) : ''}${h.for !== undefined ? ' for ' + link(h.for) : ''}${h.why ? '; ' + h.why : ''}</span>`).join('<br>')}</div>` : ''}
     ${myVerdicts.length ? `<h3>Verdicts given (${myVerdicts.length}, ${myVerdicts.filter(v => v.wrongful).length} wrongful)</h3><div class="dim">${myVerdicts.slice(0, 40).map(v => `${v.y}: ${link(v.p)}, ${v.crime}: ${v.sentence}${v.wrongful ? ' <span class="temp">(innocent)</span>' : ''}`).join('<br>')}${myVerdicts.length > 40 ? '<br>…' : ''}</div>` : ''}
     <div style="margin-top:8px"><button id="setA">SET AS A</button> <button id="setB">SET AS B</button></div>
     ${pickA !== null && pickB !== null ? relBox() : ''}
     <h3>Parents</h3><div>mother ${p.mother === null ? '<span class="dim">unknown (founder)</span>' : brief(p.mother)}<br>father ${p.father === null ? '<span class="dim">unknown (founder)</span>' : brief(p.father)}</div>
     <h3>Marriages</h3><div>${p.spouses.map(s => `${s.year}: ${brief(s.id)}`).join('<br>') || '<span class="dim">none</span>'}</div>
     <h3>Children (${kids.length})</h3><div>${kids.map(brief).join('<br>') || '<span class="dim">none</span>'}</div>
-    <h3>Life</h3><div class="dim">${lifeEvents.map(e => `${e.y}: ${e.t === 'wed' ? 'married ' + name(e.a === id ? e.b : e.a) : e.t === 'move' ? `moved ${e.from} → ${e.to}${e.why ? ' (' + e.why + ')' : ''}` : e.t === 'office' ? `became ${e.office} of ${e.place} (${e.how})` : e.t === 'left office' ? `ceased to be ${e.office} of ${e.place}: ${e.why}` : e.t === 'vow' ? `vowed revenge on ${name(e.against)} for ${name(e.for)}` : e.t === 'challenge' ? `fought ${name(e.p === id ? e.against : e.p)} to the death${e.chieftaincy ? ' for the chieftaincy' : ''}${e.revenge !== undefined ? ', avenging ' + name(e.revenge) : ''}` : e.t === 'trade' ? 'became a ' + e.trade : e.t === 'found' ? 'living at the end of the war' : e.t === 'death' ? (['murder', 'execution', 'challenge'].includes(e.kind) ? e.cause : 'died of ' + e.cause) : e.t === 'caught' ? (e.hushed ? `caught after ${e.victims.length} killings; the case was hushed up` : `caught, ${e.victims.length} killings brought to light`) : e.t === 'exiled' ? `exiled from ${e.from} to ${e.to}${e.why === 'wrongly blamed' ? ' for a murder they didn\'t commit' : e.hushed ? ', quietly' : ' for murder'}` : e.t === 'accused' ? `blamed for the murder of ${name(e.for)}` : e.t === 'imprisoned' ? `sent to the cells beneath ${e.at} for ${e.crime}, ${e.condemned ? 'condemned to die in ' + e.until + (H.rules.offices.seats[e.at].justice === 'court' ? ', when the court sits' : '') : e.until === null ? 'for life' : 'until ' + e.until}` : e.t === 'released' ? `released from ${e.from}` : e.t === 'crime' ? `${e.crime}${e.victim !== null ? ' against ' + name(e.victim) : ''}${e.caught ? ', caught' : ' (never caught)'}` : e.t === 'turned' ? 'turned killer (known to no one)' : e.t}`).join('<br>')}</div>
+    <h3>Life</h3><div class="dim">${lifeEvents.map(e => `${e.y}: ${e.t === 'wed' ? 'married ' + name(e.a === id ? e.b : e.a) : e.t === 'move' ? `moved ${e.from} → ${e.to}${e.why ? ' (' + e.why + ')' : ''}` : e.t === 'office' ? `became ${officeLink(e.place, e.office)} (${e.how})` : e.t === 'left office' ? `ceased to be ${officeLink(e.place, e.office)}: ${e.why}` : e.t === 'vow' ? `vowed revenge on ${name(e.against)} for ${name(e.for)}` : e.t === 'challenge' ? `fought ${name(e.p === id ? e.against : e.p)} to the death${e.chieftaincy ? ' for the chieftaincy' : ''}${e.revenge !== undefined ? ', avenging ' + name(e.revenge) : ''}` : e.t === 'trade' ? 'became a ' + e.trade : e.t === 'found' ? 'living at the end of the war' : e.t === 'death' ? (['murder', 'execution', 'challenge'].includes(e.kind) ? e.cause : 'died of ' + e.cause) : e.t === 'caught' ? (e.hushed ? `caught after ${e.victims.length} killings; the case was hushed up` : `caught, ${e.victims.length} killings brought to light`) : e.t === 'exiled' ? `exiled from ${e.from} to ${e.to}${e.why === 'wrongly blamed' ? ' for a murder they didn\'t commit' : e.hushed ? ', quietly' : ' for murder'}` : e.t === 'accused' ? `blamed for the murder of ${name(e.for)}` : e.t === 'imprisoned' ? `sent to the cells beneath ${e.at} for ${e.crime}, ${e.condemned ? 'condemned to die in ' + e.until + (H.rules.offices.seats[e.at].justice === 'court' ? ', when the court sits' : '') : e.until === null ? 'for life' : 'until ' + e.until}` : e.t === 'released' ? `released from ${e.from}` : e.t === 'crime' ? `${e.crime}${e.victim !== null ? ' against ' + name(e.victim) : ''}${e.caught ? ', caught' : ' (never caught)'}` : e.t === 'turned' ? 'turned killer (known to no one)' : e.t}`).join('<br>')}</div>
     <h3>Ancestors: ${A.size} known, ${notables.length} notable</h3>
     <div>${notables.slice(0, 10).map(([x, e]) => `<span class="star">★</span> ${link(x)}, ${H.people[x].notable} <span class="dim">(${e.depth} generations back, via ${e.routes[0].join(' → ')})</span>`).join('<br>') || '<span class="dim">no notable ancestors: an ordinary family</span>'}</div>
     <h3>Family line (father's side, as surnames pass under the temporary rule)</h3><div>${line.map(brief).join('<br>')}</div>
@@ -1223,13 +1226,39 @@ function show(id) {
   $('setA').onclick = () => { pickA = id; show(id); };
   $('setB').onclick = () => { pickB = id; show(id); };
 }
+// An office's page: every holder in turn, how they came to it and how it ended, and the gaps between
+function showOffice(key) {
+  const [place, office] = key.split('|'), all = holdings(H), hs = all.filter(h => h.place === place && h.office === office);
+  const gaps = H.events.filter(e => e.t === 'vacant' && e.place === place && e.office === office);
+  const S = H.rules.offices.seats[place];
+  const how = h => {
+    if (h.how === 'founding') return 'the first, at the end of the war';
+    if (h.how === 'inherited') { const r = relationship(H, h.after, h.p); return `inherited from ${link(h.after)}${r ? ` <span class="dim">(${r})</span>` : ''}${H._children[h.after].includes(h.p) ? '' : `: ${link(h.after)} left no child who could take it, so it went to the nearest relative`}`; }
+    if (h.how === 'next in rank') { const was = all.find(x => x.p === h.p && x.place === place && x.to === h.from && /^became/.test(x.why || '')); return `next in rank${was ? ` (was ${was.office})` : ''}: there was no heir`; }
+    if (h.how === 'chosen by the household') return 'chosen by the household: no heir, and no one in rank to take it';
+    if (h.how === 'appointed') return h.by !== undefined ? `appointed by ${link(h.by)}` : 'appointed by its own people (no ruler over them then)';
+    if (h.how === 'regent') return `regent for ${link(h.for)}, a child`;
+    if (/fight|challenge/.test(h.how)) { const f = H.events.find(e => e.t === 'challenge' && e.y === h.from && e.chieftaincy && (e.p === h.p && e.won || e.against === h.p && !e.won));
+      return f ? `${h.how}: killed ${link(f.won ? f.against : f.p)}${f.revenge !== undefined ? `, avenging ${link(f.revenge)}` : ''}` : h.how; }
+    return h.how;
+  };
+  // Holdings and vacancies, in order
+  const rows = [...hs.map(h => ({ y: h.from, h })), ...gaps.map(g => ({ y: g.y, g }))].sort((a, b) => a.y - b.y || !!a.g - !!b.g);   // a vacancy after a holding of the same year
+  const staff = officeHolders(H).filter(o => o.place === place && `${o.place}|${o.office}` !== key);
+  $('card').innerHTML = `
+    <h2><span class="office">${office} of ${place}</span></h2>
+    <div class="dim">${S ? (office === S.ruler ? (S.rule === 'inherit' ? 'passes to the eldest child, then the nearest relative, then the next highest in rank' : S.rule === 'chosen' ? 'chosen by the circle of elders, usually the eldest' : 'held by challenge to the death') : office === 'Regent' ? 'rules for a child ' + S.ruler : 'appointed by the ' + S.ruler) : 'appointed by the ruler over this place'} · ${hs.length} holders since the war</div>
+    <h3>Holders</h3><div>${rows.map(r => r.g ? `<div class="dim">${r.g.y}: <i>vacant</i>: ${r.g.why}</div>`
+      : `<div style="margin-bottom:6px"><b>${r.h.from}–${r.h.to ?? 'now'}</b> ${brief(r.h.p, false)}<br><span class="dim">how:</span> ${how(r.h)}${r.h.why ? `<br><span class="dim">ended:</span> ${r.h.why}` : ''}</div>`).join('') || '<span class="dim">no one yet</span>'}</div>
+    ${staff.length ? `<h3>Other offices at ${place}</h3><div>${staff.map(o => `${officeLink(o.place, o.office)} ${o.p === null ? '<span class="dim">vacant</span>' : brief(o.p, false)}`).join('<br>')}</div>` : ''}`;
+}
 function relBox() {
   const r = relationship(H, pickA, pickB), { nearest, common } = sharedAncestors(H, pickA, pickB);
   const route = (from, steps) => { let x = from, out = [link(x)]; for (const s of steps) { x = H.people[x][s]; out.push(`<span class="dim">${s}</span> ${link(x)}`); } return out.join(' → '); };
   return `<div class="rel">A: ${brief(pickA)}<br>B: ${brief(pickB)}<br><b>${r ? r : 'not related'}</b>${common.length ? ` <span class="dim">(${common.length} shared ancestors)</span>` : ''}
     ${nearest.slice(0, 6).map(n => `<div style="margin-top:6px">${brief(n.id)}<br><span class="dim">A:</span> ${route(pickA, n.fromA.routes[0])}<br><span class="dim">B:</span> ${route(pickB, n.fromB.routes[0])}</div>`).join('')}</div>`;
 }
-document.body.addEventListener('click', e => { const a = e.target.closest('a[data-id]'); if (a) show(+a.dataset.id); });
+document.body.addEventListener('click', e => { const o = e.target.closest('a[data-office]'); if (o) return showOffice(o.dataset.office); const a = e.target.closest('a[data-id]'); if (a) show(+a.dataset.id); });
 $('go').onclick = generate;
 $('search').oninput = search;
 if ($('saveBtn')) $('saveBtn').onclick = () => { if (!H) return; const b = new Blob([save(H)], { type: 'application/json' }), u = URL.createObjectURL(b), a = document.createElement('a'); a.href = u; a.download = `history-${H.seed}-${H.year}.json`; a.click(); URL.revokeObjectURL(u); };

@@ -132,4 +132,6 @@ only adds to them, and a saved history carries on the same. All the posts and ti
   crimes, and office-holders no theft or poaching. Office-holders don't move away; a spouse moves to them.
 - **Questions:** `holdings(H)` (every holding, with how it began and ended), `officeHolders(H)` (every office
   now), `titles(H, id)`, `verdicts(H, judge)`. In the viewer, search `offices`; a person's card lists their
-  offices and the verdicts they gave.
+  offices and the verdicts they gave. Every title is a link to that office's page: everyone who has held it in
+  turn, how each came to it (inherited from whom, and how they were related; next in rank; appointed by whom;
+  won in a fight), why each held it no longer, the vacancies between and why, and the other offices at that place.
