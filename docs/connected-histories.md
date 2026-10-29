@@ -24,6 +24,8 @@ of bakers) are as valid as famous ones (a displaced king in the family tree).
   through all the items and people in the world and see their lineage (the full truth).
 - **Hidden followers of the ancients:** independent pockets of believers, unaffiliated with each other,
   hidden, and *not necessarily family groups*.
+- **Murder:** deaths include murder outside any war, including serial killers, so that quests can turn on
+  solving them. The truth and what people believe are recorded separately.
 - **History is fixed while you play.** Only the player's own actions (and NPCs reacting to them) add to it.
 - **Hardcore / heir mode is only an idea, not planned work and not part of the prototype:** if you die
   you're dead for good, the game advances 10 years and you play as your heir.

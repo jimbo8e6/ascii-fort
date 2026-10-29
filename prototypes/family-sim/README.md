@@ -47,3 +47,22 @@ Nothing in the game uses it.
 - Old age starts to tell at 85% of a person's own lifespan, calibrated so that half of those who die of
   old age have done so by it. No one outlives 1.6 × their race's typical life.
 - Illness and injury cut lives short at any age, so some elves die young. Every death records its cause.
+
+## Murder
+- **Every death has a kind:** old age, illness, injury, childbirth, murder or execution (`deathKind` on the
+  person and `kind` on the death event).
+- **Ordinary murders** (rare; `murderRate`): an adult kills someone near to a motive: a parent (an
+  inheritance), a spouse (a bitter marriage), someone from another family (an old feud), a trader or innkeeper
+  (robbery), or anyone (jealousy). Each has a method.
+- **Serial killers** (`serialChance` on coming of age, about 1 per century in these places): a hidden
+  signature of method, calling card and kind of victim (travellers and newcomers, young women, the old, anyone
+  caught alone). Once their time comes they kill now and then, near home, or anywhere if their trade takes them
+  travelling. Each killing is a chance of being caught, more so the more there have been. A caught serial
+  killer is hanged and their whole series comes to light. Others die uncaught, or are still at large.
+- **The truth and what people believe:** each murder records who did it, how, why (or the calling card), and
+  what people believe happened. A quiet method (poison, a push, drowning, a blow) may pass for a natural death.
+  A known murder may be solved (the killer hanged or exiled), stay unsolved, or be pinned on an innocent, who is
+  hanged or exiled in their place. A killing taken for natural keeps that belief, and gains the year the truth
+  came out if the killer is caught later.
+- `cases(H)` lists the serial killers with their signature, killings and status. In the viewer, search
+  `murder`, `unsolved` or `killer`.

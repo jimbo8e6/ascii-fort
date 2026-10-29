@@ -1,6 +1,6 @@
 // Runs the six checks for the family simulation prototype and measures generation time.
 // Usage: node test.mjs   (prints a report; also writes results.txt next to this file)
-import { newHistory, simulate, save, load, ancestors, sharedAncestors, relationship, describe, fullName, RACES, TEMP_RULES, RULES } from './family-sim.mjs';
+import { newHistory, simulate, save, load, ancestors, sharedAncestors, relationship, describe, fullName, cases, RACES, TEMP_RULES, RULES, MURDER } from './family-sim.mjs';
 import { createHash } from 'node:crypto';
 import { buildViewer } from './build-viewer.mjs';
 buildViewer();                                   // keep viewer.html's copy of the simulation up to date
@@ -92,7 +92,8 @@ log('\n3. An early start and a later start from the same seed: the later one onl
   // People as they stood at year `early`, rebuilt from the longer history
   // (a trade is only known once its trade event has happened; place is left out, as people move later)
   const lateTrade = new Set(L.events.filter(e => e.t === 'trade' && e.y > early).map(e => e.p));
-  const asOf = (p, y) => ({ ...p, death: p.death !== null && p.death <= y ? p.death : null, cause: p.death !== null && p.death <= y ? p.cause : null, spouses: p.spouses.filter(s => s.year <= y),
+  const asOf = (p, y) => ({ ...p, death: p.death !== null && p.death <= y ? p.death : null, cause: p.death !== null && p.death <= y ? p.cause : null,
+    deathKind: p.death !== null && p.death <= y ? p.deathKind : null, killer: lateTrade.has(p.id) ? null : p.killer, spouses: p.spouses.filter(s => s.year <= y),
     trade: lateTrade.has(p.id) ? null : p.trade, place: null });
   const same = E.people.every((p, i) => JSON.stringify({ ...asOf(p, early) }) === JSON.stringify(asOf(L.people[i], early)));
   check(same && L.people.length > E.people.length, `the ${E.people.length} people of year ${early} have the same births, parents, marriages and deaths; ${L.people.length - E.people.length} more people come later`);
@@ -142,7 +143,7 @@ function sanity(H) {
     const R = RACES[TEMP_RULES.lifespanRace(p)];
     if (p.death !== null && p.death < p.birth) bad.push(`#${p.id} dies before birth`);
     if ((p.death ?? H.year) - p.birth > R.life * CEILING) bad.push(`#${p.id} outlives the ceiling for its race`);
-    if ((p.death === null) !== (p.cause === null)) bad.push(`#${p.id} has a death without a cause or a cause without a death`);
+    if ((p.death === null) !== (p.cause === null) || (p.death === null) !== (p.deathKind === null)) bad.push(`#${p.id} has a death without a cause and kind, or the other way round`);
     for (const [par, rel] of [[p.mother, 'mother'], [p.father, 'father']]) {
       if (par === null) continue;
       const q = P[par];
@@ -206,8 +207,8 @@ log('\nLifespans and causes of death (seed 1337, 2,000 years, everyone who died 
       `${(long / adults.length * 100).toFixed(1)}% past ${Math.round(R.life * 1.15)}, ${(short / adults.length * 100).toFixed(0)}% before ${R.life / 2}`.padEnd(34) + `${adults.at(-1)}`);
   }
   const causes = {};
-  for (const p of dead) { const c = p.cause === 'old age' ? 'old age' : p.cause === 'childbirth' ? 'childbirth' : /drown|rockfall|skirmish|hunting|falling tree|forge|scaffold|crushing|fall|cart|fight|horse|fire|wound/.test(p.cause) ? 'injury' : 'illness'; causes[c] = (causes[c] || 0) + 1; }
-  log(`  Causes: ${Object.entries(causes).map(([c, n]) => `${c} ${(n / dead.length * 100).toFixed(0)}%`).join(', ')}`);
+  for (const p of dead) causes[p.deathKind] = (causes[p.deathKind] || 0) + 1;
+  log(`  Causes: ${Object.entries(causes).sort((a, b) => b[1] - a[1]).map(([c, n]) => `${c} ${(n / dead.length * 100).toFixed(1)}%`).join(', ')}`);
   const oldest = (race) => { const ds = dead.filter(p => p.race === race).sort((a, b) => (b.death - b.birth) - (a.death - a.birth)); return ds[0]; };
   for (const race of ['human', 'elf']) { const p = oldest(race); log(`  Longest-lived ${race}: ${describe(X, p.id)}, constitution ${p.constitution.toFixed(2)}`); }
   const youngElf = dead.filter(p => p.race === 'elf' && p.death - p.birth >= RACES.elf.adult).sort((a, b) => (a.death - a.birth) - (b.death - b.birth))[0];
@@ -230,6 +231,68 @@ log('\n6. Save and reload');
 }
 
 // ---------------------------------------------------------------------------------------------
+log('\n8. Murders and serial killers');
+function murderProblems(X) {
+  const bad = [], P = X.people, R = X.rules.races, ev = X.events;
+  const caughtAt = {}; for (const e of ev) if (e.t === 'caught') caughtAt[e.p] = e.y;
+  for (const e of ev) {
+    if (e.t !== 'death' || e.kind !== 'murder') continue;
+    const v = P[e.p], k = P[e.by], a = e.y - k.birth;
+    if (!k || k.id === v.id) { bad.push(`#${v.id}: no killer, or killed themselves`); continue; }
+    if (v.death !== e.y || v.deathKind !== 'murder') bad.push(`#${v.id}: the victim's record doesn't match the killing`);
+    if (k.birth >= e.y || a < R[k.race].adult) bad.push(`#${k.id} killed #${v.id} before adulthood`);
+    if (k.death !== null && k.death < e.y) bad.push(`#${k.id} killed #${v.id} after dying`);
+    if (caughtAt[k.id] !== undefined && caughtAt[k.id] < e.y) bad.push(`#${k.id} killed #${v.id} after being caught`);
+    if (e.serial) {
+      const s = k.killer;
+      if (!s || e.y < s.from || e.method !== s.method || e.mark !== s.mark) bad.push(`#${k.id}'s killing of #${v.id} doesn't match their signature`);
+      const ra = e.y - v.birth, rv = R[v.race];
+      const fits = s.prey === 'travellers' ? v.birthPlace !== e.place || ['trader', 'carter', 'sailor', 'stablehand'].includes(v.trade)
+        : s.prey === 'young' ? v.sex === 'f' && ra >= rv.adult && ra < rv.adult + rv.life * .2 : s.prey === 'old' ? ra > rv.life * .6 : ra >= rv.adult;
+      if (!fits) bad.push(`#${v.id} isn't the kind of victim #${k.id} chooses (${s.prey})`);
+    } else if (!MURDER.motives.includes(e.motive)) bad.push(`#${v.id}'s killing has no motive`);
+    if (!/murder/.test(e.believed) && e.solved !== false && e.revealed === undefined) bad.push(`#${v.id}'s death passed for natural yet counts as solved, with no later revelation`);
+    if (e.revealed !== undefined && (e.revealed < e.y || !ev.some(x => x.t === 'caught' && x.p === k.id && x.y === e.revealed))) bad.push(`#${v.id}'s killing was revealed without the killer being caught then`);
+    if (e.blamed !== undefined && (e.blamed === k.id || e.solved)) bad.push(`#${v.id}: the blamed person is the killer, or the case was solved`);
+  }
+  for (const e of ev) if (e.t === 'caught') {
+    const after = ev.find(x => x.y === e.y && x.p === e.p && (x.t === 'exiled' || x.t === 'death' && x.kind === 'execution'));
+    if (!after) bad.push(`#${e.p} was caught but neither hanged nor exiled`);
+  }
+  for (const e of ev) if (e.t === 'death' && e.kind === 'execution' && P[e.for]?.deathKind !== 'murder') bad.push(`#${e.p} hanged for a death that wasn't a murder`);
+  return bad;
+}
+for (const [seed, yrs] of [[1337, 500], [1837, 500], [42, 1000]]) {
+  const X = run(seed, yrs), mu = X.events.filter(e => e.t === 'death' && e.kind === 'murder'), C = cases(X), bad = murderProblems(X);
+  const n = f => mu.filter(f).length;
+  check(bad.length === 0, `seed ${seed}, ${yrs} years: ${mu.length} murders (${n(e => !e.serial)} ordinary, ${n(e => e.serial)} by ${C.filter(c => c.victims.length).length} serial killers), ` +
+    `${n(e => e.solved)} solved, ${n(e => !/murder/.test(e.believed))} passed for natural deaths, ${n(e => e.blamed !== undefined)} pinned on an innocent; ` +
+    `${bad.length} problems${bad.length ? ': ' + bad.slice(0, 4).join('; ') : ''}`);
+}
+log('  Checked for every murder: the killer was alive and an adult, not the victim, and not yet caught; a serial');
+log('  killing matches the killer\'s method, calling card and choice of victim; a killing that passed for natural is');
+log('  unsolved; an innocent who was blamed is not the killer; a killing taken for natural is only solved\n  when its killer is caught later; everyone caught was hanged or exiled (serial killers always hanged); every hanging');
+log('  was for a real murder.');
+{
+  const X = run(1837, 500), C = cases(X), P = X.people, nm = id => fullName(X, id);
+  const story = (c, label) => {
+    log(`  ${label}: ${describe(X, c.killer)}`);
+    log(`    signature: ${MURDER.methods[c.method].cause}, leaves ${c.mark}, chooses ${MURDER.prey[c.prey]}; status: ${c.status}${c.caught !== null ? ` (caught ${c.caught})` : ''}`);
+    for (const e of c.victims) log(`    ${e.y}  ${nm(e.p).padEnd(20)} ${e.place.padEnd(16)} people believed: ${e.believed}${e.revealed !== undefined ? `; the truth came out in ${e.revealed}` : ''}`);
+  };
+  const caught = C.filter(c => c.status === 'caught').sort((a, b) => b.victims.length - a.victims.length)[0];
+  const free = C.find(c => c.status === 'died, never caught' || c.status === 'at large');
+  if (caught) story(caught, 'A series that was caught');
+  if (free) story(free, 'A series never solved');
+  const ord = X.events.find(e => e.t === 'death' && e.kind === 'murder' && !e.serial && e.blamed !== undefined);
+  if (ord) log(`  Pinned on an innocent: ${nm(ord.p)} (${ord.y}, ${ord.place}) was ${MURDER.methods[ord.method].cause} by ${nm(ord.by)} over ${ord.motive}; ` +
+    `${nm(ord.blamed)} was blamed and ${X.events.find(e => e.t === 'accused' && e.p === ord.blamed).outcome}.`);
+  const hidden = X.events.find(e => e.t === 'death' && e.kind === 'murder' && !/murder/.test(e.believed));
+  if (hidden) log(`  Passed for natural: ${nm(hidden.p)} (${hidden.y}) was ${MURDER.methods[hidden.method].cause} by ${nm(hidden.by)}${hidden.motive ? ' over ' + hidden.motive : ''}; people believe: ${hidden.believed}.`);
+  const open = C.filter(c => c.status === 'at large');
+  log(`  Serial killers still at large at the end (a mystery waiting for a player): ${open.length ? open.map(c => `${nm(c.killer)} (${c.victims.length} victims)`).join(', ') : 'none in this history'}`);
+}
+
 log('\n7. A saved history keeps its own rules');
 {
   const keep = JSON.stringify(RACES);

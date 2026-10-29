@@ -41,6 +41,23 @@ const CAUSES = {
 };
 const CHILDBIRTH = .006;                 // a mother's chance of dying in childbirth
 
+// ---- Murder: deaths at another's hand, outside any battle or war ----
+// The truth (who, how, why) is kept on the death event; what people believe happened is kept beside
+// it, and can be wrong: a poisoning taken for a fever, a push taken for a fall, an innocent hanged.
+// Serial killers have a signature (method, calling card, the kind of victim they choose) that ties
+// their killings together, for whoever looks closely enough.
+export const MURDER = {
+  methods: {
+    knife: { cause: 'stabbed', disguise: null }, strangling: { cause: 'strangled', disguise: null },
+    blow: { cause: 'a blow to the head', disguise: 'injury' }, poison: { cause: 'poisoned', disguise: 'illness' },
+    drowning: { cause: 'held under water', disguise: 'drowning' }, pushed: { cause: 'pushed to their death', disguise: 'injury' },
+  },
+  motives: ['an inheritance', 'jealousy', 'an old feud', 'robbery', 'a bitter marriage'],
+  marks: ['a knotted red cord', 'a crow feather', 'a coin on the tongue', 'a lock of hair cut away', 'a rune scratched into the door', 'a sprig of nightshade', 'candle wax on the eyes'],
+  prey: { travellers: 'travellers and newcomers', young: 'young women', old: 'the old', alone: 'anyone caught alone' },
+};
+const ROAMING = new Set(['trader', 'carter', 'sailor', 'stablehand']);
+
 // ---- ⚠ TEMPORARY inheritance rules, for James to decide. Each one is a single function to swap. ----
 export const TEMP_RULES = {
   // A child of two races takes one parent's race at random (and keeps both in `heritage`)
@@ -70,6 +87,15 @@ export const RULES = {
   maxChildren: 9,
   // Kin who may not marry: anyone sharing a parent or grandparent (siblings, half siblings, first cousins)
   kinDepth: 2,
+  // Murder (placeholders)
+  murderRate: .00025,        // an adult's yearly chance of killing someone for a motive
+  serialChance: .0008,       // chance on coming of age of being a killer in waiting
+  serialKillChance: .3,      // an active serial killer's yearly chance of killing
+  solveChance: .55,          // an ordinary murder, known to be one, is solved
+  disguiseChance: .5,        // a killing by a quiet method passes for a natural death
+  wrongAccuse: .25,          // an unsolved murder gets pinned on an innocent
+  hangChance: .6,            // a convicted killer is hanged (otherwise exiled)
+  catchBase: .03, catchPerVictim: .025,   // a serial killer's chance of being caught after each killing
 };
 
 // ---- Places (a subset of the gazetteer). Who lives there, how many it holds, and its trades. ----
@@ -122,7 +148,7 @@ const NAMES = {
 // history carries on under its own rules whatever the current settings are. The rule *functions*
 // (TEMP_RULES, causes of death, constitution) are code: RULES_CODE names their version, and loading a
 // history made under a different version is flagged.
-export const RULES_CODE = 'family-sim 3';
+export const RULES_CODE = 'family-sim 4';
 function currentRules() {
   return JSON.parse(JSON.stringify({ code: RULES_CODE, races: RACES, places: PLACES, ceiling: CEILING, childbirth: CHILDBIRTH,
     crossRaceWeight: TEMP_RULES.crossRaceWeight, ...RULES }));
@@ -136,7 +162,7 @@ function rand(seed, tag, a = 0, b = 0, c = 0) {
   h ^= h >>> 16; h = Math.imul(h, 0x85ebca6b); h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35); h ^= h >>> 16;
   return (h >>> 0) / 4294967296;
 }
-const T = Object.fromEntries(['con', 'cause', 'childbirth', 'death', 'wed', 'wedPick', 'away', 'awayPlace', 'birth', 'sex', 'race', 'name', 'trade', 'tradePick', 'leave', 'leavePlace', 'found', 'foundAge', 'foundKids', 'foundRace', 'foundSurname', 'foundTrade'].map(k => [k, TAG(k)]));
+const T = Object.fromEntries(['murder', 'motive', 'victim', 'method', 'believe', 'solve', 'accuse', 'punish', 'exile', 'serial', 'serialPick', 'serialKill', 'roam', 'catch', 'con', 'cause', 'childbirth', 'death', 'wed', 'wedPick', 'away', 'awayPlace', 'birth', 'sex', 'race', 'name', 'trade', 'tradePick', 'leave', 'leavePlace', 'found', 'foundAge', 'foundKids', 'foundRace', 'foundSurname', 'foundTrade'].map(k => [k, TAG(k)]));
 // A person's own constitution: mostly within 15% of 1, with about 1 in 25 unusually hardy (up to half
 // as long again) and about 1 in 25 frail (as little as half)
 function ownConstitution(seed, id) {
@@ -170,7 +196,7 @@ export function newHistory(seed) {
 function found(H) {
   const { seed } = H, { races: RACES, places: PLACES } = H.rules;
   let n = 0;
-  const person = (o) => { const p = { id: H.people.length, spouses: [], death: null, cause: null, mother: null, father: null, gen: 0, trade: null, notable: null, ...o }; H.people.push(p); return p; };
+  const person = (o) => { const p = { id: H.people.length, spouses: [], death: null, cause: null, deathKind: null, killer: null, mother: null, father: null, gen: 0, trade: null, notable: null, ...o }; H.people.push(p); return p; };
   const firstName = (race, sex, id) => NAMES[race][sex][rand(seed, T.name, id) * NAMES[race][sex].length | 0];
   const notables = NOTABLES.map(x => ({ ...x }));
   PLACES.forEach((pl, pi) => {
@@ -221,6 +247,8 @@ function found(H) {
 
 // Derived lookups (rebuilt after loading): children, living people
 function index(H) {
+  H._kills = {};
+  for (const e of H.events) if (e.t === 'death' && e.kind === 'murder') H._kills[e.by] = (H._kills[e.by] || 0) + 1;
   H._children = H.people.map(() => []);
   for (const p of H.people) for (const par of [p.mother, p.father]) if (par !== null) H._children[par].push(p.id);
   H._living = H.people.filter(p => p.death === null).map(p => p.id);
@@ -262,6 +290,101 @@ const closeKin = (H, a, b) => {
   return isAncestor(H, older.id, younger.id);
 };
 
+// ---- Murders, each year after the natural deaths ----
+function murders(H, y, alive, add) {
+  const { seed } = H, RULES = H.rules, RACES = RULES.races, P = H.people;
+  const age = p => y - p.birth, adult = p => age(p) >= RACES[p.race].adult;
+  const byPlace = {}; for (const p of alive) (byPlace[p.place] ||= []).push(p);
+  const living = p => p.death === null;
+  const family = (a, b) => a.mother === b.id || a.father === b.id || b.mother === a.id || b.father === a.id || a.spouses.some(s => s.id === b.id);
+  const pickFrom = (list, r) => list.length ? list[Math.floor(r * list.length)] : null;
+  const otherPlace = (p, r) => { const opts = RULES.places.filter(q => q.name !== p.place && q.races[p.race]); return opts.length ? opts[Math.floor(r * opts.length)].name : null; };
+  // A convicted (or wrongly blamed) person is hanged or sent away
+  const punish = (p, forVictim, why, mustHang = false) => {
+    if (!living(p)) return null;
+    if (mustHang || rand(seed, T.punish, y, p.id) < RULES.hangChance) {
+      p.death = y; p.deathKind = 'execution'; p.cause = `hanged for the murder of ${P[forVictim].name} ${P[forVictim].surname}`;
+      H.events.push({ y, t: 'death', p: p.id, kind: 'execution', cause: p.cause, for: forVictim, place: p.place, why }); add(p, -1);
+      return 'hanged';
+    }
+    const to = otherPlace(p, rand(seed, T.exile, y, p.id));
+    if (!to) return null;
+    H.events.push({ y, t: 'exiled', p: p.id, from: p.place, to, for: forVictim, why }); add(p, -1); p.place = to; add(p, 1);
+    return 'exiled';
+  };
+  const kill = (killer, victim, method, motive, serial) => {
+    victim.death = y; victim.deathKind = 'murder';
+    victim.cause = `murdered (${MURDER.methods[method].cause}) by ${killer.name} ${killer.surname}`;
+    add(victim, -1);
+    const e = { y, t: 'death', p: victim.id, kind: 'murder', cause: victim.cause, by: killer.id, method, place: victim.place };
+    if (serial) { e.serial = true; e.mark = killer.killer.mark; } else e.motive = motive;
+    // What people believe: a quiet method may pass for a natural death
+    const d = MURDER.methods[method].disguise;
+    if (d && rand(seed, T.believe, y, victim.id) < RULES.disguiseChance) {
+      e.believed = d === 'illness' ? CAUSES.illness[rand(seed, T.believe, y, victim.id + 1) * CAUSES.illness.length | 0]
+        : d === 'drowning' ? 'drowning' : CAUSES.injury[rand(seed, T.believe, y, victim.id + 1) * CAUSES.injury.length | 0];
+      e.solved = false;
+    } else e.believed = serial ? `murder by an unknown hand (${killer.killer.mark} was found)` : 'murder by an unknown hand';
+    H.events.push(e);
+    H._kills[killer.id] = (H._kills[killer.id] || 0) + 1;
+    return e;
+  };
+  // Ordinary murders: someone with a motive kills someone close to it
+  for (const k of alive) {
+    if (!living(k) || !adult(k) || k.killer || rand(seed, T.murder, y, k.id) >= RULES.murderRate) continue;
+    const motive = MURDER.motives[Math.floor(rand(seed, T.motive, y, k.id) * MURDER.motives.length)];
+    const here = (byPlace[k.place] || []).filter(v => v !== k && living(v) && adult(v));
+    const r = rand(seed, T.victim, y, k.id);
+    const victim = motive === 'an inheritance' ? pickFrom([k.mother, k.father].filter(x => x !== null).map(x => P[x]).filter(v => living(v) && v.place === k.place), r)
+      : motive === 'a bitter marriage' ? pickFrom(k.spouses.map(s => P[s.id]).filter(v => living(v) && v.place === k.place), r)
+      : motive === 'an old feud' ? pickFrom(here.filter(v => v.line !== k.line && !family(k, v)), r)
+      : motive === 'robbery' ? pickFrom(here.filter(v => !family(k, v) && ['trader', 'innkeeper', 'well-keeper', 'clerk'].includes(v.trade)), r) || pickFrom(here.filter(v => !family(k, v)), r)
+      : pickFrom(here.filter(v => !family(k, v)), r);
+    if (!victim) continue;
+    const methods = Object.keys(MURDER.methods), e = kill(k, victim, methods[Math.floor(rand(seed, T.method, y, k.id) * methods.length)], motive, false);
+    if (e.solved === false) continue;                                            // taken for a natural death
+    if (rand(seed, T.solve, y, victim.id) < RULES.solveChance) {
+      e.solved = true; e.believed = `murder by ${k.name} ${k.surname}`;
+      e.punished = punish(k, victim.id, 'convicted');
+    } else {
+      e.solved = false;
+      if (rand(seed, T.accuse, y, victim.id) < RULES.wrongAccuse) {
+        const innocent = pickFrom(here.filter(v => v !== k && v !== victim && living(v)), rand(seed, T.accuse, y, victim.id + 7));
+        if (innocent) {
+          const outcome = punish(innocent, victim.id, 'wrongly blamed');
+          if (outcome) { e.blamed = innocent.id; e.believed = `murder by ${innocent.name} ${innocent.surname}`; H.events.push({ y, t: 'accused', p: innocent.id, for: victim.id, outcome }); }
+        }
+      }
+    }
+  }
+  // Serial killers: once their time comes, a killing now and then, until they're caught or die
+  for (const k of alive) {
+    if (!living(k) || !k.killer || y < k.killer.from || rand(seed, T.serialKill, y, k.id) >= RULES.serialKillChance) continue;
+    // Those who travel for their trade sometimes kill away from home
+    let where = k.place;
+    if (ROAMING.has(k.trade) && rand(seed, T.roam, y, k.id) < .5) where = RULES.places[Math.floor(rand(seed, T.roam, y, k.id + 3) * RULES.places.length)].name;
+    const fits = v => {
+      const R = RACES[v.race], a = age(v);
+      return k.killer.prey === 'travellers' ? v.birthPlace !== v.place || ROAMING.has(v.trade)
+        : k.killer.prey === 'young' ? v.sex === 'f' && a >= R.adult && a < R.adult + R.life * .2
+        : k.killer.prey === 'old' ? a > R.life * .6 : a >= R.adult;
+    };
+    const victim = pickFrom((byPlace[where] || []).filter(v => v !== k && living(v) && !family(k, v) && fits(v)), rand(seed, T.victim, y, k.id + 1));
+    if (!victim) continue;
+    const e = kill(k, victim, k.killer.method, null, true);
+    // Each killing is a chance of being caught, more so the more there have been
+    if (rand(seed, T.catch, y, k.id) < RULES.catchBase + RULES.catchPerVictim * H._kills[k.id]) {
+      // Caught: the whole series comes to light, including killings taken for natural deaths at the time
+      // (each keeps what people believed then, and gains the year the truth came out). A caught serial
+      // killer is always hanged.
+      const series = H.events.filter(x => x.t === 'death' && x.by === k.id && x.serial);
+      for (const x of series) { x.solved = true; x.revealed = y; }
+      H.events.push({ y, t: 'caught', p: k.id, victims: series.map(x => x.p), mark: k.killer.mark });
+      punish(k, victim.id, 'convicted', true);
+    }
+  }
+}
+
 // Run the history on to year `to`. Can be called again later to carry on from where it stopped.
 export function simulate(H, to) {
   const { seed } = H, RULES = H.rules, { races: RACES, places: PLACES, ceiling: CEILING, childbirth: CHILDBIRTH } = RULES, placeIndex = Object.fromEntries(PLACES.map((p, i) => [p.name, i]));
@@ -280,13 +403,13 @@ export function simulate(H, to) {
       const hurt = a < R.adult / 2 ? R.injury * .3 : R.injury * (RISKY[p.trade] || 1);
       const old = oldAgeChance(R, p, a);
       const r = rand(seed, T.death, y, p.id);
-      let cause = null;
-      if (a >= R.life * CEILING) cause = 'old age';
-      else if (r < old) cause = 'old age';
-      else if (r < old + ill) cause = CAUSES.illness[rand(seed, T.cause, y, p.id) * CAUSES.illness.length | 0];
-      else if (r < old + ill + hurt) cause = CAUSES.trade[p.trade] && rand(seed, T.cause, y, p.id) < .7 ? CAUSES.trade[p.trade] : CAUSES.injury[rand(seed, T.cause, y, p.id + 1) * CAUSES.injury.length | 0];
-      if (cause) { p.death = y; p.cause = cause; H.events.push({ y, t: 'death', p: p.id, cause, place: p.place }); add(p, -1); }
+      let cause = null, kind = null;
+      if (a >= R.life * CEILING || r < old) { cause = 'old age'; kind = 'old age'; }
+      else if (r < old + ill) { cause = CAUSES.illness[rand(seed, T.cause, y, p.id) * CAUSES.illness.length | 0]; kind = 'illness'; }
+      else if (r < old + ill + hurt) { cause = CAUSES.trade[p.trade] && rand(seed, T.cause, y, p.id) < .7 ? CAUSES.trade[p.trade] : CAUSES.injury[rand(seed, T.cause, y, p.id + 1) * CAUSES.injury.length | 0]; kind = 'injury'; }
+      if (cause) { p.death = y; p.cause = cause; p.deathKind = kind; H.events.push({ y, t: 'death', p: p.id, kind, cause, place: p.place }); add(p, -1); }
     }
+    murders(H, y, living.filter(p => p.death === null), add);
     const alive = living.filter(p => p.death === null);
     // Coming of age: a trade, and perhaps a move away
     for (const p of alive) {
@@ -297,6 +420,12 @@ export function simulate(H, to) {
       p.trade = r < RULES.tradeFromFather && f?.trade ? f.trade : r < RULES.tradeFromFather + RULES.tradeFromMother && m?.trade ? m.trade
         : pl.trades[rand(seed, T.tradePick, y, p.id) * pl.trades.length | 0];
       H.events.push({ y, t: 'trade', p: p.id, trade: p.trade });
+      // Very rarely, a killer in waiting: their method, calling card and the kind of victim they'll choose
+      if (rand(seed, T.serial, y, p.id) < RULES.serialChance) {
+        const pick = (list, k) => list[rand(seed, T.serialPick, p.id, k) * list.length | 0];
+        p.killer = { method: pick(Object.keys(MURDER.methods), 1), mark: pick(MURDER.marks, 2), prey: pick(Object.keys(MURDER.prey), 3),
+          from: y + Math.floor(rand(seed, T.serialPick, p.id, 4) * Math.max(3, R.adult * .6)) };
+      }
       const crowded = (pop[key(p.place, p.race)] || 0) / Math.max(1, room(p.place, p.race));
       if (rand(seed, T.leave, y, p.id) < RULES.leaveHome + Math.max(0, crowded - .8)) {
         // Only to places where their own race lives, and there's room for them
@@ -350,7 +479,7 @@ export function simulate(H, to) {
     }
     for (const [w, h, race] of born) {
       const id = H.people.length, lineParent = TEMP_RULES.lineParent(w, h);
-      const c = { id, sex: rand(seed, T.sex, y, id) < .5 ? 'm' : 'f', birth: y, death: null, cause: null, mother: w.id, father: h.id, spouses: [], place: w.place, birthPlace: w.place,
+      const c = { id, sex: rand(seed, T.sex, y, id) < .5 ? 'm' : 'f', birth: y, death: null, cause: null, deathKind: null, killer: null, mother: w.id, father: h.id, spouses: [], place: w.place, birthPlace: w.place,
         surname: lineParent.surname, line: lineParent.line, trade: null, notable: null, gen: Math.max(w.gen, h.gen) + 1 };
       c.race = race;
       setConstitution(seed, c, w, h);
@@ -359,7 +488,7 @@ export function simulate(H, to) {
       H.people.push(c); H._children.push([]); H._children[w.id].push(id); H._children[h.id].push(id);
       H.events.push({ y, t: 'birth', p: id, mother: w.id, father: h.id, place: w.place });
       add(c, 1);
-      if (rand(seed, T.childbirth, y, w.id) < CHILDBIRTH) { w.death = y; w.cause = CAUSES.childbirth; H.events.push({ y, t: 'death', p: w.id, cause: w.cause, place: w.place }); add(w, -1); }
+      if (rand(seed, T.childbirth, y, w.id) < CHILDBIRTH) { w.death = y; w.cause = CAUSES.childbirth; w.deathKind = 'childbirth'; H.events.push({ y, t: 'death', p: w.id, kind: 'childbirth', cause: w.cause, place: w.place }); add(w, -1); }
     }
     H._living = H.people.filter(p => p.death === null).map(p => p.id);
     H.year = y;
@@ -427,7 +556,17 @@ export function relationship(H, a, b) {
   return `${half}${ord(k)} cousins${r ? ` ${r === 1 ? 'once' : r === 2 ? 'twice' : r + ' times'} removed` : ''}`;
 }
 export const fullName = (H, id) => { const p = H.people[id]; return `${p.name} ${p.surname}`; };
+// Serial killers and their killings: the truth, with whether each was caught or is still at large
+export function cases(H) {
+  return H.people.filter(p => p.killer).map(p => {
+    const victims = H.events.filter(e => e.t === 'death' && e.by === p.id && e.serial);
+    const caught = H.events.find(e => e.t === 'caught' && e.p === p.id);
+    const status = caught ? 'caught' : !victims.length ? (p.death !== null ? 'died before killing' : 'not yet started')
+      : p.death !== null ? 'died, never caught' : 'at large';
+    return { killer: p.id, ...p.killer, victims, caught: caught ? caught.y : null, status };
+  });
+}
 export const describe = (H, id) => {
   const p = H.people[id];
-  return `${p.name} ${p.surname} (#${id}, ${p.race}${p.heritage.length > 1 ? ' of ' + p.heritage.join('-') + ' family' : ''}, ${p.sex === 'f' ? 'f' : 'm'}, born ${p.birth}${p.death !== null ? `, died ${p.death} aged ${p.death - p.birth} of ${p.cause}` : ''}${p.trade ? ', ' + p.trade : ''}, ${p.place}${p.notable ? ', ★ ' + p.notable : ''})`;
+  return `${p.name} ${p.surname} (#${id}, ${p.race}${p.heritage.length > 1 ? ' of ' + p.heritage.join('-') + ' family' : ''}, ${p.sex === 'f' ? 'f' : 'm'}, born ${p.birth}${p.death !== null ? `, died ${p.death} aged ${p.death - p.birth}, ${p.deathKind === 'murder' || p.deathKind === 'execution' ? p.cause : 'of ' + p.cause}` : ''}${p.trade ? ', ' + p.trade : ''}, ${p.place}${p.notable ? ', ★ ' + p.notable : ''})`;
 };
