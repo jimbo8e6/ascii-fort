@@ -54,15 +54,30 @@ Nothing in the game uses it.
 - **Ordinary murders** (rare; `murderRate`): an adult kills someone near to a motive: a parent (an
   inheritance), a spouse (a bitter marriage), someone from another family (an old feud), a trader or innkeeper
   (robbery), or anyone (jealousy). Each has a method.
-- **Serial killers** (`serialChance` on coming of age, about 1 per century in these places): a hidden
-  signature of method, calling card and kind of victim (travellers and newcomers, young women, the old, anyone
-  caught alone). Once their time comes they kill now and then, near home, or anywhere if their trade takes them
-  travelling. Each killing is a chance of being caught, more so the more there have been. A caught serial
-  killer is hanged and their whole series comes to light. Others die uncaught, or are still at large.
+- **Serial killers:** there is always exactly one at large, so any start year has one, with killings behind
+  them. When one is caught or dies, someone turns that year (a free adult, chosen by the seed) and kills
+  before the year is out. Each has a hidden signature of method, calling card and kind of victim (travellers
+  and newcomers, young women, the old, anyone caught alone). Careers last around 50 years, so a new one turns
+  about every 50 years. The founding generation includes one whose first victims died in the last years of
+  the war, so the default start (year 1) has a killer with a history too. Serial killers keep out of petty
+  crime and are never the one wrongly blamed. A caught serial killer is hanged or imprisoned for life, and
+  their whole series comes to light. The history stops at the start year, so the killer doesn't go on
+  killing during play.
 - **The truth and what people believe:** each murder records who did it, how, why (or the calling card), and
   what people believe happened. A quiet method (poison, a push, drowning, a blow) may pass for a natural death.
-  A known murder may be solved (the killer hanged or exiled), stay unsolved, or be pinned on an innocent, who is
-  hanged or exiled in their place. A killing taken for natural keeps that belief, and gains the year the truth
-  came out if the killer is caught later.
+  A known murder may be solved (the killer hanged, imprisoned or exiled), stay unsolved, or be pinned on an
+  innocent, who suffers in their place. The past is never rewritten: a killing taken for natural keeps that
+  belief, and the caught event records which killings came to light (`revealedIn`, `solved`).
 - `cases(H)` lists the serial killers with their signature, killings and status. In the viewer, search
-  `murder`, `unsolved` or `killer`.
+  `murder`, `unsolved`, `killer` or `prison`.
+
+## Prisons
+- **The cells beneath the castles:** dwarves go to Kharn Dolum, orcs to Gor Marakh, and everyone else to the
+  nearest human castle (Harrowgate Keep for the west and the Wenmere, Castle Aldermere for the rest).
+- **Crimes:** theft, assault and poaching (mostly by hunters) happen to and between ordinary people, each with
+  a chance of being caught. Uncaught crimes are still recorded, as the truth.
+- **Sentences:** murder 15 to 40 years, or life; theft 1 to 4; assault 2 to 6; poaching 1 to 3. These are for
+  a human and scale with lifespan, so an elf's are 7½ times as long. Wrongly blamed innocents are imprisoned
+  too.
+- **In the cells:** prisoners don't marry, have children, commit crimes or suffer them; they fall ill more
+  easily; and they go home when their time is up. Who's in which castle now: `prisoners(H)`.

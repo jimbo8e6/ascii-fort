@@ -26,6 +26,12 @@ of bakers) are as valid as famous ones (a displaced king in the family tree).
   hidden, and *not necessarily family groups*.
 - **Murder:** deaths include murder outside any war, including serial killers, so that quests can turn on
   solving them. The truth and what people believe are recorded separately.
+- **A serial killer at large at every start,** with a history of killings, about one new killer every 50
+  years. The killer doesn't keep killing during play unless a written quest includes a murder.
+- **Prisons:** cells beneath the castles hold prisoners for anything from murder to stealing.
+- **Pre-war history:** the game will have a set history before the war. Its set deaths and events will be tied
+  to whichever families and names are generated for each new game.
+- **War deaths** will come later.
 - **History is fixed while you play.** Only the player's own actions (and NPCs reacting to them) add to it.
 - **Hardcore / heir mode is only an idea, not planned work and not part of the prototype:** if you die
   you're dead for good, the game advances 10 years and you play as your heir.

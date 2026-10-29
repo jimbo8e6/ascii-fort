@@ -89,13 +89,26 @@ export const RULES = {
   kinDepth: 2,
   // Murder (placeholders)
   murderRate: .00025,        // an adult's yearly chance of killing someone for a motive
-  serialChance: .0008,       // chance on coming of age of being a killer in waiting
-  serialKillChance: .3,      // an active serial killer's yearly chance of killing
+  // Serial killers: there is always exactly one at large. When one is caught or dies, another turns that
+  // year and kills before the year is out; these chances make a career last around 50 years
+  serialKillChance: .18,     // an active serial killer's yearly chance of killing (after the first)
+  catchBase: .012, catchPerVictim: .006,  // their chance of being caught after each killing
   solveChance: .55,          // an ordinary murder, known to be one, is solved
   disguiseChance: .5,        // a killing by a quiet method passes for a natural death
   wrongAccuse: .25,          // an unsolved murder gets pinned on an innocent
-  hangChance: .6,            // a convicted killer is hanged (otherwise exiled)
-  catchBase: .03, catchPerVictim: .025,   // a serial killer's chance of being caught after each killing
+  // What happens to someone convicted of murder (or blamed for one): hanged, imprisoned or exiled
+  murderPunish: { hanged: .45, imprisoned: .4, exiled: .15 },
+  lifeSentence: .35,         // share of murder sentences that are for life
+  serialHang: .6,            // a caught serial killer is hanged, otherwise imprisoned for life
+  // Lesser crimes: yearly chance per adult (poaching mostly by hunters), and of being caught
+  crimes: { theft: { rate: .004, caught: .35 }, assault: { rate: .002, caught: .5 }, poaching: { rate: .0015, hunter: .03, caught: .3 } },
+  // Prison sentences in years for a human; scaled to a race's lifespan (an elf's are 7½ times as long)
+  sentences: { murder: [15, 40], theft: [1, 4], assault: [2, 6], poaching: [1, 3] },
+  prisonIllness: 2,          // illness is this much likelier in the cells
+  // The cells beneath the castles: dwarves and orcs go to their own holds, everyone else to the nearest
+  // human castle (Harrowgate Keep for the west and the Wenmere, Castle Aldermere for the rest)
+  prisons: { dwarf: 'Kharn Dolum', orc: 'Gor Marakh', west: 'Harrowgate Keep', rest: 'Castle Aldermere',
+    westPlaces: ['Aelith Vara', 'Mistwater', 'Thornwick', 'Port Cassel', 'Harrowgate Keep'] },
 };
 
 // ---- Places (a subset of the gazetteer). Who lives there, how many it holds, and its trades. ----
@@ -148,7 +161,7 @@ const NAMES = {
 // history carries on under its own rules whatever the current settings are. The rule *functions*
 // (TEMP_RULES, causes of death, constitution) are code: RULES_CODE names their version, and loading a
 // history made under a different version is flagged.
-export const RULES_CODE = 'family-sim 4';
+export const RULES_CODE = 'family-sim 5';
 function currentRules() {
   return JSON.parse(JSON.stringify({ code: RULES_CODE, races: RACES, places: PLACES, ceiling: CEILING, childbirth: CHILDBIRTH,
     crossRaceWeight: TEMP_RULES.crossRaceWeight, ...RULES }));
@@ -162,7 +175,7 @@ function rand(seed, tag, a = 0, b = 0, c = 0) {
   h ^= h >>> 16; h = Math.imul(h, 0x85ebca6b); h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35); h ^= h >>> 16;
   return (h >>> 0) / 4294967296;
 }
-const T = Object.fromEntries(['murder', 'motive', 'victim', 'method', 'believe', 'solve', 'accuse', 'punish', 'exile', 'serial', 'serialPick', 'serialKill', 'roam', 'catch', 'con', 'cause', 'childbirth', 'death', 'wed', 'wedPick', 'away', 'awayPlace', 'birth', 'sex', 'race', 'name', 'trade', 'tradePick', 'leave', 'leavePlace', 'found', 'foundAge', 'foundKids', 'foundRace', 'foundSurname', 'foundTrade'].map(k => [k, TAG(k)]));
+const T = Object.fromEntries(['turn', 'turnPick', 'crime', 'crimeVictim', 'crimeCaught', 'sentence', 'lifer', 'prewar', 'murder', 'motive', 'victim', 'method', 'believe', 'solve', 'accuse', 'punish', 'exile', 'serial', 'serialPick', 'serialKill', 'roam', 'catch', 'con', 'cause', 'childbirth', 'death', 'wed', 'wedPick', 'away', 'awayPlace', 'birth', 'sex', 'race', 'name', 'trade', 'tradePick', 'leave', 'leavePlace', 'found', 'foundAge', 'foundKids', 'foundRace', 'foundSurname', 'foundTrade'].map(k => [k, TAG(k)]));
 // A person's own constitution: mostly within 15% of 1, with about 1 in 25 unusually hardy (up to half
 // as long again) and about 1 in 25 frail (as little as half)
 function ownConstitution(seed, id) {
@@ -196,7 +209,7 @@ export function newHistory(seed) {
 function found(H) {
   const { seed } = H, { races: RACES, places: PLACES } = H.rules;
   let n = 0;
-  const person = (o) => { const p = { id: H.people.length, spouses: [], death: null, cause: null, deathKind: null, killer: null, mother: null, father: null, gen: 0, trade: null, notable: null, ...o }; H.people.push(p); return p; };
+  const person = (o) => { const p = { id: H.people.length, spouses: [], death: null, cause: null, deathKind: null, killer: null, jail: null, mother: null, father: null, gen: 0, trade: null, notable: null, ...o }; H.people.push(p); return p; };
   const firstName = (race, sex, id) => NAMES[race][sex][rand(seed, T.name, id) * NAMES[race][sex].length | 0];
   const notables = NOTABLES.map(x => ({ ...x }));
   PLACES.forEach((pl, pi) => {
@@ -243,10 +256,44 @@ function found(H) {
       hh++;
     }
   });
+  foundingKiller(H);
+}
+
+// The killer at large when the war ends: one of the founders, with a few victims from the last years of
+// the war (people who died before year 0, so they're remembered rather than living at the start)
+function foundingKiller(H) {
+  const { seed } = H, { races: RACES, places: PLACES } = H.rules;
+  const adults = H.people.filter(p => p.mother === null && !p.notable && -p.birth >= RACES[p.race].adult + 5 && -p.birth < RACES[p.race].life * .5);
+  const k = adults[Math.floor(rand(seed, T.prewar, 1) * adults.length)];
+  const pick = (list, n) => list[rand(seed, T.turnPick, k.id, n) * list.length | 0];
+  k.killer = { method: pick(Object.keys(MURDER.methods), 1), mark: pick(MURDER.marks, 2), prey: pick(Object.keys(MURDER.prey), 3), from: -6, caught: null };
+  const pre = [{ y: -6, t: 'turned', p: k.id }];
+  const R = RACES[k.race], n = 2 + Math.floor(rand(seed, T.prewar, 2) * 3);
+  for (let i = 0; i < n; i++) {
+    const y = -5 + i, race = k.race, Rv = RACES[race];           // -5 to -2: all before the war ended
+    const sex = k.killer.prey === 'young' ? 'f' : rand(seed, T.prewar, 10 + i) < .5 ? 'm' : 'f';
+    const age = k.killer.prey === 'young' ? Rv.adult + 2 + Math.floor(rand(seed, T.prewar, 20 + i) * Rv.life * .1)
+      : k.killer.prey === 'old' ? Math.ceil(Rv.life * .62 + rand(seed, T.prewar, 20 + i) * Rv.life * .2) : Rv.adult + 3 + Math.floor(rand(seed, T.prewar, 20 + i) * Rv.life * .3);
+    const surname = NAMES[race].s[rand(seed, T.prewar, 30 + i) * NAMES[race].s.length | 0], line = { id: H.lines.length, surname, origin: k.place };
+    const born = k.killer.prey === 'travellers' ? PLACES.filter(q => q.name !== k.place)[Math.floor(rand(seed, T.prewar, 40 + i) * (PLACES.length - 1))].name : k.place;
+    const v = { id: H.people.length, name: NAMES[race][sex][rand(seed, T.name, H.people.length) * NAMES[race][sex].length | 0], surname, line: line.id, sex, race, heritage: [race],
+      birth: y - age, death: y, cause: `murdered (${MURDER.methods[k.killer.method].cause}) by ${k.name} ${k.surname}`, deathKind: 'murder', killer: null, jail: null,
+      mother: null, father: null, spouses: [], place: k.place, birthPlace: born, trade: null, notable: null, gen: 0 };
+    line.founder = v.id; H.lines.push(line);
+    setConstitution(seed, v, null, null);
+    H.people.push(v);
+    const disguised = MURDER.methods[k.killer.method].disguise && rand(seed, T.prewar, 50 + i) < H.rules.disguiseChance;
+    pre.push({ y, t: 'death', p: v.id, kind: 'murder', cause: v.cause, by: k.id, method: k.killer.method, place: k.place, serial: true, mark: k.killer.mark,
+      believed: disguised ? (MURDER.methods[k.killer.method].disguise === 'illness' ? CAUSES.illness[0] : MURDER.methods[k.killer.method].disguise === 'drowning' ? 'drowning' : CAUSES.injury[0])
+        : `murder by an unknown hand (${k.killer.mark} was found)`, solved: false, prewar: true });
+  }
+  H.events.unshift(...pre);
 }
 
 // Derived lookups (rebuilt after loading): children, living people
 function index(H) {
+  H._revealed = {};
+  for (const e of H.events) if (e.t === 'caught') for (const v of e.victims) H._revealed[v] = e.y;
   H._kills = {};
   for (const e of H.events) if (e.t === 'death' && e.kind === 'murder') H._kills[e.by] = (H._kills[e.by] || 0) + 1;
   H._children = H.people.map(() => []);
@@ -291,21 +338,40 @@ const closeKin = (H, a, b) => {
 };
 
 // ---- Murders, each year after the natural deaths ----
-function murders(H, y, alive, add) {
+function crimes(H, y, alive, add) {
   const { seed } = H, RULES = H.rules, RACES = RULES.races, P = H.people;
   const age = p => y - p.birth, adult = p => age(p) >= RACES[p.race].adult;
-  const byPlace = {}; for (const p of alive) (byPlace[p.place] ||= []).push(p);
-  const living = p => p.death === null;
+  const free = alive.filter(p => !p.jail);                                      // prisoners neither commit crimes nor suffer them
+  const byPlace = {}; for (const p of free) (byPlace[p.place] ||= []).push(p);
+  const living = p => p.death === null && !p.jail;
   const family = (a, b) => a.mother === b.id || a.father === b.id || b.mother === a.id || b.father === a.id || a.spouses.some(s => s.id === b.id);
   const pickFrom = (list, r) => list.length ? list[Math.floor(r * list.length)] : null;
   const otherPlace = (p, r) => { const opts = RULES.places.filter(q => q.name !== p.place && q.races[p.race]); return opts.length ? opts[Math.floor(r * opts.length)].name : null; };
-  // A convicted (or wrongly blamed) person is hanged or sent away
-  const punish = (p, forVictim, why, mustHang = false) => {
+  // The cells beneath the castle that takes someone from here
+  const prisonFor = p => RULES.prisons[p.race] || (RULES.prisons.westPlaces.includes(p.place) ? RULES.prisons.west : RULES.prisons.rest);
+  const sentence = (p, crime) => { const [a, b] = RULES.sentences[crime], k = RACES[p.race].life / 80;
+    return Math.max(1, Math.round((a + rand(seed, T.sentence, y, p.id) * (b - a)) * k)); };
+  // Into the cells: for a number of years, or for life (until: null)
+  const jail = (p, crime, years, why, extra = {}) => {
+    add(p, -1);
+    p.jail = { at: prisonFor(p), home: p.place, since: y, until: years === null ? null : y + years, crime, why };
+    H.events.push({ y, t: 'imprisoned', p: p.id, at: p.jail.at, from: p.place, until: p.jail.until, crime, why, ...extra });
+    p.place = p.jail.at;
+  };
+  // Someone convicted of (or blamed for) a murder is hanged, imprisoned or exiled
+  const punish = (p, forVictim, why, serial = false) => {
     if (!living(p)) return null;
-    if (mustHang || rand(seed, T.punish, y, p.id) < RULES.hangChance) {
+    const r = rand(seed, T.punish, y, p.id), w = RULES.murderPunish;
+    const outcome = serial ? (r < RULES.serialHang ? 'hanged' : 'imprisoned') : r < w.hanged ? 'hanged' : r < w.hanged + w.imprisoned ? 'imprisoned' : 'exiled';
+    if (outcome === 'hanged') {
       p.death = y; p.deathKind = 'execution'; p.cause = `hanged for the murder of ${P[forVictim].name} ${P[forVictim].surname}`;
       H.events.push({ y, t: 'death', p: p.id, kind: 'execution', cause: p.cause, for: forVictim, place: p.place, why }); add(p, -1);
       return 'hanged';
+    }
+    if (outcome === 'imprisoned') {
+      const life = serial || rand(seed, T.lifer, y, p.id) < RULES.lifeSentence;
+      jail(p, 'murder', life ? null : sentence(p, 'murder'), why, { for: forVictim });
+      return life ? 'imprisoned for life' : 'imprisoned';
     }
     const to = otherPlace(p, rand(seed, T.exile, y, p.id));
     if (!to) return null;
@@ -329,8 +395,22 @@ function murders(H, y, alive, add) {
     H._kills[killer.id] = (H._kills[killer.id] || 0) + 1;
     return e;
   };
+  // Lesser crimes: theft, assault and poaching. Those caught go to the cells for a while.
+  for (const k of free) {
+    if (!living(k) || !adult(k) || k.killer) continue;                           // a serial killer keeps their head down
+    for (const [crime, c] of Object.entries(RULES.crimes)) {
+      const rate = crime === 'poaching' && k.trade === 'hunter' ? c.hunter : c.rate;
+      if (rand(seed, T.crime, y, k.id * 4 + crime.length) >= rate) continue;
+      const victim = crime === 'poaching' ? null : pickFrom((byPlace[k.place] || []).filter(v => v !== k && living(v) && adult(v)), rand(seed, T.crimeVictim, y, k.id));
+      if (crime !== 'poaching' && !victim) continue;
+      const caught = rand(seed, T.crimeCaught, y, k.id * 4 + crime.length) < c.caught;
+      H.events.push({ y, t: 'crime', p: k.id, crime, victim: victim ? victim.id : null, caught, place: k.place });
+      if (caught) jail(k, crime, sentence(k, crime), 'convicted');
+      break;
+    }
+  }
   // Ordinary murders: someone with a motive kills someone close to it
-  for (const k of alive) {
+  for (const k of free) {
     if (!living(k) || !adult(k) || k.killer || rand(seed, T.murder, y, k.id) >= RULES.murderRate) continue;
     const motive = MURDER.motives[Math.floor(rand(seed, T.motive, y, k.id) * MURDER.motives.length)];
     const here = (byPlace[k.place] || []).filter(v => v !== k && living(v) && adult(v));
@@ -349,7 +429,7 @@ function murders(H, y, alive, add) {
     } else {
       e.solved = false;
       if (rand(seed, T.accuse, y, victim.id) < RULES.wrongAccuse) {
-        const innocent = pickFrom(here.filter(v => v !== k && v !== victim && living(v)), rand(seed, T.accuse, y, victim.id + 7));
+        const innocent = pickFrom(here.filter(v => v !== k && v !== victim && living(v) && !v.killer), rand(seed, T.accuse, y, victim.id + 7));
         if (innocent) {
           const outcome = punish(innocent, victim.id, 'wrongly blamed');
           if (outcome) { e.blamed = innocent.id; e.believed = `murder by ${innocent.name} ${innocent.surname}`; H.events.push({ y, t: 'accused', p: innocent.id, for: victim.id, outcome }); }
@@ -357,9 +437,22 @@ function murders(H, y, alive, add) {
       }
     }
   }
-  // Serial killers: once their time comes, a killing now and then, until they're caught or die
-  for (const k of alive) {
-    if (!living(k) || !k.killer || y < k.killer.from || rand(seed, T.serialKill, y, k.id) >= RULES.serialKillChance) continue;
+  // Serial killers: there's always one at large. If none is (the last was caught or died), someone turns
+  // this year, chosen from the free adults, with a method, calling card and kind of victim of their own.
+  const atLarge = free.filter(k => living(k) && k.killer && !k.killer.caught);
+  if (!atLarge.length) {
+    const cands = free.filter(k => living(k) && adult(k) && !k.killer && age(k) < RACES[k.race].life * .6);
+    const k = pickFrom(cands, rand(seed, T.turn, y));
+    if (k) {
+      const pick = (list, n) => list[rand(seed, T.turnPick, k.id, n) * list.length | 0];
+      k.killer = { method: pick(Object.keys(MURDER.methods), 1), mark: pick(MURDER.marks, 2), prey: pick(Object.keys(MURDER.prey), 3), from: y, caught: null };
+      H.events.push({ y, t: 'turned', p: k.id });
+      atLarge.push(k);
+    }
+  }
+  // A killing now and then (the first as soon as there's a victim to be had), until caught or dead
+  for (const k of atLarge) {
+    if (!living(k) || H._kills[k.id] && rand(seed, T.serialKill, y, k.id) >= RULES.serialKillChance) continue;
     // Those who travel for their trade sometimes kill away from home
     let where = k.place;
     if (ROAMING.has(k.trade) && rand(seed, T.roam, y, k.id) < .5) where = RULES.places[Math.floor(rand(seed, T.roam, y, k.id + 3) * RULES.places.length)].name;
@@ -374,12 +467,14 @@ function murders(H, y, alive, add) {
     const e = kill(k, victim, k.killer.method, null, true);
     // Each killing is a chance of being caught, more so the more there have been
     if (rand(seed, T.catch, y, k.id) < RULES.catchBase + RULES.catchPerVictim * H._kills[k.id]) {
-      // Caught: the whole series comes to light, including killings taken for natural deaths at the time
-      // (each keeps what people believed then, and gains the year the truth came out). A caught serial
-      // killer is always hanged.
+      // Caught: the whole series comes to light, including killings taken for natural deaths at the time.
+      // The past isn't rewritten: each killing keeps what people believed then, and the caught event
+      // records which killings came to light (see revealedIn). A caught serial killer is hanged or
+      // imprisoned for life.
       const series = H.events.filter(x => x.t === 'death' && x.by === k.id && x.serial);
-      for (const x of series) { x.solved = true; x.revealed = y; }
+      k.killer.caught = y;
       H.events.push({ y, t: 'caught', p: k.id, victims: series.map(x => x.p), mark: k.killer.mark });
+      for (const x of series) H._revealed[x.p] = y;
       punish(k, victim.id, 'convicted', true);
     }
   }
@@ -392,14 +487,19 @@ export function simulate(H, to) {
     const living = H._living.map(id => H.people[id]);
     // Head counts per place and race: each race has its own share of a place's room
     const pop = {}, key = (place, race) => place + '|' + race;
-    const add = (p, n) => { pop[key(p.place, p.race)] = (pop[key(p.place, p.race)] || 0) + n; };
+    const add = (p, n) => { if (!p.jail) pop[key(p.place, p.race)] = (pop[key(p.place, p.race)] || 0) + n; };   // prisoners don't count
     const room = (place, race) => PLACES[placeIndex[place]].cap * (PLACES[placeIndex[place]].races[race] || 0);
     for (const p of living) add(p, 1);
+    // Prisoners whose time is up go home
+    for (const p of living) if (p.jail && p.jail.until !== null && y >= p.jail.until) {
+      H.events.push({ y, t: 'released', p: p.id, from: p.jail.at, to: p.jail.home });
+      p.place = p.jail.home; p.jail = null; add(p, 1);
+    }
     // Deaths
     // Deaths: illness, injury and old age each have a yearly chance; one roll decides whether and which
     for (const p of living) {
       const R = RACES[TEMP_RULES.lifespanRace(p)], a = age(p, y);
-      const ill = a < R.adult / 3 ? R.childIllness : R.illness * (1 + Math.max(0, a / R.life - .5));   // the old sicken more easily
+      const ill = (a < R.adult / 3 ? R.childIllness : R.illness * (1 + Math.max(0, a / R.life - .5))) * (p.jail ? RULES.prisonIllness : 1);   // the old, and prisoners, sicken more easily
       const hurt = a < R.adult / 2 ? R.injury * .3 : R.injury * (RISKY[p.trade] || 1);
       const old = oldAgeChance(R, p, a);
       const r = rand(seed, T.death, y, p.id);
@@ -409,7 +509,7 @@ export function simulate(H, to) {
       else if (r < old + ill + hurt) { cause = CAUSES.trade[p.trade] && rand(seed, T.cause, y, p.id) < .7 ? CAUSES.trade[p.trade] : CAUSES.injury[rand(seed, T.cause, y, p.id + 1) * CAUSES.injury.length | 0]; kind = 'injury'; }
       if (cause) { p.death = y; p.cause = cause; p.deathKind = kind; H.events.push({ y, t: 'death', p: p.id, kind, cause, place: p.place }); add(p, -1); }
     }
-    murders(H, y, living.filter(p => p.death === null), add);
+    crimes(H, y, living.filter(p => p.death === null), add);
     const alive = living.filter(p => p.death === null);
     // Coming of age: a trade, and perhaps a move away
     for (const p of alive) {
@@ -420,12 +520,6 @@ export function simulate(H, to) {
       p.trade = r < RULES.tradeFromFather && f?.trade ? f.trade : r < RULES.tradeFromFather + RULES.tradeFromMother && m?.trade ? m.trade
         : pl.trades[rand(seed, T.tradePick, y, p.id) * pl.trades.length | 0];
       H.events.push({ y, t: 'trade', p: p.id, trade: p.trade });
-      // Very rarely, a killer in waiting: their method, calling card and the kind of victim they'll choose
-      if (rand(seed, T.serial, y, p.id) < RULES.serialChance) {
-        const pick = (list, k) => list[rand(seed, T.serialPick, p.id, k) * list.length | 0];
-        p.killer = { method: pick(Object.keys(MURDER.methods), 1), mark: pick(MURDER.marks, 2), prey: pick(Object.keys(MURDER.prey), 3),
-          from: y + Math.floor(rand(seed, T.serialPick, p.id, 4) * Math.max(3, R.adult * .6)) };
-      }
       const crowded = (pop[key(p.place, p.race)] || 0) / Math.max(1, room(p.place, p.race));
       if (rand(seed, T.leave, y, p.id) < RULES.leaveHome + Math.max(0, crowded - .8)) {
         // Only to places where their own race lives, and there's room for them
@@ -438,7 +532,7 @@ export function simulate(H, to) {
       }
     }
     // Weddings: unmarried women look for a match, at home or now and then further away
-    const single = p => !spouseNow(H, p) && age(p, y) >= RACES[p.race].adult && age(p, y) <= RACES[p.race].fertile[1] + 10;
+    const single = p => !p.jail && !spouseNow(H, p) && age(p, y) >= RACES[p.race].adult && age(p, y) <= RACES[p.race].fertile[1] + 10;
     const menBy = {};
     for (const p of alive) if (p.sex === 'm' && single(p)) (menBy[p.place] ||= []).push(p);
     const taken = new Set();
@@ -464,7 +558,7 @@ export function simulate(H, to) {
     for (const w of alive) {
       if (w.sex !== 'f') continue;
       const h = spouseNow(H, w);
-      if (!h) continue;
+      if (!h || w.jail || h.jail) continue;                                     // not while either is in the cells
       const R = RACES[TEMP_RULES.birthRace(w, h)], a = age(w, y);
       if (a < R.fertile[0] || a > R.fertile[1]) continue;
       const kids = H._children[w.id], last = kids.length ? H.people[kids.at(-1)].birth : -1e9;
@@ -479,7 +573,7 @@ export function simulate(H, to) {
     }
     for (const [w, h, race] of born) {
       const id = H.people.length, lineParent = TEMP_RULES.lineParent(w, h);
-      const c = { id, sex: rand(seed, T.sex, y, id) < .5 ? 'm' : 'f', birth: y, death: null, cause: null, deathKind: null, killer: null, mother: w.id, father: h.id, spouses: [], place: w.place, birthPlace: w.place,
+      const c = { id, sex: rand(seed, T.sex, y, id) < .5 ? 'm' : 'f', birth: y, death: null, cause: null, deathKind: null, killer: null, jail: null, mother: w.id, father: h.id, spouses: [], place: w.place, birthPlace: w.place,
         surname: lineParent.surname, line: lineParent.line, trade: null, notable: null, gen: Math.max(w.gen, h.gen) + 1 };
       c.race = race;
       setConstitution(seed, c, w, h);
@@ -556,15 +650,25 @@ export function relationship(H, a, b) {
   return `${half}${ord(k)} cousins${r ? ` ${r === 1 ? 'once' : r === 2 ? 'twice' : r + ' times'} removed` : ''}`;
 }
 export const fullName = (H, id) => { const p = H.people[id]; return `${p.name} ${p.surname}`; };
+// The year the truth came out about a serial killing (when its killer was caught), or undefined
+export const revealedIn = (H, victim) => H._revealed[victim];
+// Whether a murder is solved: an ordinary one at the time, a serial one once its killer is caught
+export const solved = (H, e) => !!e.solved || H._revealed[e.p] !== undefined;
 // Serial killers and their killings: the truth, with whether each was caught or is still at large
 export function cases(H) {
   return H.people.filter(p => p.killer).map(p => {
     const victims = H.events.filter(e => e.t === 'death' && e.by === p.id && e.serial);
     const caught = H.events.find(e => e.t === 'caught' && e.p === p.id);
-    const status = caught ? 'caught' : !victims.length ? (p.death !== null ? 'died before killing' : 'not yet started')
+    const status = caught ? (p.jail ? 'caught, in the cells' : 'caught') : !victims.length ? (p.death !== null ? 'died before killing' : 'not yet started')
       : p.death !== null ? 'died, never caught' : 'at large';
     return { killer: p.id, ...p.killer, victims, caught: caught ? caught.y : null, status };
   });
+}
+// Who is in the cells now, castle by castle
+export function prisoners(H) {
+  const out = {};
+  for (const id of H._living) { const p = H.people[id]; if (p.jail) (out[p.jail.at] ||= []).push(p.id); }
+  return out;
 }
 export const describe = (H, id) => {
   const p = H.people[id];
