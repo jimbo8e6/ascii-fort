@@ -1094,7 +1094,7 @@ function cases(H) {
     const victims = H.events.filter(e => e.t === 'death' && e.by === p.id && e.serial);
     const caught = H.events.find(e => e.t === 'caught' && e.p === p.id), loose = p.killer.exiled !== undefined && p.killer.recaught === undefined;
     const status = loose ? (p.death !== null ? 'exiled after a hushed-up capture, died uncaught' : 'exiled after a hushed-up capture, at large')
-      : caught ? (p.death !== null ? (p.deathKind === 'execution' ? 'caught and hanged' : 'caught, died in the cells')
+      : caught ? (p.death !== null ? (p.deathKind === 'execution' ? (/^hanged/.test(p.cause) ? 'caught and hanged' : 'caught and put to death') : 'caught, died in the cells')
         : p.jail?.condemned ? 'caught, awaiting the gallows' : 'caught, in the cells for life')
       : !victims.length ? (p.death !== null ? 'died before killing' : 'not yet started') : p.death !== null ? 'died, never caught' : 'at large';
     return { killer: p.id, ...p.killer, victims, caught: caught ? caught.y : null, status };
@@ -1196,21 +1196,33 @@ function show(id) {
   const blamedFor = H.events.find(e => e.t === 'accused' && e.p === id), myCase = p.killer && cases(H).find(c => c.killer === id);
   const offs = holdings(H).filter(h => h.p === id), myVerdicts = verdicts(H, id);
   const cell = p.jail && p.death === null ? H.events.findLast(e => e.t === 'imprisoned' && e.p === id) : null;
-  const crime = [
-    cell ? `<div><b>In the cells</b> beneath ${cell.at} since ${cell.y}, ${cell.condemned ? (H.rules.offices.seats[cell.at].justice === 'court' ? `<b>condemned to hang when the lord's court sits${cell.until <= H.year ? ' (it has not sat since ' + cell.until + ')' : ' in ' + cell.until}</b>` : `<b>condemned to die in ${cell.until}</b>`) : cell.until === null ? 'for life' : 'until ' + cell.until}, for ${cell.crime}${cell.why === 'wrongly blamed' ? ' <span class="temp">(innocent)</span>' : ''}.</div>` : '',
+  // Their death (as the victim, or put to death), their killings, and their crimes and punishments: each
+  // with the truth beside what people believe
+  const section = (title, items) => { const body = items.filter(Boolean).join(''); return body ? `<h3>${title}</h3><div class="crime">${body}</div>` : ''; };
+  const deathPart = section('Their death', [
     death?.kind === 'murder' ? `<div><b>Murdered</b> in ${death.place}, ${MURDER.methods[death.method].cause}${death.weapon ? ' with ' + death.weapon : ''}, by ${brief(death.by)}${death.motive ? `, over ${death.motive}` : `, one of a series (${death.mark} left behind)`}.</div>
       <div>People believed: <i>${death.believed}</i>${revealedIn(H, id) !== undefined ? `; the truth came out in ${revealedIn(H, id)}, when the killer was caught` : solved(H, death) ? '' : ' <span class="temp">(not solved)</span>'}</div>` : '',
-    blamedFor ? `<div><b>Wrongly blamed</b> for the murder of ${brief(blamedFor.for)}, and ${blamedFor.outcome}. The real killer was ${brief(H.events.find(e => e.t === 'death' && e.p === blamedFor.for).by)}.</div>` : '',
-    death?.kind === 'execution' && !blamedFor ? `<div>${death.cause.replace(/ for the murder of .*/, '').replace(/^./, c => c.toUpperCase())} for the murder of ${brief(death.for)}.</div>` : '',
+    death?.kind === 'execution' ? `<div><b>${death.cause.replace(/ for the murder of .*/, '').replace(/^./, c => c.toUpperCase())}</b> for the murder of ${brief(death.for)}${blamedFor ? ' <span class="temp">(innocent: see below)</span>' : ''}.</div>` : '',
     death?.kind === 'execution' && (death.judge !== undefined || death.presides !== undefined) ? `<div class="dim">${death.judge !== undefined ? 'Judged by ' + link(death.judge) : ''}${death.presides !== undefined ? `; ${link(death.presides)} presided` : ''}${death.hangman !== undefined ? `; hanged by ${link(death.hangman)}` : ''}</div>` : '',
+    death?.kind === 'challenge' ? `<div><b>Killed in a fight to the death</b> by ${brief(death.victor)}.</div>` : '',
+  ]);
+  const killsPart = section(`Their killings${kills.length ? ` (${kills.length})` : ''}`, [
     myCase ? `<div><b>Serial killer</b> (${myCase.status}${myCase.caught !== null ? `, caught in ${myCase.caught}` : ''}): ${MURDER.methods[myCase.method].cause}${myCase.weapon ? ' with ' + myCase.weapon : ''}, leaves ${myCase.mark}, chooses ${MURDER.prey[myCase.prey]}, from ${myCase.from}.</div>` : '',
-    kills.length ? `<div>Killed ${kills.length}:<br>${kills.map(e => `${e.y} ${brief(e.p)} <span class="dim">in ${e.place}; people believed: ${e.believed}</span>`).join('<br>')}</div>` : '',
-  ].join('');
+    kills.length ? `<div>${kills.map(e => `${e.y} ${brief(e.p, false)} <span class="dim">in ${e.place}${e.motive ? ', over ' + e.motive : ''}; people believed: ${e.believed}${revealedIn(H, e.p) !== undefined ? `; the truth came out in ${revealedIn(H, e.p)}` : solved(H, e) ? '' : ' (never solved)'}${e.blamed !== undefined ? '; ' + name(e.blamed) + ' was blamed' : ''}</span>`).join('<br>')}</div>` : '',
+  ]);
+  const record = H.events.filter(e => e.p === id && (e.t === 'crime' || e.t === 'imprisoned' || e.t === 'exiled' || e.t === 'released'));
+  const crimePart = section('Crimes and punishment', [
+    cell ? `<div><b>In the cells</b> beneath ${cell.at} since ${cell.y}, ${cell.condemned ? (H.rules.offices.seats[cell.at].justice === 'court' ? `<b>condemned to hang when the lord's court sits${cell.until <= H.year ? ' (it has not sat since ' + cell.until + ')' : ' in ' + cell.until}</b>` : `<b>condemned to die in ${cell.until}</b>`) : cell.until === null ? 'for life' : 'until ' + cell.until}, for ${cell.crime}${cell.why === 'wrongly blamed' ? ' <span class="temp">(innocent)</span>' : ''}.</div>` : '',
+    blamedFor ? `<div><b>Wrongly blamed</b> for the murder of ${brief(blamedFor.for)}, and ${blamedFor.outcome}${blamedFor.judge !== undefined ? `, judged by ${link(blamedFor.judge)}` : ''}. The real killer was ${brief(H.events.find(e => e.t === 'death' && e.p === blamedFor.for).by)}.</div>` : '',
+    record.length ? `<div class="dim">${record.map(e => `${e.y}: ${e.t === 'crime' ? `${e.crime}${e.victim !== null ? ' against ' + name(e.victim) : ''}${e.caught ? ', caught' : ' (never caught)'}`
+      : e.t === 'imprisoned' ? `to the cells beneath ${e.at} for ${e.crime}${e.condemned ? ', condemned' : e.until === null ? ', for life' : ' until ' + e.until}${e.judge !== undefined ? ', judged by ' + name(e.judge) : ''}${e.why === 'wrongly blamed' ? ' (innocent)' : ''}`
+      : e.t === 'exiled' ? `exiled to ${e.to}${e.hushed ? ', quietly' : ''}${e.judge !== undefined ? ', by ' + name(e.judge) : ''}${e.why === 'wrongly blamed' ? ' (innocent)' : ''}` : `released from ${e.from}`}`).join('<br>')}</div>` : '',
+  ]);
   $('card').innerHTML = `
     <h2>${name(id)} <span class="dim">#${id}</span>${p.notable ? ` <span class="star">★ ${p.notable}</span>` : ''}</h2>
     <div>${p.race}${p.heritage.length > 1 ? ` <span class="temp">(family of ${p.heritage.join(', ')}; race chosen by a temporary rule)</span>` : ''}, ${p.sex === 'f' ? 'female' : 'male'}, born ${p.birth} in ${p.birthPlace}${p.death !== null ? `, died ${p.death} aged ${p.death - p.birth}, ${died(p)}` : `, alive, aged ${H.year - p.birth}`} · constitution ${p.constitution.toFixed(2)}</div>
     <div>${p.trade || 'no trade yet'} · lives in ${p.place} · generation ${p.gen}</div>
-    ${crime ? `<h3>The truth about a death</h3><div class="crime">${crime}</div>` : ''}
+    ${deathPart}${killsPart}${crimePart}
     ${offs.length ? `<h3>Offices</h3><div>${offs.map(h => `${h.from}–${h.to ?? ''}: ${officeLink(h.place, h.office)} <span class="dim">${h.how}${h.after !== undefined ? ' from ' + link(h.after) : ''}${h.by !== undefined ? ' by ' + link(h.by) : ''}${h.for !== undefined ? ' for ' + link(h.for) : ''}${h.why ? '; ' + h.why : ''}</span>`).join('<br>')}</div>` : ''}
     ${myVerdicts.length ? `<h3>Verdicts given (${myVerdicts.length}, ${myVerdicts.filter(v => v.wrongful).length} wrongful)</h3><div class="dim">${myVerdicts.slice(0, 40).map(v => `${v.y}: ${link(v.p)}, ${v.crime}: ${v.sentence}${v.wrongful ? ' <span class="temp">(innocent)</span>' : ''}`).join('<br>')}${myVerdicts.length > 40 ? '<br>…' : ''}</div>` : ''}
     <div style="margin-top:8px"><button id="setA">SET AS A</button> <button id="setB">SET AS B</button></div>

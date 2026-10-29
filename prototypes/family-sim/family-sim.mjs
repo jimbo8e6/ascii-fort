@@ -1025,7 +1025,7 @@ export function cases(H) {
     const victims = H.events.filter(e => e.t === 'death' && e.by === p.id && e.serial);
     const caught = H.events.find(e => e.t === 'caught' && e.p === p.id), loose = p.killer.exiled !== undefined && p.killer.recaught === undefined;
     const status = loose ? (p.death !== null ? 'exiled after a hushed-up capture, died uncaught' : 'exiled after a hushed-up capture, at large')
-      : caught ? (p.death !== null ? (p.deathKind === 'execution' ? 'caught and hanged' : 'caught, died in the cells')
+      : caught ? (p.death !== null ? (p.deathKind === 'execution' ? (/^hanged/.test(p.cause) ? 'caught and hanged' : 'caught and put to death') : 'caught, died in the cells')
         : p.jail?.condemned ? 'caught, awaiting the gallows' : 'caught, in the cells for life')
       : !victims.length ? (p.death !== null ? 'died before killing' : 'not yet started') : p.death !== null ? 'died, never caught' : 'at large';
     return { killer: p.id, ...p.killer, victims, caught: caught ? caught.y : null, status };

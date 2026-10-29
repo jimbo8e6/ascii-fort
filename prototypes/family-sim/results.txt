@@ -112,9 +112,9 @@ Lifespans and causes of death (seed 1337, 2,000 years, everyone who died after y
   PASS  every kind of start turns up somewhere
   7 serial killers over 500 years (seed 1337)
   At year 200 (seed 1337):
-   Durgan Anvilborn     6 killings -5–59, no weapon (held under water), a coin on the tongue: caught and hanged
+   Durgan Anvilborn     6 killings -5–59, no weapon (held under water), a coin on the tongue: caught and put to death
    Mog Skullsplitter    1 killings 25–25, a smith's hammer (a blow to the head), a rune scratched into the door: died, never caught
-   Kara Copperbeard     8 killings 14–62, no weapon (pushed to their death), a sprig of nightshade: caught and hanged
+   Kara Copperbeard     8 killings 14–62, no weapon (pushed to their death), a sprig of nightshade: caught and put to death
    Caelia Brightwater   9 killings 68–110, a skinning knife (stabbed), a rune scratched into the door: caught, in the cells for life
    Ghora Stonefist      12 killings 39–84, a narrow dagger (stabbed), a crow feather: died, never caught
 
@@ -209,12 +209,12 @@ Lifespans and causes of death (seed 1337, 2,000 years, everyone who died after y
 Generation time (seed 1337; each length run 3 times, fastest shown)
   years   time      people ever  alive at end  events    saved size  alive by race (human/elf/dwarf/orc), deepest generation
       1    0.01 s          756           746      824      0.4 MB  398/102/105/141, 1
-     50    0.10 s         1388           915     3520      0.8 MB  491/111/160/153, 4
-    100    0.19 s         1992           854     6263      1.2 MB  418/139/183/114, 7
-    200    0.42 s         3093           831    11672      2.1 MB  398/155/178/100, 13
-    500    1.12 s         6679           954    28539      4.9 MB  450/171/187/146, 30
-   1000    2.77 s        12426           928    55393      9.3 MB  430/178/185/135, 57
-   2000    7.58 s        24340           876   111317     18.8 MB  390/167/165/154, 111
+     50    0.11 s         1388           915     3520      0.8 MB  491/111/160/153, 4
+    100    0.21 s         1992           854     6263      1.2 MB  418/139/183/114, 7
+    200    0.40 s         3093           831    11672      2.1 MB  398/155/178/100, 13
+    500    1.17 s         6679           954    28539      4.9 MB  450/171/187/146, 30
+   1000    2.80 s        12426           928    55393      9.3 MB  430/178/185/135, 57
+   2000    6.29 s        24340           876   111317     18.8 MB  390/167/165/154, 111
   (Node v22.22.0, one thread. A browser should be similar; not measured yet.)
 
 All checks passed.

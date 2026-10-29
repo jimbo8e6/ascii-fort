@@ -72,6 +72,10 @@ Nothing in the game uses it.
   belief, and the caught event records which killings came to light (`revealedIn`, `solved`).
 - `cases(H)` lists the serial killers with their signature, killings and status. In the viewer, search
   `murder`, `unsolved`, `killer` or `prison`.
+- On a person's card in the viewer, **Their death** shows how they died if they were murdered or put to death
+  (the truth, and what people believe), **Their killings** the people they killed (with what was believed of
+  each, and whether it was ever solved), and **Crimes and punishment** their crimes, sentences, time in the cells
+  and any wrongful blame.
 
 ## Prisons
 - **The cells beneath the castles:** dwarves go to Kharn Dolum, orcs to Gor Marakh, and everyone else to the
