@@ -77,7 +77,8 @@ Nothing in the game uses it.
 - **Crimes:** theft, assault and poaching (mostly by hunters) happen to and between ordinary people, each with
   a chance of being caught. Uncaught crimes are still recorded, as the truth.
 - **Sentences:** murder 15 to 40 years, or life; theft 1 to 4; assault 2 to 6; poaching 1 to 3. These are for
-  a human and scale with lifespan, so an elf's are 7½ times as long. Wrongly blamed innocents are imprisoned
+  a human, multiplied per race (`sentenceScale`): dwarves 3.75 and orcs 0.75, following their lifespans; elves
+  a gentler 1.5, so a thieving elf serves years rather than decades. Wrongly blamed innocents are imprisoned
   too.
 - **In the cells:** prisoners don't marry, have children, commit crimes or suffer them; they fall ill more
   easily; and they go home when their time is up. Who's in which castle now: `prisoners(H)`.

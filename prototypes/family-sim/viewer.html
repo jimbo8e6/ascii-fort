@@ -169,8 +169,11 @@ const RULES = {
   serialHang: .6,            // a caught serial killer is hanged, otherwise imprisoned for life
   // Lesser crimes: yearly chance per adult (poaching mostly by hunters), and of being caught
   crimes: { theft: { rate: .004, caught: .35 }, assault: { rate: .002, caught: .5 }, poaching: { rate: .0015, hunter: .03, caught: .3 } },
-  // Prison sentences in years for a human; scaled to a race's lifespan (an elf's are 7½ times as long)
+  // Prison sentences in years for a human, multiplied per race. Dwarves' and orcs' follow their lifespans
+  // (300 and 60 years against a human's 80); elves' are kept gentler than their 600 years would make them,
+  // so a thieving elf isn't locked away for decades
   sentences: { murder: [15, 40], theft: [1, 4], assault: [2, 6], poaching: [1, 3] },
+  sentenceScale: { human: 1, dwarf: 3.75, orc: .75, elf: 1.5 },
   prisonIllness: 2,          // illness is this much likelier in the cells
   // The cells beneath the castles: dwarves and orcs go to their own holds, everyone else to the nearest
   // human castle (Harrowgate Keep for the west and the Wenmere, Castle Aldermere for the rest)
@@ -228,7 +231,7 @@ const NAMES = {
 // history carries on under its own rules whatever the current settings are. The rule *functions*
 // (TEMP_RULES, causes of death, constitution) are code: RULES_CODE names their version, and loading a
 // history made under a different version is flagged.
-const RULES_CODE = 'family-sim 5';
+const RULES_CODE = 'family-sim 6';
 function currentRules() {
   return JSON.parse(JSON.stringify({ code: RULES_CODE, races: RACES, places: PLACES, ceiling: CEILING, childbirth: CHILDBIRTH,
     crossRaceWeight: TEMP_RULES.crossRaceWeight, ...RULES }));
@@ -416,7 +419,7 @@ function crimes(H, y, alive, add) {
   const otherPlace = (p, r) => { const opts = RULES.places.filter(q => q.name !== p.place && q.races[p.race]); return opts.length ? opts[Math.floor(r * opts.length)].name : null; };
   // The cells beneath the castle that takes someone from here
   const prisonFor = p => RULES.prisons[p.race] || (RULES.prisons.westPlaces.includes(p.place) ? RULES.prisons.west : RULES.prisons.rest);
-  const sentence = (p, crime) => { const [a, b] = RULES.sentences[crime], k = RACES[p.race].life / 80;
+  const sentence = (p, crime) => { const [a, b] = RULES.sentences[crime], k = RULES.sentenceScale[p.race] ?? RACES[p.race].life / 80;
     return Math.max(1, Math.round((a + rand(seed, T.sentence, y, p.id) * (b - a)) * k)); };
   // Into the cells: for a number of years, or for life (until: null)
   const jail = (p, crime, years, why, extra = {}) => {

@@ -1,52 +1,51 @@
 1. Same seed and start year give the same people and ancestry
-  seed 1337, 150 years: run 1 2874623060362f23, run 2 2874623060362f23 (2539 people, 8371 events)
-  seed 1338, 150 years: 997e13946c0fb026
+  seed 1337, 150 years: run 1 ceb140f9ffa0faf7, run 2 ceb140f9ffa0faf7 (2633 people, 8775 events)
+  seed 1338, 150 years: f5996df6ef0cfa61
   PASS  two runs give byte-identical histories
   PASS  a different seed gives a different history
-  PASS  the same ancestry for Lurk Bloodtusk (133 ancestors) in both runs
+  PASS  the same ancestry for Bram Thatcher (88 ancestors) in both runs
 
 2. Shared ancestors between relatives, through both parents and across family lines
-  PASS  shared ancestors match an independent walk down the family tree for all 416 related pairs tried
-  Example: Grimli Hammerfall (#2539, dwarf, m, born 151, guard, Anvil's Rest)
-       and Hal Stonefist (#2546, human of dwarf-human-orc family, m, born 151, miner, Dust Wells)
-  Different surnames. They are first cousins twice removed, with 2 shared ancestors in all; nearest:
-   • Thora Ironfoot (#109, dwarf, f, born -98, smith, Anvil's Rest)
-       from Grimli: Grimli Hammerfall → mother Helga Anvilborn → mother Thora Ironfoot
-       from Hal: Hal Stonefist → father Piers Stonefist → mother Gwen Anvilborn → father Dain Anvilborn → mother Thora Ironfoot
-   • Grimli Anvilborn (#108, dwarf, m, born -99, died 171 aged 270, of a sickness of the blood, carter, Anvil's Rest)
-       from Grimli: Grimli Hammerfall → mother Helga Anvilborn → father Grimli Anvilborn
-       from Hal: Hal Stonefist → father Piers Stonefist → mother Gwen Anvilborn → father Dain Anvilborn → father Grimli Anvilborn
-  Thalion Bloodtusk (#1499, elf of elf-orc family, m, born 61, healer, Mistwater) has 18 ancestors from 6 family names, e.g. Starwhisper, Bloodtusk, Mistweaver, Ashhide, Redfang, Stonefist
+  PASS  shared ancestors match an independent walk down the family tree for all 413 related pairs tried
+  Example: Kara Stonehelm (#2633, dwarf of dwarf-human family, f, born 151, smith, Mistwater)
+       and Ulric Miller (#2655, human of elf-human family, m, born 153, trader, Port Cassel)
+  Different surnames. They are fourth cousins once removed, with 2 shared ancestors in all; nearest:
+   • Lena Fletcher (#676, human, f, born -29, died 27 aged 56, of a wasting illness, docker, Port Cassel)
+       from Kara: Kara Stonehelm → father Korin Stonehelm → mother Magna Oakes → father Osric Oakes → mother Peg Marsh → mother Lena Fletcher
+       from Ulric: Ulric Miller → mother Ada Starwhisper → mother Daisy Starwhisper → mother Edith Carver → father Bram Carver → mother Cora Marsh → mother Lena Fletcher
+   • Edwin Marsh (#675, human, m, born -30, died 50 aged 80, of old age, docker, Port Cassel)
+       from Kara: Kara Stonehelm → father Korin Stonehelm → mother Magna Oakes → father Osric Oakes → mother Peg Marsh → father Edwin Marsh
+       from Ulric: Ulric Miller → mother Ada Starwhisper → mother Daisy Starwhisper → mother Edith Carver → father Bram Carver → mother Cora Marsh → father Edwin Marsh
+  Faelar Bloodtusk (#1493, elf of elf-orc family, m, born 61, tanner, Aelith Vara) has 18 ancestors from 6 family names, e.g. Starwhisper, Bloodtusk, Mistweaver, Ashhide, Redfang, Stonefist
   PASS  ancestry crosses family lines through marriages, not just the surname
-  Same surname, not related: Thrain Hammerfall (#2, dwarf, m, born -30, guard, Kharn Dolum) and Thora Hammerfall (#79, dwarf, f, born -20, smith, Kharn Dolum)
+  Same surname, not related: Thrain Hammerfall (#2, dwarf, m, born -30, guard, Kharn Dolum) and Durgan Hammerfall (#381, dwarf, m, born -128, innkeeper, Dust Wells)
   PASS  two people with the same surname can have no shared ancestor
   Mixed-race family: Dunstan Starwhisper (#795, human of elf-human family, m, born 3, died 82 aged 79, of old age, guard, Harrowgate Keep), mother Gwen Brook (#447, human, f, born -13, died 66 aged 79, of old age, baker, Thornwick), father Vaelis Starwhisper (#221, elf, m, born -116, died 22 aged 138, of a kick from a horse, trader, Thornwick)  [⚠ TEMPORARY rule: child takes one parent's race at random]
 
 3. An early start and a later start from the same seed: the later one only adds history
-  PASS  all 2814 events up to year 40 are identical in the 300-year history
-  PASS  the 1277 people of year 40 have the same births, parents, marriages and deaths; 2908 more people come later
-  PASS  12913 later events, all after year 40
+  PASS  all 2819 events up to year 40 are identical in the 300-year history
+  PASS  the 1277 people of year 40 have the same births, parents, marriages and deaths; 3146 more people come later
+  PASS  13920 later events, all after year 40
   PASS  saving at year 40 and carrying on to 300 gives exactly the straight-through history
 
 4. An ordinary family line: generations of bakers, no famous ancestor
-  The Kell line, 7 generations (father to son), oldest first:
-   Jory Kell (#423, human, m, born -25, died 59 aged 84, of a wasting illness, trader, Kelford)
-   Simon Kell (#427, human, m, born -2, died 96 aged 98, of old age, baker, Kelford)
-   Osric Kell (#1127, human, m, born 27, died 104 aged 77, of old age, baker, Kelford)
-   Piers Kell (#1409, human, m, born 53, died 155 aged 102, of old age, baker, Kelford)
-   Hal Kell (#1688, human, m, born 77, died 151 aged 74, of old age, baker, Kelford)
-   Piers Kell (#1995, human, m, born 105, died 132 aged 27, of a winter chill, baker, Kelford)
-   Gwen Kell (#2261, human, f, born 127, baker, Kelford)
-  PASS  none of the youngest's 74 ancestors, on any side, is a notable figure
-  For comparison, 290 of 888 living people do descend from one of the placeholder notables (5 founders).
+  The Greaves line, 6 generations (father to son), oldest first:
+   Aldric Greaves (#472, human, m, born -25, died 30 aged 55, of a winter chill, baker, Millbrook)
+   Leof Greaves (#476, human, m, born -2, died 52 aged 54, of old age, baker, Millbrook)
+   Garret Greaves (#1041, human, m, born 21, died 104 aged 83, of old age, baker, Millbrook)
+   Fenn Greaves (#1426, human, m, born 55, died 134 aged 79, of old age, baker, Millbrook)
+   Fenn Greaves (#1934, human, m, born 97, died 169 aged 72, of a wasting illness, baker, Millbrook)
+   Aldric Greaves (#2347, human, m, born 127, baker, Millbrook)
+  PASS  none of the youngest's 48 ancestors, on any side, is a notable figure
+  For comparison, 249 of 893 living people do descend from one of the placeholder notables (5 founders).
 
 5. Births, marriages and deaths make sense under the placeholder rules
   PASS  review case: no Ruk Stonefist (6 of that name) marries an ancestor
   PASS  review case: Joan Wren's father was 17 at her birth (adulthood 16)
   PASS  a founder, and anyone else, compared with themselves is "the same person"
   PASS  1 years (seed 1338): 758 people, 785 events, 0 problems
-  PASS  100 years (seed 1337): 1950 people, 5838 events, 0 problems
-  PASS  500 years (seed 1837): 6645 people, 26540 events, 0 problems
+  PASS  100 years (seed 1337): 1993 people, 5944 events, 0 problems
+  PASS  500 years (seed 1837): 6425 people, 25782 events, 0 problems
   Checked: no one dies before birth or outlives the ceiling (1.6 × their race's typical life); every death has a cause; every child is born after both parents
   (both adults at the birth, founders included, the mother in her child-bearing years); no one married an ancestor
   or descendant at any depth, a sibling, half sibling or first cousin;
@@ -57,66 +56,61 @@
 Lifespans and causes of death (seed 1337, 2,000 years, everyone who died after year 0)
   race    typical  deaths  died as   age at death, adults    old-age deaths  outliers                          oldest
                            children  (10% / 50% / 90%)       median
-  human      80   13109     11%    31 / 76 / 83                 78              2.2% past 92, 14% before 40       128
-  elf       600     638      6%    111 / 465 / 620              588             1.3% past 690, 27% before 300     769
-  dwarf     300    1621      8%    59 / 229 / 307               294             1.0% past 345, 33% before 150     480
-  orc        60    6538     17%    20 / 54 / 62                 59              1.4% past 69, 21% before 30       90
-  Causes: old age 51.0%, illness 26.0%, injury 19.1%, murder 2.9%, childbirth 0.5%, execution 0.3%
-  Longest-lived human: Rose Carver (#2002, human, f, born 106, died 234 aged 128, of old age, miller, Millbrook), constitution 1.45
-  Longest-lived elf: Naeris Silverleaf (#7570, elf of dwarf-elf-human-orc family, m, born 600, died 1369 aged 769, of old age, warden, Aelith Vara), constitution 1.21
-  Shortest-lived adult elf: Ilyra Silverleaf (#3721, elf, f, born 259, died 309 aged 50, murdered (strangled) by Lethiel Moonbrook, Aelith Vara)
+  human      80   13636     11%    31 / 75 / 83                 78              2.1% past 92, 15% before 40       127
+  elf       600     591      6%    103 / 508 / 620              588             1.8% past 690, 31% before 300     830
+  dwarf     300    1585      8%    65 / 244 / 309               294             1.7% past 345, 31% before 150     447
+  orc        60    6913     17%    20 / 54 / 62                 59              1.6% past 69, 21% before 30       89
+  Causes: old age 50.8%, illness 26.3%, injury 19.2%, murder 2.8%, childbirth 0.7%, execution 0.3%
+  Longest-lived human: Osric Cooper (#14507, human of dwarf-elf-human-orc family, m, born 1163, died 1290 aged 127, of old age, docker, Port Cassel), constitution 1.53
+  Longest-lived elf: Ilyra Bloodtusk (#1840, elf of elf-orc family, f, born 90, died 920 aged 830, of old age, healer, Dust Wells), constitution 1.40
+  Shortest-lived adult elf: Lirael Dawnmere (#10678, elf of dwarf-elf-human-orc family, m, born 838, died 889 aged 51, of a winter chill, docker, Port Cassel)
   A few human deaths:
-   Merric Ashhide (#23422, human of dwarf-elf-human-orc family, m, born 1987, died 1989 aged 2, of a wasting illness, Hollin's Ferry)
-   Merric Ashhide (#23428, human of dwarf-elf-human-orc family, m, born 1988, died 1997 aged 9, of a fall, Kelford)
-   Ned Ashhide (#23452, human of dwarf-elf-human-orc family, m, born 1990, died 1991 aged 1, of a fever of the lungs, Kelford)
-   Kate Starwhisper (#23456, human of dwarf-elf-human-orc family, f, born 1990, died 1993 aged 3, of a sickness of the blood, Dust Wells)
-   Fern Thatcher (#23470, human of dwarf-elf-human-orc family, f, born 1992, died 1997 aged 5, of a fever of the lungs, Millbrook)
-   Maud Ironfoot (#23539, human of dwarf-elf-human-orc family, f, born 1997, died 2000 aged 3, of a winter chill, Kelford)
+   Ulric Oakes (#24249, human of dwarf-elf-human-orc family, m, born 1990, died 1991 aged 1, of a fever of the lungs, Castle Aldermere)
+   Fern Cooper (#24265, human of dwarf-elf-human-orc family, f, born 1991, died 1994 aged 3, of a fever of the lungs, Kelford)
+   Ada Brightwater (#24321, human of dwarf-elf-human-orc family, f, born 1995, died 1996 aged 1, of a fever of the lungs, Castle Aldermere)
+   Dunstan Brightwater (#24330, human of dwarf-elf-human-orc family, m, born 1996, died 1999 aged 3, of a wasting illness, Port Cassel)
+   Leof Oakes (#24346, human of dwarf-elf-human-orc family, m, born 1997, died 2000 aged 3, of a sickness of the blood, Castle Aldermere)
+   Sybil Cooper (#24354, human of dwarf-elf-human-orc family, f, born 1997, died 2000 aged 3, of the flux, Kelford)
 
 6. Save and reload
-  PASS  reloaded 2073 KB file is identical: 3114 people, 10922 events
+  PASS  reloaded 2143 KB file is identical: 3206 people, 11409 events
   PASS  ancestry of 40 living people is the same after reloading
   PASS  relationships between them are the same after reloading
 
 8. Murders and serial killers
-  PASS  seed 1337, 500 years: 163 murders (63 ordinary, 100 by 11 serial killers), 91 solved, 41 passed for natural deaths, 4 pinned on an innocent; 0 problems
-  PASS  seed 1837, 500 years: 150 murders (66 ordinary, 84 by 11 serial killers), 67 solved, 46 passed for natural deaths, 8 pinned on an innocent; 0 problems
-  PASS  seed 42, 1000 years: 323 murders (135 ordinary, 188 by 20 serial killers), 138 solved, 98 passed for natural deaths, 10 pinned on an innocent; 0 problems
+  PASS  seed 1337, 500 years: 146 murders (56 ordinary, 90 by 7 serial killers), 77 solved, 29 passed for natural deaths, 5 pinned on an innocent; 0 problems
+  PASS  seed 1837, 500 years: 158 murders (72 ordinary, 86 by 6 serial killers), 75 solved, 45 passed for natural deaths, 1 pinned on an innocent; 0 problems
+  PASS  seed 42, 1000 years: 356 murders (136 ordinary, 220 by 19 serial killers), 172 solved, 107 passed for natural deaths, 12 pinned on an innocent; 0 problems
   Checked for every murder: the killer was alive and an adult, not the victim, and not yet caught; a serial
   killing matches the killer's method, calling card and choice of victim; a killing that passed for natural is
   unsolved; an innocent who was blamed is not the killer; a killing taken for natural is only solved
   when its killer is caught later; a caught serial killer was hanged or imprisoned for
   life; every hanging
   was for a real murder.
-  A series that was caught: Sariel Silverleaf (#2083, elf, f, born 115, died 231 aged 116, hanged for the murder of Lethiel Silverleaf, warden, Aelith Vara)
-    signature: poisoned, leaves a lock of hair cut away, chooses young women; status: caught (caught 231)
-    166  Thessa Goldvein      Aelith Vara      people believed: murder by an unknown hand (a lock of hair cut away was found); the truth came out in 231
-    168  Sariel Dawnmere      Aelith Vara      people believed: murder by an unknown hand (a lock of hair cut away was found); the truth came out in 231
-    171  Aelith Ashvale       Aelith Vara      people believed: a fever; the truth came out in 231
-    173  Lethiel Ashhide      Aelith Vara      people believed: a wasting illness; the truth came out in 231
-    174  Caelia Brightwater   Aelith Vara      people believed: a sickness of the blood; the truth came out in 231
-    179  Lethiel Brightwater  Aelith Vara      people believed: murder by an unknown hand (a lock of hair cut away was found); the truth came out in 231
-    181  Thessa Starwhisper   Aelith Vara      people believed: a winter chill; the truth came out in 231
-    192  Faenya Ashvale       Aelith Vara      people believed: a wasting illness; the truth came out in 231
-    204  Lethiel Silverleaf   Aelith Vara      people believed: murder by an unknown hand (a lock of hair cut away was found); the truth came out in 231
-    207  Faenya Starwhisper   Aelith Vara      people believed: a fever; the truth came out in 231
-    210  Ilyra Ashvale        Aelith Vara      people believed: murder by an unknown hand (a lock of hair cut away was found); the truth came out in 231
-    211  Thessa Anvilborn     Aelith Vara      people believed: murder by an unknown hand (a lock of hair cut away was found); the truth came out in 231
-    217  Sybil Ironfoot       Aelith Vara      people believed: the flux; the truth came out in 231
-    224  Sariel Silverleaf    Aelith Vara      people believed: murder by an unknown hand (a lock of hair cut away was found); the truth came out in 231
-    231  Lethiel Silverleaf   Aelith Vara      people believed: murder by an unknown hand (a lock of hair cut away was found); the truth came out in 231
-  A series never solved: Bula Skullsplitter (#1094, orc, f, born 24, died 79 aged 55, of old age, herder, Ashen Camp)
-    signature: stabbed, leaves a coin on the tongue, chooses the old; status: died, never caught
-    50  Lurk Skullsplitter   Ashen Camp       people believed: murder by an unknown hand (a coin on the tongue was found)
-    66  Gorr Ironjaw         Ashen Camp       people believed: murder by an unknown hand (a coin on the tongue was found)
-  Pinned on an innocent: Lurk Bloodtusk (76, Dust Wells) was a blow to the head by Simon Miller over jealousy; Bula Ashhide was blamed and imprisoned for life.
+  A series that was caught: Faelar Silverleaf (#140, elf, m, born -60, died 289 aged 349, hanged for the murder of Joan Brook, herbalist, Aelith Vara)
+    signature: stabbed, leaves candle wax on the eyes, chooses travellers and newcomers; status: caught (caught 289)
+    277  Sylvar Ashhide       Aelith Vara      people believed: murder by an unknown hand (candle wax on the eyes was found); the truth came out in 289
+    278  Ilthan Silverleaf    Aelith Vara      people believed: murder by an unknown hand (candle wax on the eyes was found); the truth came out in 289
+    281  Lena Ashby           Aelith Vara      people believed: murder by an unknown hand (candle wax on the eyes was found); the truth came out in 289
+    289  Joan Brook           Aelith Vara      people believed: murder by an unknown hand (candle wax on the eyes was found); the truth came out in 289
+  A series never solved: Cora Wren (#1098, human, f, born 24, died 97 aged 73, of old age, farmer, Castle Aldermere)
+    signature: stabbed, leaves a knotted red cord, chooses anyone caught alone; status: died, never caught
+    50  Hal Carver           Castle Aldermere people believed: murder by an unknown hand (a knotted red cord was found)
+    58  Hilda Dale           Castle Aldermere people believed: murder by an unknown hand (a knotted red cord was found)
+    65  Lena Tanner          Castle Aldermere people believed: murder by an unknown hand (a knotted red cord was found)
+    76  Maud Miller          Castle Aldermere people believed: murder by an unknown hand (a knotted red cord was found)
+    80  Wat Wren             Castle Aldermere people believed: murder by an unknown hand (a knotted red cord was found)
+    83  Nell Reeve           Castle Aldermere people believed: murder by an unknown hand (a knotted red cord was found)
+    86  Orla Ashhide         Castle Aldermere people believed: murder by an unknown hand (a knotted red cord was found)
+    87  Tobin Carver         Castle Aldermere people believed: murder by an unknown hand (a knotted red cord was found)
+  Pinned on an innocent: Wat Oakes (255, Anvil's Rest) was stabbed by Thora Starwhisper over jealousy; Edith Mistweaver was blamed and hanged.
   Passed for natural: Dunstan Dale (-5) was held under water by Tobin Kell; people believe: drowning.
-  Serial killers still at large at the end (a mystery waiting for a player): Thessa Silverleaf (7 victims)
+  Serial killers still at large at the end (a mystery waiting for a player): Caelia Moonbrook (30 victims)
 
 9. One serial killer at large at any start
   PASS  in 5 seeds × 13 start years (1 to 500), exactly one serial killer is at large, with victims already
-  victims so far, at those starts: fewest 1, median 4, most 17
-  11 serial killers over 500 years (seed 1337): one about every 50 years
+  victims so far, at those starts: fewest 1, median 4, most 30
+  7 serial killers over 500 years (seed 1337): one about every 83 years
   At the default start (year 1, seed 1337): Durgan Anvilborn (#45, dwarf, m, born -91, miner, Kharn Dolum)
     held under water, leaves a coin on the tongue, chooses the old; 4 victims, from the last years of the war:
     -5  Dagna Anvilborn      people believe: drowning
@@ -125,30 +119,23 @@ Lifespans and causes of death (seed 1337, 2,000 years, everyone who died after y
     -2  Vorn Ironfoot        people believe: murder by an unknown hand (a coin on the tongue was found)
 
 10. Prisons
-  PASS  seed 1337, 300 years: 817 theft (284 caught), 375 poaching (128 caught), 406 assault (210 caught); 625 sent to the cells (3 for murder, 0 of them innocent); 0 problems
-  PASS  seed 1837, 500 years: 1395 theft (482 caught), 640 poaching (193 caught), 715 assault (349 caught); 1037 sent to the cells (13 for murder, 5 of them innocent); 0 problems
+  PASS  seed 1337, 300 years: 839 theft (296 caught), 405 poaching (133 caught), 404 assault (216 caught); 652 sent to the cells (7 for murder, 3 of them innocent); 0 problems
+  PASS  seed 1837, 500 years: 1365 theft (467 caught), 624 poaching (179 caught), 702 assault (349 caught); 1005 sent to the cells (10 for murder, 0 of them innocent); 0 problems
   Checked: each prisoner went to the right castle, was released when their time was up (never from a life
   sentence), and while inside didn't marry, have children, commit crimes or suffer them; those who died inside died there.
   In the cells at year 200 (seed 1337):
-   Harrowgate Keep:
-     Faelar Ashvale       elf    assault   since 193, until 223
-     Lirael Dawnmere      elf    assault   since 187, until 229
-     Aerin Brightwater    elf    assault   since 200, until 238
-     Lethiel Brightwater  elf    theft     since 181, until 211
-     Elowen Ashvale       elf    theft     since 186, until 204
-     Ilthan Ashvale       elf    theft     since 198, until 225
-     Aelith Starwhisper   elf    assault   since 195, until 234
-     Sariel Dawnmere      elf    assault   since 180, until 212
-     Thalion Silverleaf   elf    assault   since 177, until 212
-     Faelar Silverleaf    elf    poaching  since 191, until 208
-   Castle Aldermere:
-     Aelith Dawnmere      elf    assault   since 194, until 225
-     Una Ashby            human  assault   since 199, until 203
    Kharn Dolum:
-     Thrain Hammerfall    dwarf  theft     since 191, until 203
-     Helga Hammerfall     dwarf  assault   since 188, until 206
-     Disa Thatcher        dwarf  theft     since 200, until 212
-     Rika Anvilborn       dwarf  theft     since 199, until 209
+     Thrain Stonehelm     dwarf  murder    since 197, for life  (innocent: blamed for a murder they didn't commit)
+     Nori Hammerfall      dwarf  assault   since 195, until 217
+     Thora Oakes          dwarf  poaching  since 200, until 210
+   Harrowgate Keep:
+     Aerin Brightwater    elf    assault   since 200, until 208
+     Ilthan Ashvale       elf    theft     since 198, until 203
+     Aelith Starwhisper   elf    assault   since 195, until 203
+   Castle Aldermere:
+     Una Webb             human  assault   since 199, until 203
+   Gor Marakh:
+     Thrak Stonefist      orc    theft     since 200, until 201
 
 7. A saved history keeps its own rules
   PASS  the reloaded history keeps the lifespans it was made with, not the current ones
@@ -158,12 +145,12 @@ Lifespans and causes of death (seed 1337, 2,000 years, everyone who died after y
 Generation time (seed 1337; each length run 3 times, fastest shown)
   years   time      people ever  alive at end  events    saved size  alive by race (human/elf/dwarf/orc), deepest generation
       1    0.00 s          756           746      776      0.3 MB  398/102/105/141, 1
-     50    0.07 s         1388           924     3344      0.8 MB  497/112/157/158, 4
-    100    0.15 s         1950           831     5838      1.2 MB  394/147/166/124, 7
-    200    0.30 s         3114           888    10922      2.0 MB  417/155/174/142, 13
-    500    0.92 s         6438           873    25744      4.5 MB  387/157/182/147, 28
-   1000    1.82 s        12096           862    51083      8.8 MB  363/184/172/143, 56
-   2000    5.63 s        23585           946   101506     17.5 MB  443/171/181/151, 109
+     50    0.07 s         1382           917     3347      0.8 MB  493/111/157/156, 4
+    100    0.14 s         1993           872     5944      1.2 MB  423/150/170/129, 7
+    200    0.31 s         3206           893    11409      2.1 MB  418/168/187/120, 11
+    500    0.94 s         6770           881    27080      4.7 MB  443/145/179/114, 28
+   1000    2.03 s        12684           889    53071      9.1 MB  402/171/167/149, 54
+   2000    4.77 s        24396           938   104727     18.1 MB  470/156/193/119, 107
   (Node v22.22.0, one thread. A browser should be similar; not measured yet.)
 
 All checks passed.
