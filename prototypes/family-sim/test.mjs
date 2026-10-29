@@ -94,7 +94,7 @@ log('\n3. An early start and a later start from the same seed: the later one onl
   const lateTrade = new Set(L.events.filter(e => e.t === 'trade' && e.y > early).map(e => e.p));
   const asOf = (p, y) => ({ ...p, death: p.death !== null && p.death <= y ? p.death : null, cause: p.death !== null && p.death <= y ? p.cause : null,
     deathKind: p.death !== null && p.death <= y ? p.deathKind : null,
-    killer: p.killer && p.killer.from <= y ? { ...p.killer, caught: p.killer.caught !== null && p.killer.caught <= y ? p.killer.caught : null } : null, jail: null, spouses: p.spouses.filter(s => s.year <= y),
+    killer: p.killer && p.killer.from <= y ? { ...p.killer, caught: p.killer.caught !== null && p.killer.caught <= y ? p.killer.caught : null, exiled: p.killer.exiled <= y ? p.killer.exiled : undefined, recaught: p.killer.recaught <= y ? p.killer.recaught : undefined } : null, jail: null, spouses: p.spouses.filter(s => s.year <= y),
     trade: lateTrade.has(p.id) ? null : p.trade, place: null });
   const same = E.people.every((p, i) => JSON.stringify({ ...asOf(p, early) }) === JSON.stringify(asOf(L.people[i], early)));
   check(same && L.people.length > E.people.length, `the ${E.people.length} people of year ${early} have the same births, parents, marriages and deaths; ${L.people.length - E.people.length} more people come later`);
@@ -260,8 +260,10 @@ function murderProblems(X) {
     if (e.blamed !== undefined && (e.blamed === k.id || e.solved)) bad.push(`#${v.id}: the blamed person is the killer, or the case was solved`);
   }
   for (const e of ev) if (e.t === 'caught') {
-    const after = ev.find(x => x.y === e.y && x.p === e.p && (x.t === 'imprisoned' || x.t === 'death' && x.kind === 'execution'));
-    if (!after) bad.push(`serial killer #${e.p} was caught but neither hanged nor imprisoned`);
+    const after = ev.find(x => x.y === e.y && x.p === e.p && (x.t === 'imprisoned' || x.t === 'death' && x.kind === 'execution' || e.hushed && x.t === 'exiled'));
+    if (!after) bad.push(`serial killer #${e.p} was caught but neither hanged nor imprisoned (nor, hushed up, exiled)`);
+    if (e.hushed && (P[e.p].race !== 'elf' || ev.some(x => x.t === 'caught' && x.p === e.p && x.y < e.y))) bad.push(`#${e.p}'s capture was hushed up, but they aren't an elf caught for the first time`);
+    if (e.hushed && e.victims.some(v => revealedIn(X, v) === e.y)) bad.push(`#${e.p}'s hushed-up capture brought killings to light`);
   }
   for (const e of ev) if (e.t === 'death' && e.kind === 'execution' && P[e.for]?.deathKind !== 'murder') bad.push(`#${e.p} hanged for a death that wasn't a murder`);
   return bad;
@@ -293,7 +295,21 @@ log('  was for a real murder.');
     `${nm(ord.blamed)} was blamed and ${X.events.find(e => e.t === 'accused' && e.p === ord.blamed).outcome}.`);
   const hidden = X.events.find(e => e.t === 'death' && e.kind === 'murder' && !/murder/.test(e.believed));
   if (hidden) log(`  Passed for natural: ${nm(hidden.p)} (${hidden.y}) was ${MURDER.methods[hidden.method].cause} by ${nm(hidden.by)}${hidden.motive ? ' over ' + hidden.motive : ''}; people believe: ${hidden.believed}.`);
-  const open = C.filter(c => c.status === 'at large');
+  {
+    // Hushed up: an elf serial killer quietly exiled, perhaps killing again elsewhere (from whichever seed has one)
+    let shown = false;
+    for (const seed of [1837, 1337, 42, 7, 2024, 99, 5, 314, 11, 23, 58, 77, 101, 202]) {
+      const Z = run(seed, 1000), hz = Z.events.find(e => e.t === 'caught' && e.hushed);
+      if (!hz) continue;
+      const k = Z.people[hz.p], ex = Z.events.find(e => e.t === 'exiled' && e.p === k.id && e.y === hz.y), later = Z.events.filter(e => e.t === 'death' && e.by === k.id && e.y > hz.y);
+      const again = Z.events.find(e => e.t === 'caught' && e.p === k.id && e.y > hz.y);
+      log(`  Hushed up (seed ${seed}): ${describe(Z, k.id)} was caught in ${hz.y} after ${hz.victims.length} killings${Z.events.some(e => e.t === 'left office' && e.p === k.id && e.y === hz.y) ? ', while holding office,' : ''} and quietly exiled to ${ex.to}; nothing came to light.`);
+      log(`    Afterwards: ${later.length} more killings${again ? `; caught again in ${again.y} by the humans, ${again.victims.length} killings coming to light, and ${Z.people[k.id].deathKind === 'execution' ? 'hanged' : Z.people[k.id].jail ? 'held in the cells' : 'punished'}` : ''}. Status: ${cases(Z).find(c => c.killer === k.id).status}.`);
+      shown = true; break;
+    }
+    if (!shown) log('  Hushed up: none in the seeds tried (it is rare)');
+  }
+  const open = C.filter(c => /at large/.test(c.status));
   log(`  Serial killers still at large at the end (a mystery waiting for a player): ${open.length ? open.map(c => `${nm(c.killer)} (${c.victims.length} victims)`).join(', ') : 'none in this history'}`);
 }
 
@@ -309,7 +325,7 @@ log('\n9. What a game finds at its start');
       simulate(X, y); n++;
       const C = cases(X), got = new Set();
       for (const c of C) {
-        if (c.status === 'at large') got.add('at large');
+        if (/at large/.test(c.status)) got.add('at large');
         if (c.status === 'caught, awaiting the gallows') got.add('awaiting the gallows');
         if (c.status === 'caught, in the cells for life') got.add('in the cells for life');
         if (c.status === 'died, never caught' && y - c.victims.at(-1).y <= 100) got.add('an old mystery');
@@ -337,7 +353,8 @@ function prisonProblems(X) {
   for (const e of ev) if (e.t === 'imprisoned') {
     const p = P[e.p], rel = ev.find(x => x.t === 'released' && x.p === e.p && x.y > e.y), end = rel ? rel.y : p.death ?? Infinity;
     terms.push({ p: e.p, since: e.y, end, until: e.until, at: e.at });
-    const want = R.prisons[p.race] || (R.prisons.westPlaces.includes(e.from) ? R.prisons.west : R.prisons.rest);
+    const exiled = ev.some(x => x.t === 'exiled' && x.p === e.p && x.y < e.y);   // exiles go to the human castle serving where they live
+    const want = !exiled && R.prisons[p.race] || (R.prisons.westPlaces.includes(e.from) ? R.prisons.west : R.prisons.rest);
     if (e.at !== want) bad.push(`#${e.p} sent to ${e.at}, not ${want}`);
     const alive = p.death === null || p.death >= e.until;
     if (e.condemned) {
@@ -345,7 +362,7 @@ function prisonProblems(X) {
       // lord or regent to preside; at Kharn Dolum: put to death the next year. Nowhere else condemns.
       const court = R.offices.seats[e.at].justice === 'court';
       if (rel) bad.push(`#${e.p} was condemned but released`);
-      if (!['court', 'lawspeaker'].includes(R.offices.seats[e.at].justice) || p.race === 'elf') bad.push(`#${e.p} was condemned at ${e.at}, which doesn't hold them for death`);
+      if (!['court', 'lawspeaker'].includes(R.offices.seats[e.at].justice) || p.race === 'elf' && !exiled) bad.push(`#${e.p} was condemned at ${e.at}, which doesn't hold them for death`);
       if (court && e.until !== courtSits(X, e.at, e.y + 1)) bad.push(`#${e.p}'s hanging (${e.until}) isn't set for the next sitting of ${e.at}'s court`);
       if (!court && e.until !== e.y + 1) bad.push(`#${e.p} at ${e.at} wasn't set to die the next year`);
       const due = court ? ev.find(x => x.t === 'court' && x.place === e.at && x.y >= e.until && x.sat) : { y: e.until };
@@ -454,11 +471,12 @@ function officeProblems(X) {
   }
   // Every verdict was given by someone who judged (or ruled) for the convicted person's people then, never by themselves
   for (const e of ev) if (e.judge !== undefined && (e.t === 'imprisoned' || e.t === 'exiled' || e.t === 'accused' || e.t === 'death' && e.atOnce)) {
-    const p = P[e.p], seat = p.race === 'human' ? (e.t === 'imprisoned' ? e.at : null) : Object.keys(O.seats).find(s => O.seats[s].race === p.race);
+    const exile = ev.some(x => x.t === 'exiled' && x.p === e.p && x.y < e.y);
+    const p = P[e.p], seat = p.race === 'human' || exile ? (e.t === 'imprisoned' ? e.at : null) : Object.keys(O.seats).find(s => O.seats[s].race === p.race);
     if (e.judge === e.p) bad.push(`#${e.p} judged themselves`);
     if (seat && ![O.seats[seat].judge, O.seats[seat].ruler, 'Regent'].some(o => held(seat, o, e.y).includes(e.judge))) bad.push(`#${e.judge} judged #${e.p} at ${seat} in ${e.y} without the office for it`);
   }
-  for (const e of ev) if (e.t === 'death' && e.kind === 'execution' && P[e.p].race === 'elf') bad.push(`elf #${e.p} was put to death`);
+  for (const e of ev) if (e.t === 'death' && e.kind === 'execution' && P[e.p].race === 'elf' && !ev.some(x => x.t === 'exiled' && x.p === e.p)) bad.push(`elf #${e.p} was put to death by their own people`);
   return bad;
 }
 for (const [seed, yrs] of [[1337, 300], [1837, 500], [42, 1000]]) {
@@ -475,7 +493,7 @@ log('  child who could take it, or else to a relative; regencies were for child 
 log('  age; every War Chief after the first killed a rival for the seat (or had none), every Elder was chosen by the');
 log('  circle; posts were given by whoever ruled then; revenge was vowed and taken only for the killing of family;');
 log('  courts sat in their years, with a grown lord or a regent presiding, and hanged only the condemned; every');
-log('  verdict came from the judge, ruler or regent of the convicted person\'s people, never themselves; no elf was put to death.');
+log('  verdict came from the judge, ruler or regent of the convicted person\'s people, never themselves; no elf was put to death by their own people (an exile can be).');
 {
   const X = run(SEED, 300), O = X.rules.offices, all = holdings(X), nm = id => fullName(X, id);
   log(`  The rulers of the five seats, seed ${SEED}, years 0 to 300:`);

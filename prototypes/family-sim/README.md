@@ -86,7 +86,11 @@ Nothing in the game uses it.
   innocents alike) wait in the cells for the lord's court, which sits every 6 years (`courtEvery`, years set by
   the seed: `courtSits`), and hang then. Dwarves are judged by their lawspeaker and the condemned are put to
   death the next year. The orc War Chief judges in person and puts the condemned to death at once. The elves
-  exile rather than hang (a caught elf serial killer is locked away for life instead). Lesser crimes go to the
+  exile rather than hang. A caught elf serial killer is usually locked away for life
+  instead; rarely (`hushSerial`, likelier for someone in office: `hushOfficial`) the case is hushed up and
+  they're quietly exiled, nothing comes to light, and they may go on killing elsewhere. Exiles have left
+  their own people's justice for good: caught again for anything, they go before the human court that serves
+  where they live now, which can hang them. Lesser crimes go to the
   cells as before.
 - **In the cells:** prisoners don't marry, have children, commit crimes or suffer them; they fall ill more
   easily; and they go home when their time is up. Who's in which castle now: `prisoners(H)`.

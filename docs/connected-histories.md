@@ -37,7 +37,9 @@ of bakers) are as valid as famous ones (a displaced king in the family tree).
   skipped; a conviction costs the title. The dwarf thane inherits the same way. The elves' circle chooses the
   Elder, usually the eldest. The orc War Chief holds the seat by challenge to the death; the dead chief's family
   mostly stays, with a chance of a member leaving or attempting revenge. Only the human seats hold a court
-  (lord presides, magistrate judges); dwarves are judged by their lawspeaker, elves exile rather than hang, and
+  (lord presides, magistrate judges); dwarves are judged by their lawspeaker, elves exile rather than hang (a caught
+  elf serial killer is usually imprisoned for life, but rarely, for a political figure or a case worth
+  covering up, quietly exiled, free to kill elsewhere until another people's justice puts them to death), and
   the orc chief judges in person. A hangman travels between the human castles and stays in a room at each
   castle while there. Built in the family-sim prototype with the posts from the roster proposal.
 - **Pre-war history:** the game will have a set history before the war. Its set deaths and events will be tied

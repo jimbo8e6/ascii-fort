@@ -1,6 +1,6 @@
 1. Same seed and start year give the same people and ancestry
-  seed 1337, 150 years: run 1 8ffe31ade0292bda, run 2 8ffe31ade0292bda (2580 people, 9120 events)
-  seed 1338, 150 years: 51e506f0063dbd93
+  seed 1337, 150 years: run 1 e6396ee39612b194, run 2 e6396ee39612b194 (2580 people, 9120 events)
+  seed 1338, 150 years: a46ba526aa765b1c
   PASS  two runs give byte-identical histories
   PASS  a different seed gives a different history
   PASS  the same ancestry for Shagra Redfang (140 ancestors) in both runs
@@ -43,7 +43,7 @@
   PASS  a founder, and anyone else, compared with themselves is "the same person"
   PASS  1 years (seed 1338): 758 people, 831 events, 0 problems
   PASS  100 years (seed 1337): 1992 people, 6263 events, 0 problems
-  PASS  500 years (seed 1837): 6480 people, 27675 events, 0 problems
+  PASS  500 years (seed 1837): 6423 people, 27409 events, 0 problems
   Checked: no one dies before birth or outlives the ceiling (1.6 × their race's typical life); every death has a cause; every child is born after both parents
   (both adults at the birth, founders included, the mother in her child-bearing years); no one married an ancestor
   or descendant at any depth, a sibling, half sibling or first cousin;
@@ -54,21 +54,21 @@
 Lifespans and causes of death (seed 1337, 2,000 years, everyone who died after year 0)
   race    typical  deaths  died as   age at death, adults    old-age deaths  outliers                          oldest
                            children  (10% / 50% / 90%)       median
-  human      80   13618     10%    31 / 76 / 83                 79              2.2% past 92, 15% before 40       124
-  elf       600     611      5%    118 / 537 / 620              592             1.7% past 690, 28% before 300     866
-  dwarf     300    1578      8%    66 / 257 / 309               295             1.7% past 345, 30% before 150     450
-  orc        60    6849     19%    20 / 53 / 62                 59              1.4% past 69, 23% before 30       90
-  Causes: old age 50.8%, illness 26.1%, injury 19.3%, murder 2.0%, challenge 0.8%, childbirth 0.7%, execution 0.2%
+  human      80   13673     11%    31 / 76 / 83                 78              2.2% past 92, 15% before 40       124
+  elf       600     601      5%    123 / 542 / 621              591             1.6% past 690, 27% before 300     866
+  dwarf     300    1576      9%    62 / 257 / 310               295             1.5% past 345, 30% before 150     442
+  orc        60    6881     18%    20 / 52 / 61                 59              1.4% past 69, 23% before 30       90
+  Causes: old age 50.8%, illness 26.1%, injury 19.5%, murder 2.0%, challenge 0.8%, childbirth 0.6%, execution 0.3%
   Longest-lived human: Joan Kell (#15114, human of dwarf-elf-human-orc family, f, born 1230, died 1354 aged 124, of old age, farmer, Thornwick), constitution 1.52
   Longest-lived elf: Caelia Starwhisper (#5072, elf, f, born 368, died 1234 aged 866, of old age, hunter, Thornwick), constitution 1.46
   Shortest-lived adult elf: Elowen Thatcher (#2812, elf of elf-human-orc family, f, born 175, died 226 aged 51, of wounds from a skirmish, guard, Thornwick)
   A few human deaths:
-   Sybil Starwhisper (#24155, human of dwarf-elf-human-orc family, f, born 1992, died 1997 aged 5, of a sickness of the blood, Harrowgate Keep)
-   Fern Brightwater (#24164, human of dwarf-elf-human-orc family, f, born 1992, died 1996 aged 4, of a cart accident, Kelford)
-   Hilda Kell (#24167, human of dwarf-elf-human-orc family, f, born 1992, died 1996 aged 4, of a wasting illness, Hollin's Ferry)
-   Edwin Brook (#24178, human of dwarf-elf-human-orc family, m, born 1994, died 1997 aged 3, of a sickness of the blood, Concord Landing)
-   Sybil Stonefist (#24198, human of dwarf-elf-human-orc family, f, born 1995, died 1997 aged 2, of the coughing sickness, Hollin's Ferry)
-   Tobin Brightwater (#24216, human of dwarf-elf-human-orc family, m, born 1996, died 2000 aged 4, of a wasting illness, Port Cassel)
+   Orla Carver (#24082, human of dwarf-elf-human-orc family, f, born 1977, died 1996 aged 19, murdered (a blow to the head) by Leof Brightwater, guard, Kelford)
+   Ida Carver (#24098, human of dwarf-elf-human-orc family, f, born 1978, died 1991 aged 13, of a cart accident, Castle Aldermere)
+   Fern Brook (#24164, human of dwarf-elf-human-orc family, f, born 1985, died 1989 aged 4, of the flux, Dust Wells)
+   Edith Carver (#24178, human of dwarf-elf-human-orc family, f, born 1986, died 1997 aged 11, of a sickness of the blood, Castle Aldermere)
+   Leof Stonefist (#24241, human of dwarf-elf-human-orc family, m, born 1992, died 1994 aged 2, of a winter chill, Harrowgate Keep)
+   Hal Brook (#24263, human of dwarf-elf-human-orc family, m, born 1994, died 1995 aged 1, of a cart accident, Hollin's Ferry)
 
 6. Save and reload
   PASS  reloaded 2148 KB file is identical: 3093 people, 11672 events
@@ -77,7 +77,7 @@ Lifespans and causes of death (seed 1337, 2,000 years, everyone who died after y
 
 8. Murders and serial killers
   PASS  seed 1337, 500 years: 108 murders (64 ordinary, 44 by 7 serial killers), 55 solved, 35 passed for natural deaths, 4 pinned on an innocent; 0 problems
-  PASS  seed 1837, 500 years: 133 murders (74 ordinary, 59 by 9 serial killers), 57 solved, 44 passed for natural deaths, 3 pinned on an innocent; 0 problems
+  PASS  seed 1837, 500 years: 136 murders (77 ordinary, 59 by 9 serial killers), 51 solved, 46 passed for natural deaths, 3 pinned on an innocent; 0 problems
   PASS  seed 42, 1000 years: 278 murders (157 ordinary, 121 by 14 serial killers), 176 solved, 91 passed for natural deaths, 16 pinned on an innocent; 0 problems
   Checked for every murder: the killer was alive and an adult, not the victim, and not yet caught; a serial
   killing matches the killer's method, calling card and choice of victim; a killing that passed for natural is
@@ -95,17 +95,19 @@ Lifespans and causes of death (seed 1337, 2,000 years, everyone who died after y
     133  Aldric Wren          Castle Aldermere people believed: murder by an unknown hand (a crow feather was found)
     134  Ada Wren             Castle Aldermere people believed: murder by an unknown hand (a crow feather was found)
     141  Dunstan Wren         Castle Aldermere people believed: murder by an unknown hand (a crow feather was found)
-  Pinned on an innocent: Thrain Ironfoot (300, Concord Landing) was pushed to their death by Dagna Granitehand over robbery; Dain Ironfoot was blamed and exiled.
+  Pinned on an innocent: Caelia Silverleaf (260, Castle Aldermere) was a blow to the head by Ida Pike over an old feud; Sybil Wren was blamed and imprisoned.
   Passed for natural: Dunstan Dale (-5) was held under water by Tobin Kell; people believe: drowning.
+  Hushed up (seed 1837): Naeva Silverleaf (#7019, elf of dwarf-elf-human family, f, born 551, weaver, Harrowgate Keep) was caught in 743 after 5 killings, while holding office, and quietly exiled to Port Cassel; nothing came to light.
+    Afterwards: 7 more killings; caught again in 777 by the humans, 12 killings coming to light, and held in the cells. Status: caught, in the cells for life.
   Serial killers still at large at the end (a mystery waiting for a player): none in this history
 
 9. What a game finds at its start
   2144 starts (16 seeds, every third year from 1 to 400); share of starts with each serial killer situation (a start can have several):
    at large                  43%
    awaiting the gallows       1%
-   in the cells for life     46%
-   an old mystery            36%
-   none of these             17%
+   in the cells for life     42%
+   an old mystery            37%
+   none of these             18%
   Anyone (killer, murderer or wrongly blamed innocent) awaiting the gallows: 5% of starts
   PASS  every kind of start turns up somewhere
   7 serial killers over 500 years (seed 1337)
@@ -118,7 +120,7 @@ Lifespans and causes of death (seed 1337, 2,000 years, everyone who died after y
 
 10. Prisons
   PASS  seed 1337, 300 years: 748 theft (257 caught), 404 poaching (134 caught), 392 assault (208 caught); 615 sent to the cells (16 for murder, 1 of them innocent); 0 problems
-  PASS  seed 1837, 500 years: 1291 theft (450 caught), 597 poaching (192 caught), 707 assault (345 caught); 1009 sent to the cells (22 for murder, 0 of them innocent); 0 problems
+  PASS  seed 1837, 500 years: 1292 theft (451 caught), 574 poaching (179 caught), 711 assault (338 caught); 990 sent to the cells (22 for murder, 3 of them innocent); 0 problems
   Checked: each prisoner went to the right castle, was released when their time was up (never from a life
   sentence; the condemned were hanged when the castle's lord next held court, never released),
   and while inside didn't marry, have children, commit crimes or suffer them; those who died inside died there.
@@ -141,7 +143,7 @@ Lifespans and causes of death (seed 1337, 2,000 years, everyone who died after y
 
 11. Offices: rulers, their posts, the courts and the hangman
   PASS  seed 1337, 300 years: 484 holdings (52 of a ruler's seat), 0 regencies, 12 seats left vacant, 0 rulers lost the title to a conviction; 35 fights for the chieftaincy, 10 vows of revenge (8 carried out), 3 kin who left; 99 court sittings, 1 missed; 0 problems
-  PASS  seed 1837, 500 years: 735 holdings (72 of a ruler's seat), 2 regencies, 15 seats left vacant, 0 rulers lost the title to a conviction; 41 fights for the chieftaincy, 4 vows of revenge (4 carried out), 10 kin who left; 168 court sittings, 0 missed; 0 problems
+  PASS  seed 1837, 500 years: 734 holdings (77 of a ruler's seat), 1 regencies, 14 seats left vacant, 0 rulers lost the title to a conviction; 39 fights for the chieftaincy, 3 vows of revenge (3 carried out), 5 kin who left; 168 court sittings, 0 missed; 0 problems
   PASS  seed 42, 1000 years: 1487 holdings (148 of a ruler's seat), 3 regencies, 30 seats left vacant, 0 rulers lost the title to a conviction; 95 fights for the chieftaincy, 13 vows of revenge (13 carried out), 21 kin who left; 334 court sittings, 0 missed; 0 problems
   Checked: one holder at a time, alive, free and grown (a child may inherit, under a regent); a conviction or
   exile ends every office that year, and no one convicted is given one; each inheritance went to the eldest
@@ -149,7 +151,7 @@ Lifespans and causes of death (seed 1337, 2,000 years, everyone who died after y
   age; every War Chief after the first killed a rival for the seat (or had none), every Elder was chosen by the
   circle; posts were given by whoever ruled then; revenge was vowed and taken only for the killing of family;
   courts sat in their years, with a grown lord or a regent presiding, and hanged only the condemned; every
-  verdict came from the judge, ruler or regent of the convicted person's people, never themselves; no elf was put to death.
+  verdict came from the judge, ruler or regent of the convicted person's people, never themselves; no elf was put to death by their own people (an exile can be).
   The rulers of the five seats, seed 1337, years 0 to 300:
    Castle Aldermere (Lord, inherited): 13 rulers
        0–36  Cedric Kell          founding; died
@@ -209,10 +211,10 @@ Generation time (seed 1337; each length run 3 times, fastest shown)
       1    0.01 s          756           746      824      0.4 MB  398/102/105/141, 1
      50    0.10 s         1388           915     3520      0.8 MB  491/111/160/153, 4
     100    0.19 s         1992           854     6263      1.2 MB  418/139/183/114, 7
-    200    0.40 s         3093           831    11672      2.1 MB  398/155/178/100, 13
+    200    0.42 s         3093           831    11672      2.1 MB  398/155/178/100, 13
     500    1.12 s         6679           954    28539      4.9 MB  450/171/187/146, 30
-   1000    2.50 s        12426           928    55393      9.3 MB  430/178/185/135, 57
-   2000    5.39 s        24262           873   111037     18.7 MB  403/152/162/156, 112
+   1000    2.77 s        12426           928    55393      9.3 MB  430/178/185/135, 57
+   2000    7.58 s        24340           876   111317     18.8 MB  390/167/165/154, 111
   (Node v22.22.0, one thread. A browser should be similar; not measured yet.)
 
 All checks passed.

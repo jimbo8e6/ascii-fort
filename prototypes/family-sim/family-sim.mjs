@@ -136,6 +136,9 @@ export const RULES = {
   challengeChance: .06,      // yearly chance that someone challenges the War Chief to the death
   kinLeave: .15, kinVow: .12, // an orc killed in a fight: each grown member of their family's chance of leaving, or of vowing revenge
   revengeChance: .2,         // a vow's yearly chance of being carried out (a fight to the death with the killer)
+  // A caught elf serial killer is usually locked away for life; rarely the case is hushed up and they're
+  // quietly exiled instead (likelier for someone in office)
+  hushSerial: .08, hushOfficial: .5,
 };
 
 // ---- Offices: posts with a holder, a start and an end ----
@@ -242,7 +245,7 @@ function rand(seed, tag, a = 0, b = 0, c = 0) {
   h ^= h >>> 16; h = Math.imul(h, 0x85ebca6b); h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35); h ^= h >>> 16;
   return (h >>> 0) / 4294967296;
 }
-const T = Object.fromEntries(['stepDown', 'claim', 'circle', 'fight', 'challenge', 'kin', 'kinPlace', 'revenge', 'appoint', 'broom', 'court', 'weapon', 'wait', 'founding', 'turn', 'turnPick', 'crime', 'crimeVictim', 'crimeCaught', 'sentence', 'lifer', 'prewar', 'murder', 'motive', 'victim', 'method', 'believe', 'solve', 'accuse', 'punish', 'exile', 'serial', 'serialPick', 'serialKill', 'roam', 'catch', 'con', 'cause', 'childbirth', 'death', 'wed', 'wedPick', 'away', 'awayPlace', 'birth', 'sex', 'race', 'name', 'trade', 'tradePick', 'leave', 'leavePlace', 'found', 'foundAge', 'foundKids', 'foundRace', 'foundSurname', 'foundTrade'].map(k => [k, TAG(k)]));
+const T = Object.fromEntries(['hush', 'stepDown', 'claim', 'circle', 'fight', 'challenge', 'kin', 'kinPlace', 'revenge', 'appoint', 'broom', 'court', 'weapon', 'wait', 'founding', 'turn', 'turnPick', 'crime', 'crimeVictim', 'crimeCaught', 'sentence', 'lifer', 'prewar', 'murder', 'motive', 'victim', 'method', 'believe', 'solve', 'accuse', 'punish', 'exile', 'serial', 'serialPick', 'serialKill', 'roam', 'catch', 'con', 'cause', 'childbirth', 'death', 'wed', 'wedPick', 'away', 'awayPlace', 'birth', 'sex', 'race', 'name', 'trade', 'tradePick', 'leave', 'leavePlace', 'found', 'foundAge', 'foundKids', 'foundRace', 'foundSurname', 'foundTrade'].map(k => [k, TAG(k)]));
 // A person's own constitution: mostly within 15% of 1, with about 1 in 25 unusually hardy (up to half
 // as long again) and about 1 in 25 frail (as little as half)
 function ownConstitution(seed, id) {
@@ -364,17 +367,17 @@ function foundingKiller(H) {
 // Derived lookups (rebuilt after loading): children, living people
 function index(H) {
   H._revealed = {};
-  for (const e of H.events) if (e.t === 'caught') for (const v of e.victims) H._revealed[v] = e.y;
+  for (const e of H.events) if (e.t === 'caught' && !e.hushed) for (const v of e.victims) H._revealed[v] = e.y;
   H._kills = {};
   for (const e of H.events) if (e.t === 'death' && e.kind === 'murder') H._kills[e.by] = (H._kills[e.by] || 0) + 1;
   H._children = H.people.map(() => []);
   for (const p of H.people) for (const par of [p.mother, p.father]) if (par !== null) H._children[par].push(p.id);
   H._living = H.people.filter(p => p.death === null).map(p => p.id);
   // Offices: who holds each now, who held it last, which stand empty, criminal records and open vows
-  H._held = {}; H._holds = {}; H._last = {}; H._vacant = {}; H._record = {}; H._vows = []; H._officeList = null;
+  H._held = {}; H._holds = {}; H._last = {}; H._vacant = {}; H._record = {}; H._exiles = new Set(); H._vows = []; H._officeList = null;
   for (const e of H.events) {
     if (e.t === 'office' || e.t === 'left office' || e.t === 'vacant') applyOffice(H, e);
-    else if (e.t === 'imprisoned' || e.t === 'exiled') H._record[e.p] = { y: e.y, t: e.t };
+    else if (e.t === 'imprisoned' || e.t === 'exiled') { H._record[e.p] = { y: e.y, t: e.t }; if (e.t === 'exiled') H._exiles.add(e.p); }
     else if (e.t === 'vow') H._vows.push({ p: e.p, against: e.against, for: e.for });
     else if (e.t === 'challenge' && e.revenge !== undefined) { const i = H._vows.findIndex(v => v.p === e.p && v.against === e.against); if (i >= 0) H._vows.splice(i, 1); }
   }
@@ -434,13 +437,14 @@ function crimes(H, y, alive, add) {
   const pickFrom = (list, r) => list.length ? list[Math.floor(r * list.length)] : null;
   const otherPlace = (p, r) => { const opts = RULES.places.filter(q => q.name !== p.place && q.races[p.race]); return opts.length ? opts[Math.floor(r * opts.length)].name : null; };
   // The cells beneath the castle that takes someone from here
-  const prisonFor = p => RULES.prisons[p.race] || (RULES.prisons.westPlaces.includes(p.place) ? RULES.prisons.west : RULES.prisons.rest);
+  // (an exile has left their own people's justice: they go to the human castle that serves where they live now)
+  const prisonFor = p => !H._exiles.has(p.id) && RULES.prisons[p.race] || (RULES.prisons.westPlaces.includes(p.place) ? RULES.prisons.west : RULES.prisons.rest);
   const sentence = (p, crime) => { const [a, b] = RULES.sentences[crime], k = RULES.sentenceScale[p.race] ?? RACES[p.race].life / 80;
     return Math.max(1, Math.round((a + rand(seed, T.sentence, y, p.id) * (b - a)) * k)); };
   // Who judges someone: dwarves their lawspeaker, elves their Elder, orcs their War Chief, everyone else
   // the magistrate of the castle whose cells serve their home (failing them the ruler, then a regent)
   const O = RULES.offices;
-  const justiceSeat = p => p.race === 'human' ? prisonFor(p) : Object.keys(O.seats).find(s => O.seats[s].race === p.race) || prisonFor(p);
+  const justiceSeat = p => p.race === 'human' || H._exiles.has(p.id) ? prisonFor(p) : Object.keys(O.seats).find(s => O.seats[s].race === p.race) || prisonFor(p);
   const judgeFor = p => { const seat = justiceSeat(p), S = O.seats[seat];
     for (const o of [S.judge, S.ruler, 'Regent']) { const id = acting(H, seat + '|' + o, y); if (id !== null && id !== p.id) return id; }
     return null; };
@@ -479,12 +483,16 @@ function crimes(H, y, alive, add) {
       jail(p, 'murder', life ? null : sentence(p, 'murder'), why, { for: forVictim });
       return life ? 'imprisoned for life' : 'imprisoned';
     }
+    return exile(p, forVictim, why);
+  };
+  // Sent away to another place where their race lives, out of their own people's justice for good
+  function exile(p, forVictim, why, extra = {}) {
     const to = otherPlace(p, rand(seed, T.exile, y, p.id));
     if (!to) return null;
-    H.events.push({ y, t: 'exiled', p: p.id, from: p.place, to, for: forVictim, why, ...judged(judgeFor(p)) }); add(p, -1); p.place = to; add(p, 1);
-    H._record[p.id] = { y, t: 'exiled' };
+    H.events.push({ y, t: 'exiled', p: p.id, from: p.place, to, for: forVictim, why, ...extra, ...judged(judgeFor(p)) }); add(p, -1); p.place = to; add(p, 1);
+    H._record[p.id] = { y, t: 'exiled' }; H._exiles.add(p.id);
     return 'exiled';
-  };
+  }
   const kill = (killer, victim, method, motive, serial) => {
     victim.death = y; victim.deathKind = 'murder';
     victim.cause = `murdered (${MURDER.methods[method].cause}) by ${killer.name} ${killer.surname}`;
@@ -541,8 +549,8 @@ function crimes(H, y, alive, add) {
       if (rand(seed, T.accuse, y, victim.id) < RULES.wrongAccuse) {
         const innocent = pickFrom(here.filter(v => v !== k && v !== victim && living(v) && !v.killer), rand(seed, T.accuse, y, victim.id + 7));
         if (innocent) {
-          const outcome = punish(innocent, victim.id, 'wrongly blamed');
-          if (outcome) { e.blamed = innocent.id; e.believed = `murder by ${innocent.name} ${innocent.surname}`; H.events.push({ y, t: 'accused', p: innocent.id, for: victim.id, outcome, ...judged(judgeFor(innocent)) }); }
+          const j = judgeFor(innocent), outcome = punish(innocent, victim.id, 'wrongly blamed');
+          if (outcome) { e.blamed = innocent.id; e.believed = `murder by ${innocent.name} ${innocent.surname}`; H.events.push({ y, t: 'accused', p: innocent.id, for: victim.id, outcome, ...judged(j) }); }
         }
       }
     }
@@ -568,15 +576,20 @@ function crimes(H, y, alive, add) {
       // The past isn't rewritten: each killing keeps what people believed then, and the caught event
       // records which killings came to light (see revealedIn). A caught serial killer is hanged or
       // imprisoned for life.
-      const series = H.events.filter(x => x.t === 'death' && x.by === k.id && x.serial);
-      k.killer.caught = y;
-      H.events.push({ y, t: 'caught', p: k.id, victims: series.map(x => x.p), mark: k.killer.mark });
-      for (const x of series) H._revealed[x.p] = y;
-      punish(k, victim.id, 'convicted', true);
+      // The elves now and then hush a case up and quietly exile the killer instead: more often when the
+      // killer holds an office. Nothing comes to light then, and the exile can go on killing elsewhere,
+      // under the justice of wherever they live now. (A second capture brings out the whole series.)
+      const hush = !k.killer.caught && O.seats[justiceSeat(k)].justice === 'exile'
+        && rand(seed, T.hush, y, k.id) < (H._holds[k.id] ? RULES.hushOfficial : RULES.hushSerial);
+      const series = H.events.filter(x => x.t === 'death' && x.by === k.id && x.serial && H._revealed[x.p] === undefined);
+      if (k.killer.caught) k.killer.recaught = y; else k.killer.caught = y;
+      H.events.push({ y, t: 'caught', p: k.id, victims: series.map(x => x.p), mark: k.killer.mark, ...(hush ? { hushed: true } : {}) });
+      if (hush) { k.killer.exiled = y; exile(k, victim.id, 'convicted', { hushed: true }); }
+      else { for (const x of series) H._revealed[x.p] = y; punish(k, victim.id, 'convicted', true); }
     }
     return true;
   };
-  const atLarge = () => free.filter(k => living(k) && k.killer && !k.killer.caught && H._kills[k.id]);
+  const atLarge = () => free.filter(k => living(k) && k.killer && (!k.killer.caught || k.killer.exiled !== undefined && k.killer.recaught === undefined) && H._kills[k.id]);
   const signature = (k, pick) => { const method = pick(Object.keys(MURDER.methods), 1), w = MURDER.weapons[method];
     return { method, weapon: w[rand(seed, T.turnPick, k.id, 5) * w.length | 0], mark: pick(MURDER.marks, 2), prey: pick(Object.keys(MURDER.prey), 3) }; };
   // Someone turns: a free adult chosen by the seed, with a method (and weapon), calling card and kind of
@@ -1010,8 +1023,9 @@ export const solved = (H, e) => !!e.solved || H._revealed[e.p] !== undefined;
 export function cases(H) {
   return H.people.filter(p => p.killer).map(p => {
     const victims = H.events.filter(e => e.t === 'death' && e.by === p.id && e.serial);
-    const caught = H.events.find(e => e.t === 'caught' && e.p === p.id);
-    const status = caught ? (p.death !== null ? (p.deathKind === 'execution' ? 'caught and hanged' : 'caught, died in the cells')
+    const caught = H.events.find(e => e.t === 'caught' && e.p === p.id), loose = p.killer.exiled !== undefined && p.killer.recaught === undefined;
+    const status = loose ? (p.death !== null ? 'exiled after a hushed-up capture, died uncaught' : 'exiled after a hushed-up capture, at large')
+      : caught ? (p.death !== null ? (p.deathKind === 'execution' ? 'caught and hanged' : 'caught, died in the cells')
         : p.jail?.condemned ? 'caught, awaiting the gallows' : 'caught, in the cells for life')
       : !victims.length ? (p.death !== null ? 'died before killing' : 'not yet started') : p.death !== null ? 'died, never caught' : 'at large';
     return { killer: p.id, ...p.killer, victims, caught: caught ? caught.y : null, status };
