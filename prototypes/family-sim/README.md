@@ -6,8 +6,8 @@ Nothing in the game uses it.
 - `family-sim.mjs`: the simulation. Typical lifespans in `RACES` (James: humans 80, elves 600, dwarves
   300, orcs 60), with placeholder fertility and death rates; ⚠ temporary inheritance rules
   for mixed-race families in `TEMP_RULES` (one small function each, to be decided); other placeholder
-  rules in `RULES`; the places it runs over in `PLACES`; five placeholder notable founders in `NOTABLES`.
-- `test.mjs`: runs the six checks and times generation. `node test.mjs` prints the report and writes
+  rules in `RULES`; the places it runs over in `PLACES`; five placeholder notable founders in `NOTABLES` (the first rulers of the seats); offices and titles in `OFFICES`.
+- `test.mjs`: runs the checks (the six first asked for, then murder, prisons and offices) and times generation. `node test.mjs` prints the report and writes
   `results.txt`, plus a saved history in `out/` (not committed).
 - `viewer.html`: generate a history and browse it: search people, follow parents, spouses and children,
   see ancestry trees, family lines and notable ancestors, and pick two people to see how they're related
@@ -82,8 +82,50 @@ Nothing in the game uses it.
   a human, multiplied per race (`sentenceScale`): orcs 0.75, following their lifespan; dwarves a gentler 2 and
   elves 1.5, so a thieving dwarf or elf serves years rather than decades. Wrongly blamed innocents are imprisoned
   too.
-- **The lord's court:** each castle's lord holds court every 6 years (`courtEvery`), in years set by the seed
-  (`courtSits`). The condemned, killers and wrongly blamed innocents alike, wait in the cells until the next
-  sitting at least a year away, and hang then. About 1 game start in 8 has someone awaiting the gallows.
+- **Justice by culture:** only the human castles hold a court. There the condemned (killers and wrongly blamed
+  innocents alike) wait in the cells for the lord's court, which sits every 6 years (`courtEvery`, years set by
+  the seed: `courtSits`), and hang then. Dwarves are judged by their lawspeaker and the condemned are put to
+  death the next year. The orc War Chief judges in person and puts the condemned to death at once. The elves
+  exile rather than hang (a caught elf serial killer is locked away for life instead). Lesser crimes go to the
+  cells as before.
 - **In the cells:** prisoners don't marry, have children, commit crimes or suffer them; they fall ill more
   easily; and they go home when their time is up. Who's in which castle now: `prisoners(H)`.
+
+## Offices
+A trade is a livelihood; an **office** is a post someone holds for a while. Holdings are events
+(`office`, `left office`, `vacant`), so they follow the same rules as the rest of the history: a later start
+only adds to them, and a saved history carries on the same. All the posts and titles are in `OFFICES`.
+- **The five seats and their rulers** (James's rules):
+  - **Lords** of Castle Aldermere and Harrowgate Keep pass to the eldest child. A child who is dead, in the
+    cells or has ever been convicted is skipped. With no child, the nearest relative inherits (a descendant
+    before anyone as near, the eldest first). With no relative, the seat stands vacant, and then the highest in
+    rank at the castle (the steward first) takes it, or failing them the eldest of the household. A child
+    heir rules under a **regent** (the steward) until they come of age. A conviction or exile costs the title.
+  - **The Thane** of Kharn Dolum inherits the same way.
+  - **The Elder** of Aelith Vara is chosen by the circle of elders, usually the eldest, after a vacancy
+    (elf consensus is slow).
+  - **The War Chief** of Gor Marakh holds the seat by **challenge to the death**: now and then someone
+    challenges, and a vacant seat goes to the strongest claimants, who fight for it. Strength follows age,
+    being a warrior, and constitution. The loser's family mostly stays, but each grown member may leave or
+    **vow revenge**; a vow can be carried out years later as another fight to the death, which can win the
+    chieftaincy too.
+- **Posts at the seats**, appointed by the ruler (or the regent), highest in rank first: Steward, Captain of
+  the Guard, Magistrate, Priest, Jailer at the human castles; Hold-Warden, Shield-Captain, Lawspeaker,
+  Rune-priest, Keeper of the Deeps at Kharn Dolum; Voice of the Elder, Warden-Captain, Lore-keeper at Aelith
+  Vara; Blood-Second, Shaman, Pen-Master at Gor Marakh. A ruler looks to fitting trades first (a guard for the
+  captain), and a new ruler may dismiss those who served before (`newBroom`). Ageing post-holders may step down.
+- **The hangman:** one, appointed at Castle Aldermere, travels to every sitting of a human court and lodges at
+  the castle while there (`lodged` on the court event). With no hangman, the castle's jailer does it.
+- **Villages:** every other place has a head and a priest in its main race's titles (Reeve and Priest,
+  Clan-Head and Rune-priest, Grove-Keeper and Grove-priest, Camp Chief and Shaman), appointed by that race's
+  ruler.
+- **The court has people in it:** each `court` event names who presided (the lord, or the regent), the
+  magistrate and the hangman, and whom it hanged. A vacant seat, or a child lord with no regent, means the
+  court can't sit, so the condemned wait for the next sitting. Every verdict, including the wrongful ones,
+  records its `judge`: the magistrate (or lawspeaker, Elder or War Chief), failing them the ruler.
+- **Who may hold office:** the seat's own race (⚠ temporary rule `mayHold`; the roster suggests the culture
+  someone was raised in). No one who has been in the cells or exiled is given an office. Rulers commit no petty
+  crimes, and office-holders no theft or poaching. Office-holders don't move away; a spouse moves to them.
+- **Questions:** `holdings(H)` (every holding, with how it began and ended), `officeHolders(H)` (every office
+  now), `titles(H, id)`, `verdicts(H, judge)`. In the viewer, search `offices`; a person's card lists their
+  offices and the verdicts they gave.

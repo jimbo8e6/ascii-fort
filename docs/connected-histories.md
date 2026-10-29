@@ -32,6 +32,14 @@ of bakers) are as valid as famous ones (a displaced king in the family tree).
   quest includes a murder. (A guaranteed killer at every start was tried and dropped.)
 - **Prisons:** cells beneath the castles hold prisoners for anything from murder to stealing.
   The condemned wait there until the castle's lord next holds court.
+- **Offices** (decided): human lords pass to the eldest child, then the nearest relative, then the next highest
+  in rank at the castle; a child heir rules under a regent (the steward); a dead, exiled or imprisoned heir is
+  skipped; a conviction costs the title. The dwarf thane inherits the same way. The elves' circle chooses the
+  Elder, usually the eldest. The orc War Chief holds the seat by challenge to the death; the dead chief's family
+  mostly stays, with a chance of a member leaving or attempting revenge. Only the human seats hold a court
+  (lord presides, magistrate judges); dwarves are judged by their lawspeaker, elves exile rather than hang, and
+  the orc chief judges in person. A hangman travels between the human castles and stays in a room at each
+  castle while there. Built in the family-sim prototype with the posts from the roster proposal.
 - **Pre-war history:** the game will have a set history before the war. Its set deaths and events will be tied
   to whichever families and names are generated for each new game.
 - **War deaths** will come later.

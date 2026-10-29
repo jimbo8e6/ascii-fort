@@ -82,6 +82,9 @@ export const TEMP_RULES = {
   newHome: (wife, husband) => husband.place,
   // How likely a match across races is, against a match within one
   crossRaceWeight: .15,
+  // Who may hold an office of a race's seat or village (rule, inherit, be appointed): its own race only.
+  // The roster proposal suggests the culture someone was brought up in instead, which needs a rule for upbringing first.
+  mayHold: (p, race) => p.race === race,
 };
 
 // ---- Other placeholder rules (not about inheritance) ----
@@ -123,6 +126,56 @@ export const RULES = {
   // human castle (Harrowgate Keep for the west and the Wenmere, Castle Aldermere for the rest)
   prisons: { dwarf: 'Kharn Dolum', orc: 'Gor Marakh', west: 'Harrowgate Keep', rest: 'Castle Aldermere',
     westPlaces: ['Aelith Vara', 'Mistwater', 'Thornwick', 'Port Cassel', 'Harrowgate Keep'] },
+  // Offices (placeholders, apart from the succession rules James chose; see OFFICES)
+  stepDown: .08,             // an ageing post-holder's (past 75% of a typical life) yearly chance of stepping down; rulers never do
+  newBroom: .25,             // a new ruler's chance of dismissing each post-holder at their seat
+  claimSettle: .5,           // a seat with no heir: yearly chance (from the year after) that the next in rank takes it
+  circleChoose: .5,          // the elves' circle: yearly chance (from the year after the Elder's death) of agreeing on a new one
+  elderEldest: .7,           // ...that it chooses the eldest (otherwise one of the next four)
+  chiefFight: .7,            // no War Chief: yearly chance (from the year after) that the strongest claimants fight for it
+  challengeChance: .06,      // yearly chance that someone challenges the War Chief to the death
+  kinLeave: .15, kinVow: .12, // an orc killed in a fight: each grown member of their family's chance of leaving, or of vowing revenge
+  revengeChance: .2,         // a vow's yearly chance of being carried out (a fight to the death with the killer)
+};
+
+// ---- Offices: posts with a holder, a start and an end ----
+// A trade is a livelihood; an office is a post someone holds for a while (Lord of Castle Aldermere,
+// Jailer of Kharn Dolum). Holdings are events in the history (`office` when someone takes a post,
+// `left office` when they lose it, `vacant` when it stands empty), so a later start only adds to them.
+// James's rules: human lords pass to the eldest child, then the nearest relative, then the next highest
+// in rank at the castle, and a conviction costs the title; a child heir rules under a regent (the
+// steward); the dwarf thane inherits the same way; the elves' circle chooses the Elder, usually the
+// eldest; the orc War Chief holds the seat by challenge to the death. Only the human seats hold a court
+// (the lord presides, the magistrate judges, a travelling hangman carries out the hangings); dwarves are
+// judged by their lawspeaker, the elves exile rather than hang, and the orc chief judges in person.
+// The titles for dwarves, elves and orcs and the posts beyond the rulers are suggestions from the roster.
+export const OFFICES = {
+  // Each seat: its race, its ruler's title and how they succeed, how it does justice, who judges, and the
+  // posts its ruler appoints, highest in rank first
+  seats: {
+    'Castle Aldermere': { race: 'human', ruler: 'Lord', rule: 'inherit', justice: 'court', judge: 'Magistrate',
+      posts: ['Steward', 'Captain of the Guard', 'Magistrate', 'Priest', 'Jailer', 'Hangman'] },
+    'Harrowgate Keep': { race: 'human', ruler: 'Lord', rule: 'inherit', justice: 'court', judge: 'Magistrate',
+      posts: ['Steward', 'Captain of the Guard', 'Magistrate', 'Priest', 'Jailer'] },
+    'Kharn Dolum': { race: 'dwarf', ruler: 'Thane', rule: 'inherit', justice: 'lawspeaker', judge: 'Lawspeaker',
+      posts: ['Hold-Warden', 'Shield-Captain', 'Lawspeaker', 'Rune-priest', 'Keeper of the Deeps'] },
+    'Aelith Vara': { race: 'elf', ruler: 'Elder', rule: 'chosen', justice: 'exile', judge: 'Elder',
+      posts: ['Voice of the Elder', 'Warden-Captain', 'Lore-keeper'] },
+    'Gor Marakh': { race: 'orc', ruler: 'War Chief', rule: 'challenge', justice: 'chief', judge: 'War Chief',
+      posts: ['Blood-Second', 'Shaman', 'Pen-Master'] },
+  },
+  // One hangman for the human castles: appointed at this seat, they travel to each sitting of a court and
+  // lodge at the castle while there. Never next in rank for the lordship.
+  hangman: { office: 'Hangman', seat: 'Castle Aldermere' },
+  // Every other place has a head and a priest, in the title of its main race, appointed by that race's
+  // ruler (the human villages by the lord whose cells serve them)
+  villages: { human: ['Reeve', 'Priest'], dwarf: ['Clan-Head', 'Rune-priest'], elf: ['Grove-Keeper', 'Grove-priest'], orc: ['Camp Chief', 'Shaman'] },
+  // Trades a ruler looks to first when filling a post
+  prefer: { 'Captain of the Guard': ['guard'], Jailer: ['guard'], Hangman: ['guard', 'servant'], Steward: ['servant', 'clerk'], Magistrate: ['clerk', 'trader'],
+    'Shield-Captain': ['guard'], 'Keeper of the Deeps': ['guard', 'miner'], Lawspeaker: ['mason', 'smith'], 'Hold-Warden': ['guard', 'smith'],
+    'Warden-Captain': ['warden'], 'Lore-keeper': ['singer', 'carver'], 'Grove-priest': ['herbalist', 'healer'], 'Grove-Keeper': ['herbalist', 'warden'],
+    'Blood-Second': ['warrior'], 'Pen-Master': ['warrior'], Shaman: ['tanner', 'herder'], 'Camp Chief': ['herder'],
+    Reeve: ['farmer', 'miller', 'trader', 'innkeeper'], 'Clan-Head': ['miner', 'smith'] },
 };
 
 // ---- Places (a subset of the gazetteer). Who lives there, how many it holds, and its trades. ----
@@ -175,10 +228,10 @@ const NAMES = {
 // history carries on under its own rules whatever the current settings are. The rule *functions*
 // (TEMP_RULES, causes of death, constitution) are code: RULES_CODE names their version, and loading a
 // history made under a different version is flagged.
-export const RULES_CODE = 'family-sim 8';
+export const RULES_CODE = 'family-sim 9';
 function currentRules() {
   return JSON.parse(JSON.stringify({ code: RULES_CODE, races: RACES, places: PLACES, ceiling: CEILING, childbirth: CHILDBIRTH,
-    crossRaceWeight: TEMP_RULES.crossRaceWeight, ...RULES }));
+    crossRaceWeight: TEMP_RULES.crossRaceWeight, offices: OFFICES, ...RULES }));
 }
 
 // ---- Hashed randomness: a number in [0, 1) from the seed and up to four whole numbers ----
@@ -189,7 +242,7 @@ function rand(seed, tag, a = 0, b = 0, c = 0) {
   h ^= h >>> 16; h = Math.imul(h, 0x85ebca6b); h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35); h ^= h >>> 16;
   return (h >>> 0) / 4294967296;
 }
-const T = Object.fromEntries(['court', 'weapon', 'wait', 'founding', 'turn', 'turnPick', 'crime', 'crimeVictim', 'crimeCaught', 'sentence', 'lifer', 'prewar', 'murder', 'motive', 'victim', 'method', 'believe', 'solve', 'accuse', 'punish', 'exile', 'serial', 'serialPick', 'serialKill', 'roam', 'catch', 'con', 'cause', 'childbirth', 'death', 'wed', 'wedPick', 'away', 'awayPlace', 'birth', 'sex', 'race', 'name', 'trade', 'tradePick', 'leave', 'leavePlace', 'found', 'foundAge', 'foundKids', 'foundRace', 'foundSurname', 'foundTrade'].map(k => [k, TAG(k)]));
+const T = Object.fromEntries(['stepDown', 'claim', 'circle', 'fight', 'challenge', 'kin', 'kinPlace', 'revenge', 'appoint', 'broom', 'court', 'weapon', 'wait', 'founding', 'turn', 'turnPick', 'crime', 'crimeVictim', 'crimeCaught', 'sentence', 'lifer', 'prewar', 'murder', 'motive', 'victim', 'method', 'believe', 'solve', 'accuse', 'punish', 'exile', 'serial', 'serialPick', 'serialKill', 'roam', 'catch', 'con', 'cause', 'childbirth', 'death', 'wed', 'wedPick', 'away', 'awayPlace', 'birth', 'sex', 'race', 'name', 'trade', 'tradePick', 'leave', 'leavePlace', 'found', 'foundAge', 'foundKids', 'foundRace', 'foundSurname', 'foundTrade'].map(k => [k, TAG(k)]));
 // A person's own constitution: mostly within 15% of 1, with about 1 in 25 unusually hardy (up to half
 // as long again) and about 1 in 25 frail (as little as half)
 function ownConstitution(seed, id) {
@@ -216,6 +269,8 @@ export function newHistory(seed) {
   const H = { version: 2, seed: seed | 0, year: 0, rules: currentRules(), people: [], lines: [], events: [] };
   found(H);
   index(H);
+  foundOffices(H);
+  H._living = H.people.filter(p => p.death === null).map(p => p.id);
   return H;
 }
 
@@ -315,6 +370,15 @@ function index(H) {
   H._children = H.people.map(() => []);
   for (const p of H.people) for (const par of [p.mother, p.father]) if (par !== null) H._children[par].push(p.id);
   H._living = H.people.filter(p => p.death === null).map(p => p.id);
+  // Offices: who holds each now, who held it last, which stand empty, criminal records and open vows
+  H._held = {}; H._holds = {}; H._last = {}; H._vacant = {}; H._record = {}; H._vows = []; H._officeList = null;
+  for (const e of H.events) {
+    if (e.t === 'office' || e.t === 'left office' || e.t === 'vacant') applyOffice(H, e);
+    else if (e.t === 'imprisoned' || e.t === 'exiled') H._record[e.p] = { y: e.y, t: e.t };
+    else if (e.t === 'vow') H._vows.push({ p: e.p, against: e.against, for: e.for });
+    else if (e.t === 'challenge' && e.revenge !== undefined) { const i = H._vows.findIndex(v => v.p === e.p && v.against === e.against); if (i >= 0) H._vows.splice(i, 1); }
+  }
+  H._vows = H._vows.filter(v => H.people[v.p].death === null && H.people[v.against].death === null);
 }
 
 const age = (p, y) => y - p.birth;
@@ -373,21 +437,42 @@ function crimes(H, y, alive, add) {
   const prisonFor = p => RULES.prisons[p.race] || (RULES.prisons.westPlaces.includes(p.place) ? RULES.prisons.west : RULES.prisons.rest);
   const sentence = (p, crime) => { const [a, b] = RULES.sentences[crime], k = RULES.sentenceScale[p.race] ?? RACES[p.race].life / 80;
     return Math.max(1, Math.round((a + rand(seed, T.sentence, y, p.id) * (b - a)) * k)); };
+  // Who judges someone: dwarves their lawspeaker, elves their Elder, orcs their War Chief, everyone else
+  // the magistrate of the castle whose cells serve their home (failing them the ruler, then a regent)
+  const O = RULES.offices;
+  const justiceSeat = p => p.race === 'human' ? prisonFor(p) : Object.keys(O.seats).find(s => O.seats[s].race === p.race) || prisonFor(p);
+  const judgeFor = p => { const seat = justiceSeat(p), S = O.seats[seat];
+    for (const o of [S.judge, S.ruler, 'Regent']) { const id = acting(H, seat + '|' + o, y); if (id !== null && id !== p.id) return id; }
+    return null; };
+  const judged = j => j !== null ? { judge: j } : {};
   // Into the cells: for a number of years, or for life (until: null)
   const jail = (p, crime, years, why, extra = {}) => {
     add(p, -1);
-    p.jail = { at: prisonFor(p), home: p.place, since: y, until: years === null ? null : y + years, crime, why, ...(extra.for !== undefined ? { for: extra.for } : {}), ...(extra.condemned ? { condemned: true } : {}) };
-    H.events.push({ y, t: 'imprisoned', p: p.id, at: p.jail.at, from: p.place, until: p.jail.until, crime, why, ...extra });
+    const j = judgeFor(p);
+    p.jail = { at: prisonFor(p), home: p.place, since: y, until: years === null ? null : y + years, crime, why, ...(extra.for !== undefined ? { for: extra.for } : {}), ...(extra.condemned ? { condemned: true } : {}), ...judged(j) };
+    H.events.push({ y, t: 'imprisoned', p: p.id, at: p.jail.at, from: p.place, until: p.jail.until, crime, why, ...extra, ...judged(j) });
+    H._record[p.id] = { y, t: 'imprisoned' };
     p.place = p.jail.at;
   };
-  // Someone convicted of (or blamed for) a murder is hanged, imprisoned or exiled
+  // Someone convicted of (or blamed for) a murder is put to death, imprisoned or exiled, as their
+  // people do it: the human castles hang the condemned when the lord's court next sits; the dwarves put
+  // them to death the next year; the orc chief does it at once, in person; the elves exile instead
+  // (a caught serial killer is locked away for life rather than let loose)
   const punish = (p, forVictim, why, serial = false) => {
     if (!living(p)) return null;
-    const r = rand(seed, T.punish, y, p.id), w = RULES.murderPunish;
-    const outcome = serial ? (r < RULES.serialHang ? 'hanged' : 'imprisoned') : r < w.hanged ? 'hanged' : r < w.hanged + w.imprisoned ? 'imprisoned' : 'exiled';
-    if (outcome === 'hanged') {                                                  // condemned: to the cells to await the lord's court
-      jail(p, 'murder', courtSits(H, prisonFor(p), y + 1) - y, why, { for: forVictim, condemned: true });
-      return 'condemned to hang';
+    const r = rand(seed, T.punish, y, p.id), w = RULES.murderPunish, S = O.seats[justiceSeat(p)];
+    let outcome = serial ? (r < RULES.serialHang ? 'hanged' : 'imprisoned') : r < w.hanged ? 'hanged' : r < w.hanged + w.imprisoned ? 'imprisoned' : 'exiled';
+    if (outcome === 'hanged' && S.justice === 'exile') outcome = serial ? 'imprisoned' : 'exiled';
+    if (outcome === 'hanged' && S.justice === 'chief') {
+      const j = judgeFor(p), v = P[forVictim], by = j !== null ? `${P[j].name} ${P[j].surname}` : `the warriors of ${justiceSeat(p)}`;
+      p.death = y; p.deathKind = 'execution'; p.cause = `put to death by ${by} for the murder of ${v.name} ${v.surname}`;
+      H.events.push({ y, t: 'death', p: p.id, kind: 'execution', cause: p.cause, for: forVictim, place: p.place, why, atOnce: true, ...judged(j) });
+      add(p, -1);
+      return 'put to death';
+    }
+    if (outcome === 'hanged') {                                                  // condemned: to the cells to await their death
+      jail(p, 'murder', S.justice === 'court' ? courtSits(H, prisonFor(p), y + 1) - y : 1, why, { for: forVictim, condemned: true });
+      return S.justice === 'court' ? 'condemned to hang' : 'condemned to die';
     }
     if (outcome === 'imprisoned') {
       const life = serial || rand(seed, T.lifer, y, p.id) < RULES.lifeSentence;
@@ -396,7 +481,8 @@ function crimes(H, y, alive, add) {
     }
     const to = otherPlace(p, rand(seed, T.exile, y, p.id));
     if (!to) return null;
-    H.events.push({ y, t: 'exiled', p: p.id, from: p.place, to, for: forVictim, why }); add(p, -1); p.place = to; add(p, 1);
+    H.events.push({ y, t: 'exiled', p: p.id, from: p.place, to, for: forVictim, why, ...judged(judgeFor(p)) }); add(p, -1); p.place = to; add(p, 1);
+    H._record[p.id] = { y, t: 'exiled' };
     return 'exiled';
   };
   const kill = (killer, victim, method, motive, serial) => {
@@ -420,7 +506,9 @@ function crimes(H, y, alive, add) {
   // Lesser crimes: theft, assault and poaching. Those caught go to the cells for a while.
   for (const k of free) {
     if (!living(k) || !adult(k) || k.killer) continue;                           // a serial killer keeps their head down
+    const rules = (H._holds[k.id] || []).some(key => O.seats[key.split('|')[0]]?.ruler === key.split('|')[1]);
     for (const [crime, c] of Object.entries(RULES.crimes)) {
+      if (rules || H._holds[k.id] && crime !== 'assault') continue;             // rulers commit no petty crimes; office-holders no theft or poaching
       const rate = crime === 'poaching' && k.trade === 'hunter' ? c.hunter : c.rate;
       if (rand(seed, T.crime, y, k.id * 4 + crime.length) >= rate) continue;
       const victim = crime === 'poaching' ? null : pickFrom((byPlace[k.place] || []).filter(v => v !== k && living(v) && adult(v)), rand(seed, T.crimeVictim, y, k.id));
@@ -454,7 +542,7 @@ function crimes(H, y, alive, add) {
         const innocent = pickFrom(here.filter(v => v !== k && v !== victim && living(v) && !v.killer), rand(seed, T.accuse, y, victim.id + 7));
         if (innocent) {
           const outcome = punish(innocent, victim.id, 'wrongly blamed');
-          if (outcome) { e.blamed = innocent.id; e.believed = `murder by ${innocent.name} ${innocent.surname}`; H.events.push({ y, t: 'accused', p: innocent.id, for: victim.id, outcome }); }
+          if (outcome) { e.blamed = innocent.id; e.believed = `murder by ${innocent.name} ${innocent.surname}`; H.events.push({ y, t: 'accused', p: innocent.id, for: victim.id, outcome, ...judged(judgeFor(innocent)) }); }
         }
       }
     }
@@ -507,6 +595,210 @@ function crimes(H, y, alive, add) {
   if (rand(seed, T.turn, y, 999) < RULES.serialTurnChance) turn(0);
 }
 
+// ---- Offices, each year after the crimes ----
+// Keep the derived state in step with an office event (also used to rebuild it after loading)
+function applyOffice(H, e) {
+  const key = e.place + '|' + e.office;
+  if (e.t === 'office') { H._held[key] = { p: e.p, from: e.y, how: e.how, ...(e.for !== undefined ? { for: e.for } : {}) }; (H._holds[e.p] ||= []).push(key); delete H._vacant[key]; }
+  else if (e.t === 'left office') { delete H._held[key]; H._last[key] = e.p; const l = H._holds[e.p].filter(k => k !== key); if (l.length) H._holds[e.p] = l; else delete H._holds[e.p]; }
+  else if (e.t === 'vacant') H._vacant[key] = e.y;
+}
+// Every office in a fixed order: each seat's ruler, its regent (where rulers inherit) and its posts, then the villages'
+function officeList(H) {
+  if (H._officeList) return H._officeList;
+  const O = H.rules.offices, PR = H.rules.prisons, out = [];
+  const item = (place, office, kind, seat, race) => ({ key: place + '|' + office, tag: TAG(place + '|' + office), place, office, kind, seat, race });
+  for (const [seat, S] of Object.entries(O.seats)) {
+    out.push(item(seat, S.ruler, 'ruler', seat, S.race));
+    if (S.rule === 'inherit') out.push(item(seat, 'Regent', 'regent', seat, S.race));
+    for (const office of S.posts) out.push(item(seat, office, 'post', seat, S.race));
+  }
+  for (const pl of H.rules.places) if (!O.seats[pl.name]) {
+    const race = Object.entries(pl.races).sort((a, b) => b[1] - a[1])[0][0];
+    const seat = race === 'human' ? (PR.westPlaces.includes(pl.name) ? PR.west : PR.rest) : Object.keys(O.seats).find(s => O.seats[s].race === race);
+    for (const office of O.villages[race]) out.push(item(pl.name, office, 'village', seat, race));
+  }
+  return H._officeList = out;
+}
+// The holder of an office if they can act in it now: alive, free and (if asked) grown
+function acting(H, key, y, grown = false) {
+  const h = H._held[key]; if (!h) return null;
+  const p = H.people[h.p];
+  return p.death !== null || p.jail || grown && y - p.birth < H.rules.races[p.race].adult ? null : p.id;
+}
+// The nearest relative who may inherit: children first (eldest first), then by how few steps away
+// through parents and children, a descendant before anyone else as near, the eldest first
+function heirOf(H, prev, ok) {
+  const P = H.people, seen = new Set([prev]), down = new Set([prev]);
+  let front = [prev];
+  for (let d = 1; d <= 6 && front.length; d++) {
+    const next = [];
+    for (const x of front) {
+      for (const c of H._children[x]) if (!seen.has(c)) { seen.add(c); next.push(c); if (down.has(x)) down.add(c); }
+      for (const par of [P[x].mother, P[x].father]) if (par !== null && !seen.has(par)) { seen.add(par); next.push(par); }
+    }
+    const cands = next.filter(id => ok(P[id]));
+    if (cands.length) return cands.sort((a, b) => down.has(b) - down.has(a) || P[a].birth - P[b].birth || a - b)[0];
+    front = next;
+  }
+  return null;
+}
+// Year 0: the notable founders at the seats are their first rulers, and they fill their posts
+function foundOffices(H) {
+  for (const [seat, S] of Object.entries(H.rules.offices.seats)) {
+    const p = H.people.find(q => q.notable && q.place === seat && q.race === S.race && q.death === null);
+    if (p) { const e = { y: 0, t: 'office', p: p.id, office: S.ruler, place: seat, how: 'founding' }; H.events.push(e); applyOffice(H, e); }
+  }
+  offices(H, 0, () => {});
+}
+function offices(H, y, add) {
+  const { seed } = H, R = H.rules, O = R.offices, RACES = R.races, P = H.people, list = officeList(H);
+  const age = p => y - p.birth, adult = p => age(p) >= RACES[p.race].adult, fit = p => p.death === null && !p.jail;
+  const nm = p => `${p.name} ${p.surname}`;
+  const byKey = Object.fromEntries(list.map(it => [it.key, it]));
+  const holder = key => H._held[key] ? P[H._held[key].p] : null;
+  // Who is at each place now, kept up to date as people move
+  const byPlace = {};
+  for (const id of H._living) { const p = P[id]; if (fit(p)) (byPlace[p.place] ||= []).push(p); }
+  const here = place => (byPlace[place] || []).filter(fit);
+  const push = e => { H.events.push(e); applyOffice(H, e); return e; };
+  const leave = (key, why) => { const [place, office] = key.split('|'); push({ y, t: 'left office', p: H._held[key].p, office, place, why }); };
+  const vacate = (p, why) => { for (const key of [...(H._holds[p.id] || [])]) leave(key, why); };
+  const moveTo = (p, place, why) => {
+    if (p.place === place) return;
+    H.events.push({ y, t: 'move', p: p.id, from: p.place, to: place, why });
+    if (byPlace[p.place]) byPlace[p.place] = byPlace[p.place].filter(q => q !== p);
+    add(p, -1); p.place = place; add(p, 1); (byPlace[place] ||= []).push(p);
+  };
+  // Taking up an office: someone from elsewhere moves to it, with their husband or wife and young children
+  const take = (p, it, how, extra = {}) => {
+    const from = p.place;
+    if (from !== it.place) {
+      moveTo(p, it.place, 'to take up office');
+      const s = spouseNow(H, p);
+      if (s && fit(s) && !H._holds[s.id] && s.place === from) moveTo(s, it.place, 'with their family');
+      for (const c of H._children[p.id]) { const k = P[c]; if (fit(k) && !adult(k) && k.place === from) moveTo(k, it.place, 'with their family'); }
+    }
+    return push({ y, t: 'office', p: p.id, office: it.office, place: it.place, how, ...extra });
+  };
+  const vacant = (it, why) => { if (H._vacant[it.key] === undefined) push({ y, t: 'vacant', office: it.office, place: it.place, why }); };
+  const clean = p => !H._record[p.id];                                     // never imprisoned or exiled
+  const eligible = (p, it) => fit(p) && adult(p) && clean(p) && !H._holds[p.id] && TEMP_RULES.mayHold(p, it.race);
+  const ranks = S => S.posts.filter(o => o !== O.hangman.office);
+
+  // 1. Those who can no longer hold their posts lose them
+  for (const it of list) {
+    const h = holder(it.key); if (!h) continue;
+    let why = null;
+    if (h.death !== null) why = { execution: 'executed', challenge: 'killed in a fight to the death', murder: 'murdered' }[h.deathKind] || 'died';
+    else if (h.jail) why = `convicted of ${h.jail.crime}`;
+    else if (h.place !== it.place) why = H._record[h.id]?.t === 'exiled' && H._record[h.id].y === y ? 'exiled' : 'moved away';
+    else if (it.kind === 'regent') {
+      const S = O.seats[it.seat], ruler = holder(it.seat + '|' + S.ruler);
+      if (!ruler || ruler.id !== H._held[it.key].for) why = 'the regency ended';
+      else if (adult(ruler)) why = `the ${S.ruler} came of age`;
+    } else if (it.kind !== 'ruler' && age(h) > RACES[h.race].life * .75 && rand(seed, T.stepDown, y, h.id) < R.stepDown) why = 'stepped down';
+    if (why) leave(it.key, why);
+  }
+
+  // Orc fights to the death: the loser dies, and their grown family may leave or vow revenge
+  const strength = p => Math.max(.1, 1 - Math.abs(age(p) / RACES[p.race].life - .4) * 2) * (p.trade === 'warrior' ? 1.3 : 1) * p.constitution;
+  const fight = (a, b, what, extra) => {
+    const won = rand(seed, T.fight, y, a.id, b.id) < strength(a) / (strength(a) + strength(b)), [w, l] = won ? [a, b] : [b, a];
+    H.events.push({ y, t: 'challenge', p: a.id, against: b.id, place: a.place, won, ...extra });
+    l.death = y; l.deathKind = 'challenge'; l.cause = `killed by ${nm(w)} in a fight to the death${what}`;
+    H.events.push({ y, t: 'death', p: l.id, kind: 'challenge', cause: l.cause, victor: w.id, place: l.place });
+    add(l, -1);
+    vacate(l, 'killed in a fight to the death');
+    const kin = [spouseNow(H, l), ...H._children[l.id].map(c => P[c])].filter(k => k && k !== w && fit(k) && adult(k) && k.place === l.place);
+    for (const k of kin) {
+      const r = rand(seed, T.kin, y, k.id);
+      if (r < R.kinLeave && !H._holds[k.id]) {
+        const opts = R.places.filter(q => q.name !== k.place && q.races[k.race]);
+        if (opts.length) moveTo(k, opts[Math.floor(rand(seed, T.kinPlace, y, k.id) * opts.length)].name, `left after ${nm(l)} was killed`);
+      } else if (r < R.kinLeave + R.kinVow) { H.events.push({ y, t: 'vow', p: k.id, against: w.id, for: l.id }); H._vows.push({ p: k.id, against: w.id, for: l.id }); }
+    }
+    return w;
+  };
+
+  // 2. The rulers
+  for (const [seat, S] of Object.entries(O.seats)) {
+    const it = byKey[seat + '|' + S.ruler];
+    let ruler = holder(it.key);
+    const settling = H._vacant[it.key] !== undefined && H._vacant[it.key] < y;   // empty since an earlier year
+    if (!ruler) {
+      const prev = H._last[it.key];
+      if (S.rule === 'inherit') {
+        // The eldest child, else the nearest relative, who is free and has never been convicted
+        const heir = prev !== undefined ? heirOf(H, prev, p => fit(p) && clean(p) && TEMP_RULES.mayHold(p, S.race) && !(H._holds[p.id] || []).some(k => byKey[k].kind === 'ruler')) : null;
+        if (heir !== null) { vacate(P[heir], `became ${S.ruler}`); take(P[heir], it, 'inherited', { after: prev }); }
+        else if (settling && rand(seed, T.claim, y, it.tag) < R.claimSettle) {
+          // No heir: the highest in rank at the seat takes it, or failing them the eldest of the household
+          const next = ranks(S).map(o => acting(H, seat + '|' + o, y, true)).find(id => id !== null && TEMP_RULES.mayHold(P[id], S.race) && clean(P[id]));
+          if (next !== undefined) { vacate(P[next], `became ${S.ruler}`); take(P[next], it, 'next in rank'); }
+          else { const c = here(seat).filter(p => eligible(p, it)).sort((a, b) => a.birth - b.birth || a.id - b.id)[0]; if (c) take(c, it, 'chosen by the household'); }
+        }
+      } else if (S.rule === 'chosen') {
+        // The circle of elders: usually the eldest
+        if (settling && rand(seed, T.circle, y) < R.circleChoose) {
+          const c = here(seat).filter(p => eligible(p, it)).sort((a, b) => a.birth - b.birth || a.id - b.id);
+          if (c.length) take(c[rand(seed, T.circle, y, 1) < R.elderEldest || c.length === 1 ? 0 : 1 + Math.floor(rand(seed, T.circle, y, 2) * Math.min(4, c.length - 1))], it, 'chosen by the circle');
+        }
+      } else if (settling && rand(seed, T.claim, y, it.tag) < R.chiefFight) {
+        // The strongest claimants fight to the death for it; one alone takes it unopposed
+        const c = here(seat).filter(p => fit(p) && adult(p) && clean(p) && TEMP_RULES.mayHold(p, S.race) && age(p) < RACES[p.race].life * .6)
+          .map(p => [p, strength(p) * (.5 + rand(seed, T.claim, y, p.id))]).sort((a, b) => b[1] - a[1] || a[0].id - b[0].id).map(x => x[0]);
+        if (c.length === 1) { vacate(c[0], `became ${S.ruler}`); take(c[0], it, 'unopposed'); }
+        else if (c.length > 1) { const w = fight(c[0], c[1], ' for the chieftaincy', { chieftaincy: true }); vacate(w, `became ${S.ruler}`); take(w, it, 'won a fight for the chieftaincy'); }
+      }
+      ruler = holder(it.key);
+      if (!ruler) vacant(it, prev === undefined ? 'no one to take it' : S.rule === 'inherit' ? 'no heir' : S.rule === 'chosen' ? 'the circle has not chosen' : 'the claimants have yet to fight for it');
+    } else if (S.rule === 'challenge' && y > 0 && rand(seed, T.challenge, y) < R.challengeChance) {
+      // Someone challenges the War Chief to the death
+      const c = here(seat).filter(p => p !== ruler && fit(p) && adult(p) && clean(p) && TEMP_RULES.mayHold(p, S.race) && age(p) < RACES[p.race].life * .6);
+      if (c.length) {
+        const ch = c[Math.floor(rand(seed, T.challenge, y, 1) * c.length)], w = fight(ch, ruler, ' for the chieftaincy', { chieftaincy: true });
+        if (w === ch) { vacate(ch, `became ${S.ruler}`); take(ch, it, 'won a challenge'); }
+        ruler = holder(it.key);
+      }
+    }
+    if (!ruler) continue;
+    // A child ruler: the highest in rank at the seat (the steward) rules for them until they come of age
+    const rk = seat + '|Regent';
+    if (S.rule === 'inherit' && !adult(ruler) && !H._held[rk]) {
+      const id = ranks(S).map(o => acting(H, seat + '|' + o, y, true)).find(id => id !== null && clean(P[id]))
+        ?? here(seat).filter(p => eligible(p, byKey[rk])).sort((a, b) => a.birth - b.birth || a.id - b.id)[0]?.id;
+      if (id !== undefined) take(P[id], byKey[rk], 'regent', { for: ruler.id });
+    }
+    // A new ruler (or one just come of age) may replace those who served before
+    const h = H._held[it.key];
+    if (y > 0 && adult(ruler) && h.how !== 'founding' && (h.from === y || age(ruler) === RACES[ruler.race].adult))
+      for (const o of S.posts) { const k = seat + '|' + o, x = H._held[k]; if (x && x.from < y && rand(seed, T.broom, y, x.p) < R.newBroom) leave(k, `dismissed by the new ${S.ruler}`); }
+  }
+
+  // 3. Orc vows of revenge: now and then, a fight to the death with the killer
+  H._vows = H._vows.filter(v => P[v.p].death === null && P[v.against].death === null);
+  for (const v of [...H._vows]) {
+    const a = P[v.p], b = P[v.against];
+    if (!fit(a) || !fit(b) || a.place !== b.place || rand(seed, T.revenge, y, a.id) >= R.revengeChance) continue;
+    H._vows.splice(H._vows.indexOf(v), 1);
+    const it = Object.values(byKey).find(x => x.kind === 'ruler' && H._held[x.key]?.p === b.id), w = fight(a, b, `, avenging ${nm(P[v.for])}`, { revenge: v.for, ...(it ? { chieftaincy: true } : {}) });
+    if (it && w === a) { vacate(a, `became ${it.office}`); take(a, it, 'won a fight for the chieftaincy'); }
+  }
+
+  // 4. Empty posts are filled by the ruler (or the regent); a village's by the ruler over it, or its own people
+  for (const it of list) {
+    if (it.kind !== 'post' && it.kind !== 'village' || H._held[it.key]) continue;
+    const S = O.seats[it.seat], by = acting(H, it.seat + '|' + S.ruler, y, true) ?? acting(H, it.seat + '|Regent', y);
+    if (it.kind === 'post' && by === null) { vacant(it, `no ${S.ruler} to appoint one`); continue; }
+    const cands = here(it.place).filter(p => eligible(p, it) && age(p) < RACES[p.race].life * .75);
+    if (!cands.length) { vacant(it, 'no one fit for it'); continue; }
+    const want = O.prefer[it.office] || [], R0 = RACES[it.race];
+    const p = pickW(cands.map(p => [p, (want.includes(p.trade) ? 6 : 1) * (age(p) >= R0.adult + R0.life * .1 ? 2 : 1)]), rand(seed, T.appoint, y, it.tag));
+    take(p, it, 'appointed', by !== null ? { by } : {});
+  }
+}
+
 // Run the history on to year `to`. Can be called again later to carry on from where it stopped.
 export function simulate(H, to) {
   const { seed } = H, RULES = H.rules, { races: RACES, places: PLACES, ceiling: CEILING, childbirth: CHILDBIRTH } = RULES, placeIndex = Object.fromEntries(PLACES.map((p, i) => [p.name, i]));
@@ -517,12 +809,34 @@ export function simulate(H, to) {
     const add = (p, n) => { if (!p.jail) pop[key(p.place, p.race)] = (pop[key(p.place, p.race)] || 0) + n; };   // prisoners don't count
     const room = (place, race) => PLACES[placeIndex[place]].cap * (PLACES[placeIndex[place]].races[race] || 0);
     for (const p of living) add(p, 1);
-    // Prisoners whose time is up go home; the condemned are hanged
+    // The lord's court sits at each human seat in its years, if there's a grown lord (or a regent) to
+    // preside; the hangman comes to it, lodging at the castle if it isn't their own
+    const O = RULES.offices, court = {};
+    for (const [seat, S] of Object.entries(O.seats)) if (S.justice === 'court' && courtSits(H, seat, y) === y) {
+      const presides = acting(H, seat + '|' + S.ruler, y, true) ?? acting(H, seat + '|Regent', y);
+      const e = court[seat] = { y, t: 'court', place: seat, sat: presides !== null };
+      if (presides === null) e.why = H._held[seat + '|' + S.ruler] ? `the ${S.ruler} is a child, with no regent` : 'the seat is vacant';
+      else {
+        e.presides = presides;
+        const judge = acting(H, seat + '|' + S.judge, y), hangman = acting(H, O.hangman.seat + '|' + O.hangman.office, y) ?? acting(H, seat + '|Jailer', y);
+        if (judge !== null) e.judge = judge;
+        if (hangman !== null) { e.hangman = hangman; if (H.people[hangman].place !== seat) e.lodged = true; }
+        e.hanged = [];
+      }
+      H.events.push(e);
+    }
+    // Prisoners whose time is up go home; the condemned are put to death (at the human castles, only
+    // when the court sits: a vacant seat keeps them waiting)
     for (const p of living) if (p.jail && p.jail.until !== null && y >= p.jail.until) {
       if (p.jail.condemned) {
-        const v = H.people[p.jail.for];
-        p.death = y; p.deathKind = 'execution'; p.cause = `hanged for the murder of ${v.name} ${v.surname}`;
-        H.events.push({ y, t: 'death', p: p.id, kind: 'execution', cause: p.cause, for: v.id, place: p.place, why: p.jail.why });
+        const v = H.people[p.jail.for], c = court[p.jail.at], S = O.seats[p.jail.at];
+        if (S.justice === 'court' && !c?.sat) continue;
+        p.death = y; p.deathKind = 'execution';
+        p.cause = S.justice === 'court' ? `hanged for the murder of ${v.name} ${v.surname}` : `put to death at ${p.jail.at} for the murder of ${v.name} ${v.surname}`;
+        const e = { y, t: 'death', p: p.id, kind: 'execution', cause: p.cause, for: v.id, place: p.place, why: p.jail.why };
+        if (p.jail.judge !== undefined) e.judge = p.jail.judge;
+        if (c) { e.presides = c.presides; if (c.hangman !== undefined) e.hangman = c.hangman; c.hanged.push(p.id); }
+        H.events.push(e);
         p.jail = null;
         continue;
       }
@@ -544,6 +858,7 @@ export function simulate(H, to) {
       if (cause) { p.death = y; p.cause = cause; p.deathKind = kind; H.events.push({ y, t: 'death', p: p.id, kind, cause, place: p.place }); add(p, -1); }
     }
     crimes(H, y, living.filter(p => p.death === null), add);
+    offices(H, y, add);
     const alive = living.filter(p => p.death === null);
     // Coming of age: a trade, and perhaps a move away
     for (const p of alive) {
@@ -555,7 +870,7 @@ export function simulate(H, to) {
         : pl.trades[rand(seed, T.tradePick, y, p.id) * pl.trades.length | 0];
       H.events.push({ y, t: 'trade', p: p.id, trade: p.trade });
       const crowded = (pop[key(p.place, p.race)] || 0) / Math.max(1, room(p.place, p.race));
-      if (rand(seed, T.leave, y, p.id) < RULES.leaveHome + Math.max(0, crowded - .8)) {
+      if (!H._holds[p.id] && rand(seed, T.leave, y, p.id) < RULES.leaveHome + Math.max(0, crowded - .8)) {   // office-holders stay
         // Only to places where their own race lives, and there's room for them
         const options = PLACES.filter(q => q.name !== p.place && q.races[p.race] && (pop[key(q.name, p.race)] || 0) < room(q.name, p.race) * .9);
         if (options.length) {
@@ -583,7 +898,7 @@ export function simulate(H, to) {
       const m = pickW(weights, rand(seed, T.wedPick, y, w.id));
       taken.add(m.id);
       w.spouses.push({ id: m.id, year: y }); m.spouses.push({ id: w.id, year: y });
-      const home = TEMP_RULES.newHome(w, m);
+      const home = H._holds[w.id] && !H._holds[m.id] ? w.place : TEMP_RULES.newHome(w, m);   // or to her, if she holds an office and he doesn't
       H.events.push({ y, t: 'wed', a: w.id, b: m.id, place: home });
       for (const p of [w, m]) if (p.place !== home) { H.events.push({ y, t: 'move', p: p.id, from: p.place, to: home }); add(p, -1); p.place = home; add(p, 1); }
     }
@@ -616,7 +931,10 @@ export function simulate(H, to) {
       H.people.push(c); H._children.push([]); H._children[w.id].push(id); H._children[h.id].push(id);
       H.events.push({ y, t: 'birth', p: id, mother: w.id, father: h.id, place: w.place });
       add(c, 1);
-      if (rand(seed, T.childbirth, y, w.id) < CHILDBIRTH) { w.death = y; w.cause = CAUSES.childbirth; w.deathKind = 'childbirth'; H.events.push({ y, t: 'death', p: w.id, kind: 'childbirth', cause: w.cause, place: w.place }); add(w, -1); }
+      if (rand(seed, T.childbirth, y, w.id) < CHILDBIRTH) {
+        w.death = y; w.cause = CAUSES.childbirth; w.deathKind = 'childbirth'; H.events.push({ y, t: 'death', p: w.id, kind: 'childbirth', cause: w.cause, place: w.place }); add(w, -1);
+        for (const key of [...(H._holds[w.id] || [])]) { const [place, office] = key.split('|'), e = { y, t: 'left office', p: w.id, office, place, why: 'died' }; H.events.push(e); applyOffice(H, e); }   // her posts are empty from now
+      }
     }
     H._living = H.people.filter(p => p.death === null).map(p => p.id);
     H.year = y;
@@ -705,7 +1023,28 @@ export function prisoners(H) {
   for (const id of H._living) { const p = H.people[id]; if (p.jail) (out[p.jail.at] ||= []).push(p.id); }
   return out;
 }
+// Every holding of an office, oldest first: { place, office, p, from, to (null while held), how, why, by?, for?, after? }
+export function holdings(H) {
+  const open = {}, out = [];
+  for (const e of H.events) {
+    if (e.t === 'office') { const h = { place: e.place, office: e.office, p: e.p, from: e.y, to: null, how: e.how, why: null };
+      for (const k of ['by', 'for', 'after']) if (e[k] !== undefined) h[k] = e[k];
+      open[e.place + '|' + e.office] = h; out.push(h); }
+    else if (e.t === 'left office') { const h = open[e.place + '|' + e.office]; h.to = e.y; h.why = e.why; delete open[e.place + '|' + e.office]; }
+  }
+  return out;
+}
+// Every office now, seat by seat in order of rank, then the villages: who holds it (or null, with the
+// year it fell empty). A regency is listed only while there is one.
+export const officeHolders = H => officeList(H).filter(it => it.kind !== 'regent' || H._held[it.key]).map(it => ({ place: it.place, office: it.office, kind: it.kind, p: H._held[it.key]?.p ?? null,
+  since: H._held[it.key]?.from ?? H._vacant[it.key] ?? null }));
+// The offices someone holds now, as 'Lord of Castle Aldermere'
+export const titles = (H, id) => (H._holds[id] || []).map(k => k.replace('|', '#').split('#').reverse().join(' of '));
+// The verdicts a judge gave: everyone they sent to the cells, condemned, exiled or had put to death at
+// once, and whether each was guilty (the blamed innocents weren't)
+export const verdicts = (H, judge) => H.events.filter(e => e.judge === judge && (e.t === 'imprisoned' || e.t === 'exiled' || e.t === 'death' && e.atOnce))
+  .map(e => ({ y: e.y, p: e.p, crime: e.crime || 'murder', sentence: e.t === 'exiled' ? 'exiled' : e.t === 'death' ? 'put to death' : e.condemned ? 'condemned' : e.until === null ? 'imprisoned for life' : `imprisoned until ${e.until}`, wrongful: e.why === 'wrongly blamed' }));
 export const describe = (H, id) => {
-  const p = H.people[id];
-  return `${p.name} ${p.surname} (#${id}, ${p.race}${p.heritage.length > 1 ? ' of ' + p.heritage.join('-') + ' family' : ''}, ${p.sex === 'f' ? 'f' : 'm'}, born ${p.birth}${p.death !== null ? `, died ${p.death} aged ${p.death - p.birth}, ${p.deathKind === 'murder' || p.deathKind === 'execution' ? p.cause : 'of ' + p.cause}` : ''}${p.trade ? ', ' + p.trade : ''}, ${p.place}${p.notable ? ', ★ ' + p.notable : ''})`;
+  const p = H.people[id], t = p.death === null ? titles(H, id) : [];
+  return `${p.name} ${p.surname} (#${id}, ${p.race}${p.heritage.length > 1 ? ' of ' + p.heritage.join('-') + ' family' : ''}, ${p.sex === 'f' ? 'f' : 'm'}, born ${p.birth}${p.death !== null ? `, died ${p.death} aged ${p.death - p.birth}, ${['murder', 'execution', 'challenge'].includes(p.deathKind) ? p.cause : 'of ' + p.cause}` : ''}${p.trade ? ', ' + p.trade : ''}, ${p.place}${t.length ? ', ' + t.join(', ') : ''}${p.notable ? ', ★ ' + p.notable : ''})`;
 };
