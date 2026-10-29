@@ -116,6 +116,18 @@ const NAMES = {
          s: ['Bloodtusk', 'Ironjaw', 'Skullsplitter', 'Ashhide', 'Redfang', 'Stonefist'] },
 };
 
+// ---- The rules a history is made under ----
+// Every adjustable number (lifespans, fertility, death rates, places and their room, the placeholder
+// rules) is copied into the history when it starts, saved with it, and used from there, so a reopened
+// history carries on under its own rules whatever the current settings are. The rule *functions*
+// (TEMP_RULES, causes of death, constitution) are code: RULES_CODE names their version, and loading a
+// history made under a different version is flagged.
+export const RULES_CODE = 'family-sim 3';
+function currentRules() {
+  return JSON.parse(JSON.stringify({ code: RULES_CODE, races: RACES, places: PLACES, ceiling: CEILING, childbirth: CHILDBIRTH,
+    crossRaceWeight: TEMP_RULES.crossRaceWeight, ...RULES }));
+}
+
 // ---- Hashed randomness: a number in [0, 1) from the seed and up to four whole numbers ----
 const TAG = s => { let h = 2166136261; for (const c of s) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return h >>> 0; };
 function rand(seed, tag, a = 0, b = 0, c = 0) {
@@ -148,7 +160,7 @@ const pickW = (weights, r) => { let t = 0; for (const [, w] of weights) t += w; 
 // (a multiplier on their race's typical lifespan), cause (of death).
 // An event: { y, t, ... } with t one of found, birth, wed, death, trade, move.
 export function newHistory(seed) {
-  const H = { version: 1, seed: seed | 0, year: 0, people: [], lines: [], events: [] };
+  const H = { version: 2, seed: seed | 0, year: 0, rules: currentRules(), people: [], lines: [], events: [] };
   found(H);
   index(H);
   return H;
@@ -156,7 +168,7 @@ export function newHistory(seed) {
 
 // Year 0: each place's families at the end of the war, couples with children born before it
 function found(H) {
-  const { seed } = H;
+  const { seed } = H, { races: RACES, places: PLACES } = H.rules;
   let n = 0;
   const person = (o) => { const p = { id: H.people.length, spouses: [], death: null, cause: null, mother: null, father: null, gen: 0, trade: null, notable: null, ...o }; H.people.push(p); return p; };
   const firstName = (race, sex, id) => NAMES[race][sex][rand(seed, T.name, id) * NAMES[race][sex].length | 0];
@@ -192,7 +204,8 @@ function found(H) {
       const kids = Math.floor(rand(seed, T.foundKids, pi, hh) * 4);
       for (let k = 0; k < kids && made < target; k++) {
         const age = Math.floor(rand(seed, T.foundAge, pi, hh * 16 + k) * (ageW - R.adult));
-        if (ageW - age < R.fertile[0]) continue;
+        // Born when both parents were adults, in the mother's child-bearing years
+        if (ageW - age < R.fertile[0] || ageW - age > R.fertile[1] || ageH - age < R.adult) continue;
         const c = person({ sex: rand(seed, T.sex, pi * 1000 + hh, k) < .5 ? 'm' : 'f', race, heritage: [race], birth: -age, place: pl.name, birthPlace: pl.name,
           surname, line: line.id, mother: wife.id, father: husband.id, gen: 1 });
         c.name = firstName(race, c.sex, c.id);
@@ -225,16 +238,33 @@ function nearAncestors(H, p, depth) {
   }
   return out;
 }
-const closeKin = (H, a, b) => {
-  const A = nearAncestors(H, a, RULES.kinDepth), B = nearAncestors(H, b, RULES.kinDepth);
-  if (A.has(b.id) || B.has(a.id)) return true;
-  for (const x of A) if (B.has(x)) return true;
+// Is x an ancestor of y, however far back? Walks up from y, skipping anyone born before x (they and
+// their own ancestors can't descend from x), so it stays quick even in long-lived families.
+function isAncestor(H, x, y) {
+  const target = H.people[x], seen = new Set(), stack = [y];
+  while (stack.length) {
+    const p = H.people[stack.pop()];
+    for (const par of [p.mother, p.father]) {
+      if (par === null || seen.has(par)) continue;
+      if (par === x) return true;
+      seen.add(par);
+      if (H.people[par].birth > target.birth) stack.push(par);
+    }
+  }
   return false;
+}
+// Who may not marry: an ancestor or descendant at any depth, and anyone sharing a parent or
+// grandparent (siblings, half siblings, first cousins)
+const closeKin = (H, a, b) => {
+  const A = nearAncestors(H, a, H.rules.kinDepth), B = nearAncestors(H, b, H.rules.kinDepth);
+  for (const x of A) if (B.has(x)) return true;
+  const [older, younger] = a.birth <= b.birth ? [a, b] : [b, a];
+  return isAncestor(H, older.id, younger.id);
 };
 
 // Run the history on to year `to`. Can be called again later to carry on from where it stopped.
 export function simulate(H, to) {
-  const { seed } = H, placeIndex = Object.fromEntries(PLACES.map((p, i) => [p.name, i]));
+  const { seed } = H, RULES = H.rules, { races: RACES, places: PLACES, ceiling: CEILING, childbirth: CHILDBIRTH } = RULES, placeIndex = Object.fromEntries(PLACES.map((p, i) => [p.name, i]));
   for (let y = H.year + 1; y <= to; y++) {
     const living = H._living.map(id => H.people[id]);
     // Head counts per place and race: each race has its own share of a place's room
@@ -291,7 +321,7 @@ export function simulate(H, to) {
       if (!cands.length) continue;
       const weights = cands.map(m => {
         const span = RACES[m.race].fertile[1] - RACES[m.race].adult, gap = Math.abs((age(m, y) - RACES[m.race].adult) / span - (age(w, y) - RACES[w.race].adult) / (RACES[w.race].fertile[1] - RACES[w.race].adult));
-        return [m, Math.max(.01, 1 - gap * 3) * (m.race === w.race ? 1 : TEMP_RULES.crossRaceWeight)];
+        return [m, Math.max(.01, 1 - gap * 3) * (m.race === w.race ? 1 : RULES.crossRaceWeight)];
       });
       const m = pickW(weights, rand(seed, T.wedPick, y, w.id));
       taken.add(m.id);
@@ -338,8 +368,14 @@ export function simulate(H, to) {
 }
 
 // ---- Saving and loading: a plain JSON copy, without the derived lookups ----
-export const save = H => JSON.stringify({ version: H.version, seed: H.seed, year: H.year, people: H.people, lines: H.lines, events: H.events });
-export function load(text) { const H = JSON.parse(text); index(H); return H; }
+export const save = H => JSON.stringify({ version: H.version, seed: H.seed, year: H.year, rules: H.rules, people: H.people, lines: H.lines, events: H.events });
+export function load(text) {
+  const H = JSON.parse(text);
+  if (!H.rules) { H.rules = currentRules(); H.rulesGuessed = true; }          // saved before rules were kept: today's are assumed
+  H.rulesCodeChanged = H.rules.code !== RULES_CODE;
+  index(H);
+  return H;
+}
 
 // ---- Questions about the history ----
 export const children = (H, id) => H._children[id];
@@ -374,6 +410,7 @@ export function sharedAncestors(H, a, b) {
   return { common, nearest: nearest.map(x => ({ id: x, fromA: A.get(x), fromB: B.get(x) })) };
 }
 export function relationship(H, a, b) {
+  if (a === b) return 'the same person';
   const { nearest } = sharedAncestors(H, a, b);
   if (!nearest.length) return null;
   // Named by the closest link (fewest generations in all); when families have married back into each
@@ -383,7 +420,7 @@ export function relationship(H, a, b) {
   const top = nearest.filter(n => n.fromA.depth === da && n.fromB.depth === db);
   const half = top.length < 2 ? 'half ' : '';
   const ord = n => ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth'][n - 1] || `${n}th`;
-  if (da === 0 || db === 0) { const g = Math.max(da, db); return `${g > 2 ? 'great-'.repeat(g - 2) : ''}${g > 1 ? 'grand' : ''}${g ? 'parent and child' : 'the same person'}`; }
+  if (da === 0 || db === 0) { const g = Math.max(da, db); return `${g > 2 ? 'great-'.repeat(g - 2) : ''}${g > 1 ? 'grand' : ''}parent and child`; }
   if (da === 1 && db === 1) return `${half}siblings`;
   if (Math.min(da, db) === 1) { const g = Math.max(da, db) - 2; return `${half}${'great-'.repeat(Math.max(0, g - 1))}${g ? 'grand' : ''}aunt or uncle and niece or nephew`; }
   const k = Math.min(da, db) - 1, r = Math.abs(da - db);

@@ -1,6 +1,6 @@
 // Runs the six checks for the family simulation prototype and measures generation time.
 // Usage: node test.mjs   (prints a report; also writes results.txt next to this file)
-import { newHistory, simulate, save, load, ancestors, sharedAncestors, relationship, describe, fullName, RACES, TEMP_RULES, RULES, CEILING } from './family-sim.mjs';
+import { newHistory, simulate, save, load, ancestors, sharedAncestors, relationship, describe, fullName, RACES, TEMP_RULES, RULES } from './family-sim.mjs';
 import { createHash } from 'node:crypto';
 import { buildViewer } from './build-viewer.mjs';
 buildViewer();                                   // keep viewer.html's copy of the simulation up to date
@@ -126,8 +126,17 @@ log('\n4. An ordinary family line: generations of bakers, no famous ancestor');
 
 // ---------------------------------------------------------------------------------------------
 log('\n5. Births, marriages and deaths make sense under the placeholder rules');
+{
+  // The cases found in review (seed 1337, 200 years), checked by name since ids change with the fixes
+  const X = run(SEED, 200), find = (n, s) => X.people.find(p => p.name === n && p.surname === s);
+  const ruk = X.people.filter(p => p.name === 'Ruk' && p.surname === 'Stonefist');
+  check(!ruk.some(r => r.spouses.some(s => ancestors(X, r.id).has(s.id))), `review case: no Ruk Stonefist (${ruk.length} of that name) marries an ancestor`);
+  const joan = find('Joan', 'Wren'), jf = joan && joan.father !== null ? X.people[joan.father] : null;
+  check(!jf || joan.birth - jf.birth >= X.rules.races[jf.race].adult, `review case: Joan Wren's father ${jf ? `was ${joan.birth - jf.birth} at her birth` : 'is not recorded'} (adulthood ${X.rules.races.human.adult})`);
+  check(relationship(X, 0, 0) === 'the same person' && relationship(X, X._living[0], X._living[0]) === 'the same person', 'a founder, and anyone else, compared with themselves is "the same person"');
+}
 function sanity(H) {
-  const bad = [], P = H.people;
+  const bad = [], P = H.people, RACES = H.rules.races, CEILING = H.rules.ceiling;
   const born = p => p.birth, dead = p => p.death ?? Infinity;
   for (const p of P) {
     const R = RACES[TEMP_RULES.lifespanRace(p)];
@@ -139,7 +148,8 @@ function sanity(H) {
       const q = P[par];
       if (born(q) >= p.birth) bad.push(`#${p.id} born before its ${rel}`);
       if (dead(q) < p.birth) bad.push(`#${p.id} born after its ${rel} died`);
-      if (rel === 'mother') { const B = RACES[TEMP_RULES.birthRace(q, P[p.father])], a = p.birth - q.birth; if (p.birth > 0 && (a < B.fertile[0] || a > B.fertile[1])) bad.push(`#${p.id}'s mother outside child-bearing years (${a})`); }
+      if (p.birth - q.birth < RACES[q.race].adult) bad.push(`#${p.id}'s ${rel} #${q.id} was not yet an adult (${p.birth - q.birth}) at the birth`);
+      if (rel === 'mother') { const B = RACES[TEMP_RULES.birthRace(q, P[p.father])], a = p.birth - q.birth; if (a < B.fertile[0] || a > B.fertile[1]) bad.push(`#${p.id}'s mother outside child-bearing years (${a})`); }
     }
     if (p.mother !== null && p.mother === p.father) bad.push(`#${p.id} has one person as both parents`);
     for (const s of p.spouses) {
@@ -149,6 +159,13 @@ function sanity(H) {
     }
     // Only one living spouse at a time: each new marriage comes after the previous spouse's death
     for (let i = 1; i < p.spouses.length; i++) if (dead(P[p.spouses[i - 1].id]) > p.spouses[i].year) bad.push(`#${p.id} remarried while the earlier spouse lived`);
+  }
+  // No one married an ancestor or descendant (any depth), or anyone sharing a parent or grandparent
+  for (const p of P) for (const s of p.spouses) {
+    if (s.id < p.id) continue;
+    const A = ancestors(H, p.id), B = ancestors(H, s.id);
+    if (A.has(s.id) || B.has(p.id)) bad.push(`#${p.id} married their own ${A.has(s.id) ? 'ancestor' : 'descendant'} #${s.id}`);
+    else if ([...A].some(([x, e]) => e.depth <= H.rules.kinDepth && B.has(x) && B.get(x).depth <= H.rules.kinDepth)) bad.push(`#${p.id} married close kin #${s.id}`);
   }
   // No one is their own ancestor
   const state = new Uint8Array(P.length);
@@ -168,6 +185,8 @@ for (const yrs of [1, 100, 500]) {
   check(bad.length === 0, `${yrs} years (seed ${X.seed}): ${X.people.length} people, ${X.events.length} events, ${bad.length} problems${bad.length ? ': ' + bad.slice(0, 5).join('; ') : ''}`);
 }
 log('  Checked: no one dies before birth or outlives the ceiling (1.6 × their race\'s typical life); every death has a cause; every child is born after both parents');
+log('  (both adults at the birth, founders included, the mother in her child-bearing years); no one married an ancestor');
+log('  or descendant at any depth, a sibling, half sibling or first cousin;');
 log('  and before either died, to a mother in her child-bearing years; marriages are of adults, while both');
 log('  live, recorded on both sides, one at a time; no one is their own ancestor; events are in order and');
 log('  none concerns someone before birth or after death.');
@@ -211,6 +230,20 @@ log('\n6. Save and reload');
 }
 
 // ---------------------------------------------------------------------------------------------
+log('\n7. A saved history keeps its own rules');
+{
+  const keep = JSON.stringify(RACES);
+  RACES.human.life = 50; RACES.elf.life = 300; RACES.orc.adult = 15;           // non-default lifespans
+  const straight = run(SEED, 300), early = run(SEED, 60), text = save(early);
+  for (const [k, v] of Object.entries(JSON.parse(keep))) RACES[k] = v;          // back to the defaults
+  RACES.human.life = 999;                                                        // and then something else again
+  const R = load(text);
+  check(R.rules.races.human.life === 50 && R.rules.races.elf.life === 300 && R.rules.races.orc.adult === 15, 'the reloaded history keeps the lifespans it was made with, not the current ones');
+  check(sha(save(simulate(R, 300))) === sha(save(straight)), 'carried on from year 60 after reloading, under different current settings, it matches a straight run under its own rules');
+  check(!R.rulesCodeChanged && !R.rulesGuessed, 'no rule-code version mismatch flagged');
+  for (const [k, v] of Object.entries(JSON.parse(keep))) RACES[k] = v;
+}
+
 log('\nGeneration time (seed 1337; each length run 3 times, fastest shown)');
 log('  years   time      people ever  alive at end  events    saved size  alive by race (human/elf/dwarf/orc), deepest generation');
 for (const yrs of [1, 50, 100, 200, 500, 1000, 2000]) {

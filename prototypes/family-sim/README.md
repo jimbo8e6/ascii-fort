@@ -24,15 +24,19 @@ Nothing in the game uses it.
 - **Each year**, in order: deaths, from illness (worst in childhood and old age), injury (worse in
   dangerous trades such as mining, soldiering and the sea, with a fitting cause) or old age, plus a
   small risk in childbirth; coming of age (a trade, from father, mother or the place, and perhaps a move away); weddings
-  (unmarried women look for a match at home or, now and then, in another place; no one marries a sibling,
-  half sibling or first cousin); births (to couples in the mother's child-bearing years, while there's room
+  (unmarried women look for a match at home or, now and then, in another place; no one marries an ancestor
+  or descendant at any depth, a sibling, half sibling or first cousin); births (to couples in the mother's child-bearing years, while there's room
   for the child's race in their home).
 - **Each place has room for each of its races** (`cap` × the race's share). Without this, long-lived elves
   and dwarves slowly filled every place and humans and orcs died out within 1,000 years.
 - **Randomness** comes from hashing the seed, the year, what's being decided and who it concerns, never
   from a running stream. That's what makes later starts extend earlier ones exactly, and lets a saved
   history be carried on to give the same result as running straight through.
-- **Saved form:** people (with mother, father and marriages), founding family lines, and the event log.
+- **Rules travel with the history:** every adjustable number (lifespans, fertility, death rates, places, the
+  placeholder rules) is copied into a history when it starts and saved with it, so a reopened history carries
+  on under its own rules whatever the current settings are. The rule *functions* are code, named by
+  `RULES_CODE`; loading a history made under a different version is flagged.
+- **Saved form:** the rules, people (with mother, father and marriages), founding family lines, and the event log.
   Children, ancestors and relationships are worked out from those.
 
 ## Lifespans and outliers

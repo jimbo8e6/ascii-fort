@@ -1,61 +1,56 @@
 1. Same seed and start year give the same people and ancestry
-  seed 1337, 150 years: run 1 f3695f483e2c61f4, run 2 f3695f483e2c61f4 (2646 people, 7346 events)
-  seed 1338, 150 years: 298973f61a4c72f3
+  seed 1337, 150 years: run 1 219ece667dcebe89, run 2 219ece667dcebe89 (2546 people, 7017 events)
+  seed 1338, 150 years: 5418e1a8a0198b55
   PASS  two runs give byte-identical histories
   PASS  a different seed gives a different history
-  PASS  the same ancestry for Bram Miller (105 ancestors) in both runs
+  PASS  the same ancestry for Agra Redfang (176 ancestors) in both runs
 
 2. Shared ancestors between relatives, through both parents and across family lines
-  PASS  shared ancestors match an independent walk down the family tree for all 408 related pairs tried
-  Example: Ada Greaves (#2646, human of human-orc family, f, born 151, servant, Castle Aldermere)
-       and Cora Granitehand (#2647, human of dwarf-elf-human family, f, born 151, innkeeper, Kharn Dolum)
-  Different surnames. They are fifth cousins, with 6 shared ancestors in all; nearest:
-   • Bess Ward (#554, human, f, born -19, died 64 aged 83 of old age, smith, Castle Aldermere)
-       from Ada: Ada Greaves → mother Nell Thatcher → mother Maud Greaves → mother Peg Greaves → father Kit Greaves → mother Rose Nash → mother Bess Ward
-       from Cora: Cora Granitehand → mother Ada Ward → father Wat Ward → mother Daisy Ashvale → mother Lena Nash → father Ulric Nash → mother Bess Ward
-   • Ulric Nash (#553, human, m, born -19, died 45 aged 64 of a cart accident, farmer, Castle Aldermere)
-       from Ada: Ada Greaves → mother Nell Thatcher → mother Maud Greaves → mother Peg Greaves → father Kit Greaves → mother Rose Nash → father Ulric Nash
-       from Cora: Cora Granitehand → mother Ada Ward → father Wat Ward → mother Daisy Ashvale → mother Lena Nash → father Ulric Nash → father Ulric Nash
-   • Wynn Ashby (#430, human, f, born -18, died 57 aged 75 of old age, carter, Kelford)
-       from Ada: Ada Greaves → mother Nell Thatcher → father Wat Thatcher → mother Joan Pike → mother Una Thatcher → mother Nell Webb → mother Wynn Ashby
-       from Cora: Cora Granitehand → mother Ada Ward → mother Kate Anvilborn → mother Ida Kell → mother Rose Stone → mother Ada Webb → mother Wynn Ashby
-   • Ivo Webb (#429, human, m, born -17, died 58 aged 75 of old age, trader, Kelford)
-       from Ada: Ada Greaves → mother Nell Thatcher → father Wat Thatcher → mother Joan Pike → mother Una Thatcher → mother Nell Webb → father Ivo Webb
-       from Cora: Cora Granitehand → mother Ada Ward → mother Kate Anvilborn → mother Ida Kell → mother Rose Stone → mother Ada Webb → father Ivo Webb
-   • Daisy Tanner (#556, human, f, born -20, died 52 aged 72 of old age, servant, Castle Aldermere)
-       from Ada: Ada Greaves → father Jory Greaves → father Fenn Greaves → father Aldric Greaves → father Leof Greaves → mother Sybil Pike → mother Daisy Tanner
-       from Cora: Cora Granitehand → father Cedric Granitehand → mother Fern Cooper → mother Gwen Ward → father Leof Ward → father Ned Ward → mother Cora Pike → mother Daisy Tanner
-   • Merric Pike (#555, human, m, born -18, died 59 aged 77 of old age, smith, Castle Aldermere)
-       from Ada: Ada Greaves → father Jory Greaves → father Fenn Greaves → father Aldric Greaves → father Leof Greaves → mother Sybil Pike → father Merric Pike
-       from Cora: Cora Granitehand → father Cedric Granitehand → mother Fern Cooper → mother Gwen Ward → father Leof Ward → father Ned Ward → mother Cora Pike → father Merric Pike
-  Lirael Stonefist (#1540, elf of elf-orc family, m, born 61, tanner, Thornwick) has 16 ancestors from 5 family names, e.g. Starwhisper, Stonefist, Mistweaver, Bloodtusk, Ashhide
+  PASS  shared ancestors match an independent walk down the family tree for all 403 related pairs tried
+  Example: Grimli Ironfoot (#2546, dwarf, m, born 151, mason, Kharn Dolum)
+       and Dura Cooper (#2563, orc of dwarf-human-orc family, f, born 152, smith, Gor Marakh)
+  Different surnames. They are second cousins twice removed, with 2 shared ancestors in all; nearest:
+   • Helga Stonehelm (#77, dwarf, f, born -119, died 170 aged 289 of old age, smith, Kharn Dolum)
+       from Grimli: Grimli Ironfoot → mother Thora Hammerfall → father Korin Hammerfall → mother Helga Stonehelm
+       from Dura: Dura Cooper → father Durz Cooper → mother Ghora Stonehelm → father Grimli Stonehelm → mother Thora Hammerfall → mother Helga Stonehelm
+   • Korin Hammerfall (#76, dwarf, m, born -121, died 156 aged 277 of a fever, smith, Kharn Dolum)
+       from Grimli: Grimli Ironfoot → mother Thora Hammerfall → father Korin Hammerfall → father Korin Hammerfall
+       from Dura: Dura Cooper → father Durz Cooper → mother Ghora Stonehelm → father Grimli Stonehelm → mother Thora Hammerfall → father Korin Hammerfall
+  Aelith Starwhisper (#1434, elf of elf-human family, f, born 56, hunter, Ashen Camp) has 14 ancestors from 7 family names, e.g. Greaves, Starwhisper, Fletcher, Reeve, Cooper, Marsh, Kell
   PASS  ancestry crosses family lines through marriages, not just the surname
   Same surname, not related: Thrain Hammerfall (#2, dwarf, m, born -30, guard, Kharn Dolum) and Ylva Hammerfall (#5, dwarf, f, born -79, smith, Kharn Dolum)
   PASS  two people with the same surname can have no shared ancestor
-  Mixed-race family: Ugra Redfang (#892, orc of human-orc family, f, born 9, died 68 aged 59 of old age, trader, Dust Wells), mother Peg Stone (#114, human, f, born -8, died 22 aged 30 of a fall, miner, Dust Wells), father Ruk Redfang (#282, orc, m, born -5, died 53 aged 58 of old age, smith, Dust Wells)  [⚠ TEMPORARY rule: child takes one parent's race at random]
+  Mixed-race family: Lirael Starwhisper (#812, elf of elf-human family, m, born 4, sailor, Port Cassel), mother Ada Oakes (#673, human, f, born -13, died 64 aged 77 of old age, docker, Port Cassel), father Caelum Starwhisper (#646, elf, m, born -87, clerk, Port Cassel)  [⚠ TEMPORARY rule: child takes one parent's race at random]
 
 3. An early start and a later start from the same seed: the later one only adds history
-  PASS  all 2577 events up to year 40 are identical in the 300-year history
-  PASS  the 1309 people of year 40 have the same births, parents, marriages and deaths; 3150 more people come later
-  PASS  11250 later events, all after year 40
+  PASS  all 2442 events up to year 40 are identical in the 300-year history
+  PASS  the 1252 people of year 40 have the same births, parents, marriages and deaths; 3013 more people come later
+  PASS  10733 later events, all after year 40
   PASS  saving at year 40 and carrying on to 300 gives exactly the straight-through history
 
 4. An ordinary family line: generations of bakers, no famous ancestor
-  The Greaves line, 6 generations (father to son), oldest first:
-   Ulric Greaves (#473, human, m, born -25, died 55 aged 80 of old age, baker, Millbrook)
-   Kit Greaves (#477, human, m, born -2, died 70 aged 72 of a winter chill, baker, Millbrook)
-   Ivo Greaves (#1248, human, m, born 36, died 123 aged 87 of old age, baker, Millbrook)
-   Aldric Greaves (#1556, human of human-orc family, m, born 62, died 146 aged 84 of old age, baker, Millbrook)
-   Jory Greaves (#1855, human of human-orc family, m, born 88, died 171 aged 83 of old age, baker, Millbrook)
-   Osric Greaves (#2216, human of human-orc family, m, born 117, died 161 aged 44 of a fall, baker, Millbrook)
-  PASS  none of the youngest's 54 ancestors, on any side, is a notable figure
-  For comparison, 337 of 904 living people do descend from one of the placeholder notables (5 founders).
+  The Oakes line, 8 generations (father to son), oldest first:
+   Aldric Oakes (#495, human, m, born -33, died 51 aged 84 of old age, miller, Millbrook)
+   Ivo Oakes (#497, human, m, born -1, died 42 aged 43 of old age, baker, Millbrook)
+   Leof Oakes (#1108, human, m, born 27, died 106 aged 79 of old age, baker, Millbrook)
+   Simon Oakes (#1353, human, m, born 48, died 95 aged 47 of the coughing sickness, baker, Millbrook)
+   Garret Oakes (#1793, human, m, born 88, died 168 aged 80 of old age, baker, Millbrook)
+   Tobin Oakes (#2012, human, m, born 108, died 164 aged 56 of a bad wound gone foul, baker, Millbrook)
+   Ned Oakes (#2249, human of human-orc family, m, born 127, died 199 aged 72 of a fever, baker, Millbrook)
+   Ida Oakes (#2780, human of dwarf-human-orc family, f, born 170, baker, Millbrook)
+  PASS  none of the youngest's 184 ancestors, on any side, is a notable figure
+  For comparison, 248 of 879 living people do descend from one of the placeholder notables (5 founders).
 
 5. Births, marriages and deaths make sense under the placeholder rules
+  PASS  review case: no Ruk Stonefist (8 of that name) marries an ancestor
+  PASS  review case: Joan Wren's father was 17 at her birth (adulthood 16)
+  PASS  a founder, and anyone else, compared with themselves is "the same person"
   PASS  1 years (seed 1338): 755 people, 774 events, 0 problems
-  PASS  100 years (seed 1337): 2022 people, 5184 events, 0 problems
-  PASS  500 years (seed 1837): 6295 people, 20679 events, 0 problems
+  PASS  100 years (seed 1337): 1931 people, 4932 events, 0 problems
+  PASS  500 years (seed 1837): 6407 people, 20851 events, 0 problems
   Checked: no one dies before birth or outlives the ceiling (1.6 × their race's typical life); every death has a cause; every child is born after both parents
+  (both adults at the birth, founders included, the mother in her child-bearing years); no one married an ancestor
+  or descendant at any depth, a sibling, half sibling or first cousin;
   and before either died, to a mother in her child-bearing years; marriages are of adults, while both
   live, recorded on both sides, one at a time; no one is their own ancestor; events are in order and
   none concerns someone before birth or after death.
@@ -63,36 +58,41 @@
 Lifespans and causes of death (seed 1337, 2,000 years, everyone who died after year 0)
   race    typical  deaths  died as   age at death, adults    old-age deaths  outliers                          oldest
                            children  (10% / 50% / 90%)       median
-  human      80   13478     11%    33 / 76 / 83                 79              2.4% past 92, 14% before 40       123
-  elf       600     557      8%    170 / 573 / 627              591             1.8% past 690, 17% before 300     917
-  dwarf     300    1513     10%    66 / 267 / 311               295             1.8% past 345, 27% before 150     433
-  orc        60    7065     17%    20 / 55 / 62                 59              1.5% past 69, 20% before 30       92
-  Causes: old age 54%, illness 27%, injury 19%, childbirth 1%
-  Longest-lived human: Bram Greaves (#5294, human of dwarf-elf-human-orc family, m, born 371, died 494 aged 123 of old age, trader, Kelford), constitution 1.50
-  Longest-lived elf: Faenya Thornsong (#2376, elf, f, born 130, died 1047 aged 917 of old age, healer, Kharn Dolum), constitution 1.51
-  Shortest-lived adult elf: Miriel Ashvale (#1513, elf of elf-human family, f, born 58, died 110 aged 52 of a fire, warden, Aelith Vara)
+  human      80   13339     11%    32 / 76 / 83                 79              2.3% past 92, 14% before 40       125
+  elf       600     542      8%    197 / 565 / 625              589             1.6% past 690, 16% before 300     898
+  dwarf     300    1507      9%    69 / 268 / 311               296             1.6% past 345, 27% before 150     453
+  orc        60    7175     18%    20 / 54 / 62                 59              1.7% past 69, 21% before 30       92
+  Causes: old age 53%, illness 26%, injury 20%, childbirth 1%
+  Longest-lived human: Osric Oakes (#20454, human of dwarf-elf-human-orc family, m, born 1665, died 1790 aged 125 of old age, servant, Castle Aldermere), constitution 1.49
+  Longest-lived elf: Ilyra Starwhisper (#6316, elf of elf-human family, f, born 467, died 1365 aged 898 of old age, carver, Aelith Vara), constitution 1.44
+  Shortest-lived adult elf: Caelia Silverleaf (#19941, elf of dwarf-elf-human-orc family, f, born 1623, died 1673 aged 50 of a fall, Aelith Vara)
   A few human deaths:
-   Cora Greaves (#24113, human of dwarf-elf-human-orc family, f, born 1990, died 1992 aged 2 of a sickness of the blood, Harrowgate Keep)
-   Aldric Stonefist (#24130, human of dwarf-elf-human-orc family, m, born 1992, died 1993 aged 1 of a fever of the lungs, Hollin's Ferry)
-   Wat Stonefist (#24134, human of dwarf-elf-human-orc family, m, born 1992, died 1994 aged 2 of the coughing sickness, Anvil's Rest)
-   Tobin Anvilborn (#24172, human of dwarf-elf-human-orc family, m, born 1995, died 1996 aged 1 of the flux, Anvil's Rest)
-   Lena Stonehelm (#24177, human of dwarf-elf-human-orc family, f, born 1996, died 2000 aged 4 of a fever of the lungs, Kelford)
-   Gwen Stonefist (#24181, human of dwarf-elf-human-orc family, f, born 1996, died 2000 aged 4 of a wasting illness, Kelford)
+   Cora Thornsong (#23992, human of dwarf-elf-human-orc family, f, born 1984, died 1989 aged 5 of the coughing sickness, Mistwater)
+   Cora Stonefist (#23999, human of dwarf-elf-human-orc family, f, born 1985, died 1990 aged 5 of a fever of the lungs, Castle Aldermere)
+   Peg Thatcher (#24030, human of dwarf-elf-human-orc family, f, born 1987, died 1994 aged 7 of a fever of the lungs, Anvil's Rest)
+   Wat Hammerfall (#24049, human of dwarf-elf-human-orc family, m, born 1988, died 1992 aged 4 of a sickness of the blood, Port Cassel)
+   Maud Stonefist (#24054, human of dwarf-elf-human-orc family, f, born 1988, died 1991 aged 3 of a bad wound gone foul, Anvil's Rest)
+   Rowan Ironfoot (#24059, human of dwarf-elf-human-orc family, m, born 1989, died 1997 aged 8 of a cart accident, Kharn Dolum)
 
 6. Save and reload
-  PASS  reloaded 1749 KB file is identical: 3205 people, 9422 events
+  PASS  reloaded 1699 KB file is identical: 3109 people, 9122 events
   PASS  ancestry of 40 living people is the same after reloading
   PASS  relationships between them are the same after reloading
 
+7. A saved history keeps its own rules
+  PASS  the reloaded history keeps the lifespans it was made with, not the current ones
+  PASS  carried on from year 60 after reloading, under different current settings, it matches a straight run under its own rules
+  PASS  no rule-code version mismatch flagged
+
 Generation time (seed 1337; each length run 3 times, fastest shown)
   years   time      people ever  alive at end  events    saved size  alive by race (human/elf/dwarf/orc), deepest generation
-      1    0.00 s          752           746      766      0.3 MB  397/102/105/142, 1
-     50    0.04 s         1421           958     3038      0.7 MB  511/119/157/171, 4
-    100    0.12 s         2022           881     5184      1.0 MB  408/151/171/151, 8
-    200    0.23 s         3205           904     9422      1.7 MB  402/168/182/152, 13
-    500    0.45 s         6883           965    22492      3.9 MB  463/181/170/151, 29
-   1000    0.85 s        12521           950    42806      7.3 MB  455/169/174/152, 57
-   2000    2.28 s        24242           899    84958     14.5 MB  420/161/175/143, 109
+      1    0.00 s          752           746      768      0.3 MB  398/102/105/141, 1
+     50    0.04 s         1377           927     2878      0.7 MB  499/110/156/162, 4
+    100    0.08 s         1931           828     4932      1.0 MB  381/146/169/132, 7
+    200    0.17 s         3109           879     9122      1.7 MB  431/165/169/114, 12
+    500    0.50 s         6711           919    21990      3.8 MB  431/167/178/143, 29
+   1000    1.04 s        12574           873    43046      7.3 MB  397/179/179/118, 56
+   2000    2.38 s        24168           876    84809     14.4 MB  407/172/178/119, 111
   (Node v22.22.0, one thread. A browser should be similar; not measured yet.)
 
 All checks passed.
