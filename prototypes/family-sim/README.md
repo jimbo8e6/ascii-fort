@@ -54,18 +54,20 @@ Nothing in the game uses it.
 - **Ordinary murders** (rare; `murderRate`): an adult kills someone near to a motive: a parent (an
   inheritance), a spouse (a bitter marriage), someone from another family (an old feud), a trader or innkeeper
   (robbery), or anyone (jealousy). Each has a method.
-- **Serial killers:** there is always exactly one at large, so any start year has one, with killings behind
-  them. When one is caught or dies, someone turns that year (a free adult, chosen by the seed) and kills
-  before the year is out. Each has a hidden signature of method, calling card and kind of victim (travellers
-  and newcomers, young women, the old, anyone caught alone). Careers last around 50 years, so a new one turns
-  about every 50 years. The founding generation includes one whose first victims died in the last years of
-  the war, so the default start (year 1) has a killer with a history too. Serial killers keep out of petty
-  crime and are never the one wrongly blamed. A caught serial killer is hanged or imprisoned for life, and
-  their whole series comes to light. The history stops at the start year, so the killer doesn't go on
-  killing during play.
+- **Serial killers come by chance** (`serialTurnChance`): each year someone may turn, about one new killer every
+  50 years on average, so some stretches have none and some have two at once. Each has a hidden signature of
+  method (and weapon), calling card and kind of victim (travellers and newcomers, young women, the old, anyone
+  caught alone), and kills first straight away, then now and then over a career of decades. A founding killer,
+  with victims from the last years of the war, is a chance too (`foundingKillerChance`). Serial killers keep out
+  of petty crime and are never the one wrongly blamed. Caught, they're condemned to hang or imprisoned for
+  life, and their whole series comes to light. So a game may start with a killer at large, one awaiting the
+  gallows, one in the cells for life, an old unsolved mystery, or none of these (the tests show the shares).
+  The history stops at the start year, so no one goes on killing during play.
+- **Weapons:** every murder records what it was done with (a bone-handled knife, a knotted cord, a smith's
+  hammer, a vial of nightshade…, or nothing for a drowning or a push), ready to turn up later as evidence.
 - **The truth and what people believe:** each murder records who did it, how, why (or the calling card), and
   what people believe happened. A quiet method (poison, a push, drowning, a blow) may pass for a natural death.
-  A known murder may be solved (the killer hanged, imprisoned or exiled), stay unsolved, or be pinned on an
+  A known murder may be solved (the killer condemned to hang, imprisoned or exiled), stay unsolved, or be pinned on an
   innocent, who suffers in their place. The past is never rewritten: a killing taken for natural keeps that
   belief, and the caught event records which killings came to light (`revealedIn`, `solved`).
 - `cases(H)` lists the serial killers with their signature, killings and status. In the viewer, search
@@ -80,5 +82,7 @@ Nothing in the game uses it.
   a human, multiplied per race (`sentenceScale`): orcs 0.75, following their lifespan; dwarves a gentler 2 and
   elves 1.5, so a thieving dwarf or elf serves years rather than decades. Wrongly blamed innocents are imprisoned
   too.
+- **The condemned** wait in the cells 1 to 3 years (`hangWait`) before they hang, killers and wrongly blamed
+  innocents alike.
 - **In the cells:** prisoners don't marry, have children, commit crimes or suffer them; they fall ill more
   easily; and they go home when their time is up. Who's in which castle now: `prisoners(H)`.

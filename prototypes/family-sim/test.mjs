@@ -251,7 +251,9 @@ function murderProblems(X) {
       const fits = s.prey === 'travellers' ? v.birthPlace !== e.place || ['trader', 'carter', 'sailor', 'stablehand'].includes(v.trade)
         : s.prey === 'young' ? v.sex === 'f' && ra >= rv.adult && ra < rv.adult + rv.life * .2 : s.prey === 'old' ? ra > rv.life * .6 : ra >= rv.adult;
       if (!fits) bad.push(`#${v.id} isn't the kind of victim #${k.id} chooses (${s.prey})`);
+      if (e.weapon !== s.weapon) bad.push(`#${k.id} used a different weapon on #${v.id}`);
     } else if (!MURDER.motives.includes(e.motive)) bad.push(`#${v.id}'s killing has no motive`);
+    if (!MURDER.weapons[e.method].includes(e.weapon)) bad.push(`#${v.id}'s killing: ${e.weapon} doesn't go with ${e.method}`);
     if (!/murder/.test(e.believed) && e.solved) bad.push(`#${v.id}'s death passed for natural yet counts as solved at the time`);
     const rev = revealedIn(X, v.id);
     if (rev !== undefined && (!e.serial || rev < e.y || !ev.some(x => x.t === 'caught' && x.p === k.id && x.y === rev))) bad.push(`#${v.id}'s killing came to light without its killer being caught then`);
@@ -295,28 +297,35 @@ log('  was for a real murder.');
   log(`  Serial killers still at large at the end (a mystery waiting for a player): ${open.length ? open.map(c => `${nm(c.killer)} (${c.victims.length} victims)`).join(', ') : 'none in this history'}`);
 }
 
-log('\n9. One serial killer at large at any start');
+log('\n9. What a game finds at its start');
 {
-  const starts = Array.from({ length: 300 }, (_, i) => i + 1), dist = [];   // every start year from 1 to 300
-  let ok = true, where = '';
-  for (const seed of [1337, 1837, 42, 7, 2024]) {
+  // For many seeds and start years: is there a serial killer at large, one in the cells awaiting the gallows,
+  // one in for life, an old mystery (a killer who died uncaught, within the last 100 years), or none of these?
+  const kinds = { 'at large': 0, 'awaiting the gallows': 0, 'in the cells for life': 0, 'an old mystery': 0, 'none of these': 0 };
+  let n = 0;
+  for (const seed of [1337, 1837, 42, 7, 2024, 99, 5, 314]) {
     const X = newHistory(seed);
-    for (const y of starts) {
-      simulate(X, y);
-      const free = cases(X).filter(c => c.status === 'at large');
-      if (free.length !== 1 || !free[0].victims.length) { ok = false; where += ` seed ${seed} year ${y}: ${free.length} at large;`; continue; }
-      dist.push(free[0].victims.length);
+    for (let y = 1; y <= 400; y += 3) {
+      simulate(X, y); n++;
+      const C = cases(X), got = new Set();
+      for (const c of C) {
+        if (c.status === 'at large') got.add('at large');
+        if (c.status === 'caught, awaiting the gallows') got.add('awaiting the gallows');
+        if (c.status === 'caught, in the cells for life') got.add('in the cells for life');
+        if (c.status === 'died, never caught' && y - c.victims.at(-1).y <= 100) got.add('an old mystery');
+      }
+      if (!got.size) got.add('none of these');
+      for (const g of got) kinds[g]++;
     }
   }
-  dist.sort((a, b) => a - b);
-  check(ok, `in 5 seeds, at every start year from 1 to 300 (${5 * starts.length} in all), exactly one serial killer is at large, with victims already${where}`);
-  log(`  victims so far, at those starts: fewest ${dist[0]}, median ${dist[dist.length >> 1]}, most ${dist.at(-1)}`);
+  log(`  ${n} starts (8 seeds, every third year from 1 to 400); share of starts with each (a start can have several):`);
+  for (const [k, c] of Object.entries(kinds)) log(`   ${k.padEnd(24)} ${(c / n * 100).toFixed(0).padStart(3)}%`);
+  check(Object.values(kinds).every(c => c > 0), 'every kind of start turns up somewhere');
   const X = run(SEED, 500), turned = X.events.filter(e => e.t === 'turned').length;
-  log(`  ${turned} serial killers over 500 years (seed ${SEED}): one about every ${Math.round(500 / (turned - 1))} years`);
-  const first = cases(run(SEED, 1)).find(c => c.status === 'at large');
-  log(`  At the default start (year 1, seed ${SEED}): ${describe(run(SEED, 1), first.killer)}`);
-  log(`    ${MURDER.methods[first.method].cause}, leaves ${first.mark}, chooses ${MURDER.prey[first.prey]}; ${first.victims.length} victims, from the last years of the war:`);
-  for (const e of first.victims) log(`    ${e.y}  ${fullName(run(SEED, 1), e.p).padEnd(20)} people believe: ${e.believed}`);
+  log(`  ${turned} serial killers over 500 years (seed ${SEED})`);
+  const Y = run(SEED, 200), C = cases(Y), nm = id => fullName(Y, id);
+  log(`  At year 200 (seed ${SEED}):`);
+  for (const c of C.filter(c => c.victims.length)) log(`   ${nm(c.killer).padEnd(20)} ${c.victims.length} killings ${c.victims[0].y}–${c.victims.at(-1).y}, ${c.weapon || 'no weapon'} (${MURDER.methods[c.method].cause}), ${c.mark}: ${c.status}`);
 }
 
 log('\n10. Prisons');
@@ -328,7 +337,11 @@ function prisonProblems(X) {
     terms.push({ p: e.p, since: e.y, end, until: e.until, at: e.at });
     const want = R.prisons[p.race] || (R.prisons.westPlaces.includes(e.from) ? R.prisons.west : R.prisons.rest);
     if (e.at !== want) bad.push(`#${e.p} sent to ${e.at}, not ${want}`);
-    if (e.until !== null && X.year >= e.until && (p.death === null || p.death > e.until) && (!rel || rel.y !== e.until)) bad.push(`#${e.p} not released when their time was up (${e.until})`);
+    const alive = p.death === null || p.death >= e.until;
+    if (e.condemned) {
+      if (rel) bad.push(`#${e.p} was condemned but released`);
+      if (e.until !== null && X.year >= e.until && alive && !(p.death === e.until && p.deathKind === 'execution')) bad.push(`#${e.p} was condemned but not hanged on ${e.until}`);
+    } else if (e.until !== null && X.year >= e.until && (p.death === null || p.death > e.until) && (!rel || rel.y !== e.until)) bad.push(`#${e.p} not released when their time was up (${e.until})`);
     if (e.until === null && rel) bad.push(`#${e.p} was released from a life sentence`);
   }
   for (const tm of terms) {
@@ -351,7 +364,8 @@ for (const [seed, yrs] of [[1337, 300], [1837, 500]]) {
     `(${jailed.filter(e => e.crime === 'murder').length} for murder, ${jailed.filter(e => e.why === 'wrongly blamed').length} of them innocent); ${bad.length} problems${bad.length ? ': ' + bad.slice(0, 4).join('; ') : ''}`);
 }
 log('  Checked: each prisoner went to the right castle, was released when their time was up (never from a life');
-log('  sentence), and while inside didn\'t marry, have children, commit crimes or suffer them; those who died inside died there.');
+log('  sentence; the condemned were hanged on the day set, never released),');
+log('  and while inside didn\'t marry, have children, commit crimes or suffer them; those who died inside died there.');
 {
   const X = run(SEED, 200), cells = prisoners(X);
   log(`  In the cells at year 200 (seed ${SEED}):`);
