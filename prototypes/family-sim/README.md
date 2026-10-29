@@ -55,7 +55,7 @@ Nothing in the game uses it.
   inheritance), a spouse (a bitter marriage), someone from another family (an old feud), a trader or innkeeper
   (robbery), or anyone (jealousy). Each has a method.
 - **Serial killers come by chance** (`serialTurnChance`): each year someone may turn, about one new killer every
-  50 years on average, so some stretches have none and some have two at once. Each has a hidden signature of
+  60 years on average, so some stretches have none and some have two at once. Each has a hidden signature of
   method (and weapon), calling card and kind of victim (travellers and newcomers, young women, the old, anyone
   caught alone), and kills first straight away, then now and then over a career of decades. A founding killer,
   with victims from the last years of the war, is a chance too (`foundingKillerChance`). Serial killers keep out
@@ -82,7 +82,8 @@ Nothing in the game uses it.
   a human, multiplied per race (`sentenceScale`): orcs 0.75, following their lifespan; dwarves a gentler 2 and
   elves 1.5, so a thieving dwarf or elf serves years rather than decades. Wrongly blamed innocents are imprisoned
   too.
-- **The condemned** wait in the cells 1 to 3 years (`hangWait`) before they hang, killers and wrongly blamed
-  innocents alike.
+- **The lord's court:** each castle's lord holds court every 6 years (`courtEvery`), in years set by the seed
+  (`courtSits`). The condemned, killers and wrongly blamed innocents alike, wait in the cells until the next
+  sitting at least a year away, and hang then. About 1 game start in 8 has someone awaiting the gallows.
 - **In the cells:** prisoners don't marry, have children, commit crimes or suffer them; they fall ill more
   easily; and they go home when their time is up. Who's in which castle now: `prisoners(H)`.

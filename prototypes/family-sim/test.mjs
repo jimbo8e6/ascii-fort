@@ -1,6 +1,6 @@
 // Runs the six checks for the family simulation prototype and measures generation time.
 // Usage: node test.mjs   (prints a report; also writes results.txt next to this file)
-import { newHistory, simulate, save, load, ancestors, sharedAncestors, relationship, describe, fullName, cases, prisoners, revealedIn, solved, RACES, TEMP_RULES, RULES, MURDER } from './family-sim.mjs';
+import { newHistory, simulate, save, load, ancestors, sharedAncestors, relationship, describe, fullName, cases, prisoners, revealedIn, solved, courtSits, RACES, TEMP_RULES, RULES, MURDER } from './family-sim.mjs';
 import { createHash } from 'node:crypto';
 import { buildViewer } from './build-viewer.mjs';
 buildViewer();                                   // keep viewer.html's copy of the simulation up to date
@@ -302,8 +302,8 @@ log('\n9. What a game finds at its start');
   // For many seeds and start years: is there a serial killer at large, one in the cells awaiting the gallows,
   // one in for life, an old mystery (a killer who died uncaught, within the last 100 years), or none of these?
   const kinds = { 'at large': 0, 'awaiting the gallows': 0, 'in the cells for life': 0, 'an old mystery': 0, 'none of these': 0 };
-  let n = 0;
-  for (const seed of [1337, 1837, 42, 7, 2024, 99, 5, 314]) {
+  let n = 0, anyone = 0;
+  for (const seed of [1337, 1837, 42, 7, 2024, 99, 5, 314, 11, 23, 58, 77, 101, 202, 404, 999]) {
     const X = newHistory(seed);
     for (let y = 1; y <= 400; y += 3) {
       simulate(X, y); n++;
@@ -314,12 +314,14 @@ log('\n9. What a game finds at its start');
         if (c.status === 'caught, in the cells for life') got.add('in the cells for life');
         if (c.status === 'died, never caught' && y - c.victims.at(-1).y <= 100) got.add('an old mystery');
       }
+      if (X._living.some(i => X.people[i].jail?.condemned)) anyone++;
       if (!got.size) got.add('none of these');
       for (const g of got) kinds[g]++;
     }
   }
-  log(`  ${n} starts (8 seeds, every third year from 1 to 400); share of starts with each (a start can have several):`);
+  log(`  ${n} starts (16 seeds, every third year from 1 to 400); share of starts with each serial killer situation (a start can have several):`);
   for (const [k, c] of Object.entries(kinds)) log(`   ${k.padEnd(24)} ${(c / n * 100).toFixed(0).padStart(3)}%`);
+  log(`  Anyone (killer, murderer or wrongly blamed innocent) awaiting the gallows: ${(anyone / n * 100).toFixed(0)}% of starts`);
   check(Object.values(kinds).every(c => c > 0), 'every kind of start turns up somewhere');
   const X = run(SEED, 500), turned = X.events.filter(e => e.t === 'turned').length;
   log(`  ${turned} serial killers over 500 years (seed ${SEED})`);
@@ -341,6 +343,7 @@ function prisonProblems(X) {
     if (e.condemned) {
       if (rel) bad.push(`#${e.p} was condemned but released`);
       if (e.until !== null && X.year >= e.until && alive && !(p.death === e.until && p.deathKind === 'execution')) bad.push(`#${e.p} was condemned but not hanged on ${e.until}`);
+      if (e.until !== courtSits(X, e.at, e.y + 1)) bad.push(`#${e.p}'s hanging (${e.until}) isn't at the next sitting of ${e.at}'s court`);
     } else if (e.until !== null && X.year >= e.until && (p.death === null || p.death > e.until) && (!rel || rel.y !== e.until)) bad.push(`#${e.p} not released when their time was up (${e.until})`);
     if (e.until === null && rel) bad.push(`#${e.p} was released from a life sentence`);
   }
@@ -364,7 +367,7 @@ for (const [seed, yrs] of [[1337, 300], [1837, 500]]) {
     `(${jailed.filter(e => e.crime === 'murder').length} for murder, ${jailed.filter(e => e.why === 'wrongly blamed').length} of them innocent); ${bad.length} problems${bad.length ? ': ' + bad.slice(0, 4).join('; ') : ''}`);
 }
 log('  Checked: each prisoner went to the right castle, was released when their time was up (never from a life');
-log('  sentence; the condemned were hanged on the day set, never released),');
+log('  sentence; the condemned were hanged when the castle\'s lord next held court, never released),');
 log('  and while inside didn\'t marry, have children, commit crimes or suffer them; those who died inside died there.');
 {
   const X = run(SEED, 200), cells = prisoners(X);

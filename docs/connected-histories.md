@@ -26,11 +26,12 @@ of bakers) are as valid as famous ones (a displaced king in the family tree).
   hidden, and *not necessarily family groups*.
 - **Murder:** deaths include murder outside any war, including serial killers, so that quests can turn on
   solving them. The truth and what people believe are recorded separately.
-- **Serial killers by chance,** about one every 50 years, so games differ: some start with a killer at large,
+- **Serial killers by chance,** a little rarer than one every 50 years, so games differ: some start with a killer at large,
   some with one imprisoned and due to be put to death, some with only an old mystery from decades ago, to be
   uncovered through books and perhaps the murder weapons. No one keeps killing during play unless a written
   quest includes a murder. (A guaranteed killer at every start was tried and dropped.)
 - **Prisons:** cells beneath the castles hold prisoners for anything from murder to stealing.
+  The condemned wait there until the castle's lord next holds court.
 - **Pre-war history:** the game will have a set history before the war. Its set deaths and events will be tied
   to whichever families and names are generated for each new game.
 - **War deaths** will come later.

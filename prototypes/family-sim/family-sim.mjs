@@ -97,19 +97,20 @@ export const RULES = {
   murderRate: .00025,        // an adult's yearly chance of killing someone for a motive
   // Serial killers come by chance: each year someone may turn (about one every 50 years on average, so
   // some stretches have none and some have two at once). A career lasts decades.
-  serialTurnChance: .02,     // the yearly chance that someone turns
+  serialTurnChance: .016,    // the yearly chance that someone turns
   foundingKillerChance: .3,  // the chance that a killer is already at large when the war ends
   serialKillChance: .18,     // an active serial killer's yearly chance of killing (after the first)
-  catchBase: .012, catchPerVictim: .008,  // their chance of being caught after each killing
+  catchBase: .03, catchPerVictim: .012,   // their chance of being caught after each killing
   solveChance: .55,          // an ordinary murder, known to be one, is solved
   disguiseChance: .5,        // a killing by a quiet method passes for a natural death
   wrongAccuse: .25,          // an unsolved murder gets pinned on an innocent
   // What happens to someone convicted of murder (or blamed for one): hanged, imprisoned or exiled.
-  // The condemned wait in the cells for a year or more before they hang.
+  // The condemned wait in the castle's cells until its lord next holds court (at least a year away), and
+  // hang then. Each castle's court sits every courtEvery years, in years set by the seed.
   murderPunish: { hanged: .45, imprisoned: .4, exiled: .15 },
-  hangWait: [1, 3],
+  courtEvery: 6,
   lifeSentence: .35,         // share of murder sentences that are for life
-  serialHang: .6,            // a caught serial killer is hanged, otherwise imprisoned for life
+  serialHang: .75,           // a caught serial killer is condemned to hang, otherwise imprisoned for life
   // Lesser crimes: yearly chance per adult (poaching mostly by hunters), and of being caught
   crimes: { theft: { rate: .004, caught: .35 }, assault: { rate: .002, caught: .5 }, poaching: { rate: .0015, hunter: .03, caught: .3 } },
   // Prison sentences in years for a human, multiplied per race. Orcs' follow their lifespan (60 years
@@ -174,7 +175,7 @@ const NAMES = {
 // history carries on under its own rules whatever the current settings are. The rule *functions*
 // (TEMP_RULES, causes of death, constitution) are code: RULES_CODE names their version, and loading a
 // history made under a different version is flagged.
-export const RULES_CODE = 'family-sim 7';
+export const RULES_CODE = 'family-sim 8';
 function currentRules() {
   return JSON.parse(JSON.stringify({ code: RULES_CODE, races: RACES, places: PLACES, ceiling: CEILING, childbirth: CHILDBIRTH,
     crossRaceWeight: TEMP_RULES.crossRaceWeight, ...RULES }));
@@ -188,7 +189,7 @@ function rand(seed, tag, a = 0, b = 0, c = 0) {
   h ^= h >>> 16; h = Math.imul(h, 0x85ebca6b); h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35); h ^= h >>> 16;
   return (h >>> 0) / 4294967296;
 }
-const T = Object.fromEntries(['weapon', 'wait', 'founding', 'turn', 'turnPick', 'crime', 'crimeVictim', 'crimeCaught', 'sentence', 'lifer', 'prewar', 'murder', 'motive', 'victim', 'method', 'believe', 'solve', 'accuse', 'punish', 'exile', 'serial', 'serialPick', 'serialKill', 'roam', 'catch', 'con', 'cause', 'childbirth', 'death', 'wed', 'wedPick', 'away', 'awayPlace', 'birth', 'sex', 'race', 'name', 'trade', 'tradePick', 'leave', 'leavePlace', 'found', 'foundAge', 'foundKids', 'foundRace', 'foundSurname', 'foundTrade'].map(k => [k, TAG(k)]));
+const T = Object.fromEntries(['court', 'weapon', 'wait', 'founding', 'turn', 'turnPick', 'crime', 'crimeVictim', 'crimeCaught', 'sentence', 'lifer', 'prewar', 'murder', 'motive', 'victim', 'method', 'believe', 'solve', 'accuse', 'punish', 'exile', 'serial', 'serialPick', 'serialKill', 'roam', 'catch', 'con', 'cause', 'childbirth', 'death', 'wed', 'wedPick', 'away', 'awayPlace', 'birth', 'sex', 'race', 'name', 'trade', 'tradePick', 'leave', 'leavePlace', 'found', 'foundAge', 'foundKids', 'foundRace', 'foundSurname', 'foundTrade'].map(k => [k, TAG(k)]));
 // A person's own constitution: mostly within 15% of 1, with about 1 in 25 unusually hardy (up to half
 // as long again) and about 1 in 25 frail (as little as half)
 function ownConstitution(seed, id) {
@@ -352,6 +353,12 @@ const closeKin = (H, a, b) => {
   return isAncestor(H, older.id, younger.id);
 };
 
+// The first year, from `from` on, in which a castle's lord holds court
+export function courtSits(H, castle, from) {
+  const every = H.rules.courtEvery, offset = Math.floor(rand(H.seed, T.court, castle.length, castle.charCodeAt(0), castle.charCodeAt(castle.length - 1)) * every);
+  return from + ((offset - from) % every + every) % every;
+}
+
 // ---- Murders, each year after the natural deaths ----
 function crimes(H, y, alive, add) {
   const { seed } = H, RULES = H.rules, RACES = RULES.races, P = H.people;
@@ -378,9 +385,8 @@ function crimes(H, y, alive, add) {
     if (!living(p)) return null;
     const r = rand(seed, T.punish, y, p.id), w = RULES.murderPunish;
     const outcome = serial ? (r < RULES.serialHang ? 'hanged' : 'imprisoned') : r < w.hanged ? 'hanged' : r < w.hanged + w.imprisoned ? 'imprisoned' : 'exiled';
-    if (outcome === 'hanged') {                                                  // condemned: to the cells to await the rope
-      const [a, b] = RULES.hangWait, wait = a + Math.floor(rand(seed, T.wait, y, p.id) * (b - a + 1));
-      jail(p, 'murder', wait, why, { for: forVictim, condemned: true });
+    if (outcome === 'hanged') {                                                  // condemned: to the cells to await the lord's court
+      jail(p, 'murder', courtSits(H, prisonFor(p), y + 1) - y, why, { for: forVictim, condemned: true });
       return 'condemned to hang';
     }
     if (outcome === 'imprisoned') {
