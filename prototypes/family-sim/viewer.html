@@ -159,7 +159,7 @@ const RULES = {
   // Serial killers: there is always exactly one at large. When one is caught or dies, another turns that
   // year and kills before the year is out; these chances make a career last around 50 years
   serialKillChance: .18,     // an active serial killer's yearly chance of killing (after the first)
-  catchBase: .012, catchPerVictim: .006,  // their chance of being caught after each killing
+  catchBase: .012, catchPerVictim: .008,  // their chance of being caught after each killing
   solveChance: .55,          // an ordinary murder, known to be one, is solved
   disguiseChance: .5,        // a killing by a quiet method passes for a natural death
   wrongAccuse: .25,          // an unsolved murder gets pinned on an innocent
@@ -507,34 +507,22 @@ function crimes(H, y, alive, add) {
       }
     }
   }
-  // Serial killers: there's always one at large. If none is (the last was caught or died), someone turns
-  // this year, chosen from the free adults, with a method, calling card and kind of victim of their own.
-  const atLarge = free.filter(k => living(k) && k.killer && !k.killer.caught);
-  if (!atLarge.length) {
-    const cands = free.filter(k => living(k) && adult(k) && !k.killer && age(k) < RACES[k.race].life * .6);
-    const k = pickFrom(cands, rand(seed, T.turn, y));
-    if (k) {
-      const pick = (list, n) => list[rand(seed, T.turnPick, k.id, n) * list.length | 0];
-      k.killer = { method: pick(Object.keys(MURDER.methods), 1), mark: pick(MURDER.marks, 2), prey: pick(Object.keys(MURDER.prey), 3), from: y, caught: null };
-      H.events.push({ y, t: 'turned', p: k.id });
-      atLarge.push(k);
-    }
-  }
-  // A killing now and then (the first as soon as there's a victim to be had), until caught or dead
-  for (const k of atLarge) {
-    if (!living(k) || H._kills[k.id] && rand(seed, T.serialKill, y, k.id) >= RULES.serialKillChance) continue;
+  // Serial killers: there's always one at large. A killing now and then (the first as soon as they
+  // turn), until they're caught or die.
+  const fits = (k, v) => {
+    const R = RACES[v.race], a = age(v);
+    return k.killer.prey === 'travellers' ? v.birthPlace !== v.place || ROAMING.has(v.trade)
+      : k.killer.prey === 'young' ? v.sex === 'f' && a >= R.adult && a < R.adult + R.life * .2
+      : k.killer.prey === 'old' ? a > R.life * .6 : a >= R.adult;
+  };
+  // One killing attempt: returns true if someone died
+  const strike = k => {
     // Those who travel for their trade sometimes kill away from home
     let where = k.place;
     if (ROAMING.has(k.trade) && rand(seed, T.roam, y, k.id) < .5) where = RULES.places[Math.floor(rand(seed, T.roam, y, k.id + 3) * RULES.places.length)].name;
-    const fits = v => {
-      const R = RACES[v.race], a = age(v);
-      return k.killer.prey === 'travellers' ? v.birthPlace !== v.place || ROAMING.has(v.trade)
-        : k.killer.prey === 'young' ? v.sex === 'f' && a >= R.adult && a < R.adult + R.life * .2
-        : k.killer.prey === 'old' ? a > R.life * .6 : a >= R.adult;
-    };
-    const victim = pickFrom((byPlace[where] || []).filter(v => v !== k && living(v) && !family(k, v) && fits(v)), rand(seed, T.victim, y, k.id + 1));
-    if (!victim) continue;
-    const e = kill(k, victim, k.killer.method, null, true);
+    const victim = pickFrom((byPlace[where] || []).filter(v => v !== k && living(v) && !family(k, v) && fits(k, v)), rand(seed, T.victim, y, k.id + 1));
+    if (!victim) return false;
+    kill(k, victim, k.killer.method, null, true);
     // Each killing is a chance of being caught, more so the more there have been
     if (rand(seed, T.catch, y, k.id) < RULES.catchBase + RULES.catchPerVictim * H._kills[k.id]) {
       // Caught: the whole series comes to light, including killings taken for natural deaths at the time.
@@ -547,7 +535,23 @@ function crimes(H, y, alive, add) {
       for (const x of series) H._revealed[x.p] = y;
       punish(k, victim.id, 'convicted', true);
     }
-  }
+    return true;
+  };
+  const atLarge = () => free.filter(k => living(k) && k.killer && !k.killer.caught && H._kills[k.id]);
+  // Someone turns: a free adult chosen by the seed, with a method, calling card and kind of victim of
+  // their own, and a first killing straight away (if no one fits, the next candidate is tried)
+  const turn = n => {
+    const cands = free.filter(k => living(k) && adult(k) && !k.killer && age(k) < RACES[k.race].life * .6);
+    for (let i = 0, start = Math.floor(rand(seed, T.turn, y, n) * cands.length); i < Math.min(cands.length, 20); i++) {
+      const k = cands[(start + i) % cands.length], pick = (list, j) => list[rand(seed, T.turnPick, k.id, j) * list.length | 0];
+      k.killer = { method: pick(Object.keys(MURDER.methods), 1), mark: pick(MURDER.marks, 2), prey: pick(Object.keys(MURDER.prey), 3), from: y, caught: null };
+      if (strike(k)) { H.events.splice(H.events.findIndex(e => e.y === y && e.t === 'death' && e.by === k.id), 0, { y, t: 'turned', p: k.id }); return; }
+      k.killer = null;
+    }
+  };
+  for (const k of atLarge()) if (living(k) && rand(seed, T.serialKill, y, k.id) < RULES.serialKillChance) strike(k);
+  // Never a year's end without one at large: if the last was caught or died this year, another turns now
+  for (let n = 0; !atLarge().length && n < 5; n++) turn(n);
 }
 
 // Run the history on to year `to`. Can be called again later to carry on from where it stopped.

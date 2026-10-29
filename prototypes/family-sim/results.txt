@@ -1,27 +1,27 @@
 1. Same seed and start year give the same people and ancestry
-  seed 1337, 150 years: run 1 2475f99e6872555a, run 2 2475f99e6872555a (2613 people, 8628 events)
-  seed 1338, 150 years: 9e98a4f95688bf15
+  seed 1337, 150 years: run 1 bbfff571c77c62e8, run 2 bbfff571c77c62e8 (2618 people, 8649 events)
+  seed 1338, 150 years: a6a3cee9b82af714
   PASS  two runs give byte-identical histories
   PASS  a different seed gives a different history
-  PASS  the same ancestry for Bula Redfang (174 ancestors) in both runs
+  PASS  the same ancestry for Ned Wren (92 ancestors) in both runs
 
 2. Shared ancestors between relatives, through both parents and across family lines
-  PASS  shared ancestors match an independent walk down the family tree for all 409 related pairs tried
-  Example: Aldric Granitehand (#2613, human of dwarf-elf-human-orc family, m, born 151, mason, Concord Landing)
-       and Wat Brook (#2616, human, m, born 151, baker, Kelford)
-  Different surnames. They are third cousins once removed, with 8 shared ancestors in all; nearest:
-   • Kate Oakes (#408, human, f, born -3, died 76 aged 79, of old age, guard, Kelford)
-       from Aldric: Aldric Granitehand → father Edwin Granitehand → mother Orla Brook → father Dunstan Brook → mother Kate Oakes
-       from Wat: Wat Brook → father Merric Brook → father Merric Brook → father Osric Brook → father Leof Brook → mother Kate Oakes
-   • Rowan Brook (#446, human, m, born 0, died 76 aged 76, of old age, mason, Kelford)
-       from Aldric: Aldric Granitehand → father Edwin Granitehand → mother Orla Brook → father Dunstan Brook → father Rowan Brook
-       from Wat: Wat Brook → father Merric Brook → father Merric Brook → father Osric Brook → father Leof Brook → father Rowan Brook
-   • Maud Greaves (#436, human, f, born -28, died 22 aged 50, of the flux, trader, Kelford)
-       from Aldric: Aldric Granitehand → father Edwin Granitehand → mother Orla Brook → mother Hilda Kell → mother Nell Greaves → mother Maud Greaves
-       from Wat: Wat Brook → father Merric Brook → father Merric Brook → mother Hilda Greaves → father Ivo Greaves → mother Maud Greaves
-   • Ivo Greaves (#435, human, m, born -31, died 47 aged 78, of old age, baker, Kelford)
-       from Aldric: Aldric Granitehand → father Edwin Granitehand → mother Orla Brook → mother Hilda Kell → mother Nell Greaves → father Ivo Greaves
-       from Wat: Wat Brook → father Merric Brook → father Merric Brook → mother Hilda Greaves → father Ivo Greaves → father Ivo Greaves
+  PASS  shared ancestors match an independent walk down the family tree for all 411 related pairs tried
+  Example: Krag Stonefist (#2619, orc of dwarf-elf-human-orc family, m, born 151, tanner, Gor Marakh)
+       and Simon Hollins (#2631, human of dwarf-human-orc family, m, born 152, innkeeper, Hollin's Ferry)
+  Different surnames. They are fourth cousins once removed, with 4 shared ancestors in all; nearest:
+   • Joan Greaves (#519, human, f, born -24, died 59 aged 83, of old age, innkeeper, Hollin's Ferry)
+       from Krag: Krag Stonefist → father Ruk Stonefist → mother Ghora Redfang → mother Vorka Hollins → father Edwin Hollins → father Rowan Hollins → mother Joan Greaves
+       from Simon: Simon Hollins → mother Peg Hollins → father Aldric Hollins → father Aldric Hollins → father Aldric Hollins → mother Joan Greaves
+   • Edwin Hollins (#518, human, m, born -22, died 52 aged 74, of old age, ferryman, Hollin's Ferry)
+       from Krag: Krag Stonefist → father Ruk Stonefist → mother Ghora Redfang → mother Vorka Hollins → father Edwin Hollins → father Rowan Hollins → father Edwin Hollins
+       from Simon: Simon Hollins → mother Peg Hollins → father Aldric Hollins → father Aldric Hollins → father Aldric Hollins → father Edwin Hollins
+   • Shagra Stonefist (#314, orc, f, born -13, died 40 aged 53, of a fall, herder, Gor Marakh)
+       from Krag: Krag Stonefist → father Ruk Stonefist → father Narg Stonefist → mother Kesha Redfang → father Ruk Redfang → mother Rasha Bloodtusk → father Ruk Bloodtusk → mother Shagra Stonefist
+       from Simon: Simon Hollins → mother Peg Hollins → mother Ida Carver → mother Dura Ironfoot → mother Agra Bloodtusk → father Thrak Bloodtusk → mother Shagra Stonefist
+   • Gorr Bloodtusk (#313, orc, m, born -14, died 11 aged 25, of wounds from a skirmish, warrior, Gor Marakh)
+       from Krag: Krag Stonefist → father Ruk Stonefist → father Narg Stonefist → mother Kesha Redfang → father Ruk Redfang → mother Rasha Bloodtusk → father Ruk Bloodtusk → father Gorr Bloodtusk
+       from Simon: Simon Hollins → mother Peg Hollins → mother Ida Carver → mother Dura Ironfoot → mother Agra Bloodtusk → father Thrak Bloodtusk → father Gorr Bloodtusk
   Nori Anvilborn (#1568, dwarf of dwarf-orc family, m, born 67, smith, Concord Landing) has 18 ancestors from 6 family names, e.g. Ironjaw, Anvilborn, Redfang, Deepdelve, Bloodtusk, Stonefist
   PASS  ancestry crosses family lines through marriages, not just the surname
   Same surname, not related: Thrain Hammerfall (#2, dwarf, m, born -30, guard, Kharn Dolum) and Korin Hammerfall (#78, dwarf, m, born -31, smith, Kharn Dolum)
@@ -30,8 +30,8 @@
 
 3. An early start and a later start from the same seed: the later one only adds history
   PASS  all 2832 events up to year 40 are identical in the 300-year history
-  PASS  the 1281 people of year 40 have the same births, parents, marriages and deaths; 3107 more people come later
-  PASS  13727 later events, all after year 40
+  PASS  the 1281 people of year 40 have the same births, parents, marriages and deaths; 3100 more people come later
+  PASS  13786 later events, all after year 40
   PASS  saving at year 40 and carrying on to 300 gives exactly the straight-through history
 
 4. An ordinary family line: generations of bakers, no famous ancestor
@@ -41,17 +41,17 @@
    Ned Brook (#1371, human, m, born 48, died 133 aged 85, of old age, baker, Kelford)
    Kit Brook (#1612, human, m, born 71, died 119 aged 48, of a fire, baker, Kelford)
    Edwin Brook (#2114, human, m, born 114, died 192 aged 78, of old age, baker, Kelford)
-   Aldric Brook (#2620, human, m, born 151, died 200 aged 49, of a sickness of the blood, baker, Kelford)
+   Bess Brook (#2556, human, f, born 146, baker, Kelford)
   PASS  none of the youngest's 56 ancestors, on any side, is a notable figure
-  For comparison, 350 of 944 living people do descend from one of the placeholder notables (5 founders).
+  For comparison, 377 of 951 living people do descend from one of the placeholder notables (5 founders).
 
 5. Births, marriages and deaths make sense under the placeholder rules
-  PASS  review case: no Ruk Stonefist (12 of that name) marries an ancestor
+  PASS  review case: no Ruk Stonefist (8 of that name) marries an ancestor
   PASS  review case: Joan Wren's father was 17 at her birth (adulthood 16)
   PASS  a founder, and anyone else, compared with themselves is "the same person"
   PASS  1 years (seed 1338): 758 people, 785 events, 0 problems
   PASS  100 years (seed 1337): 1959 people, 5897 events, 0 problems
-  PASS  500 years (seed 1837): 6032 people, 24469 events, 0 problems
+  PASS  500 years (seed 1837): 6454 people, 26033 events, 0 problems
   Checked: no one dies before birth or outlives the ceiling (1.6 × their race's typical life); every death has a cause; every child is born after both parents
   (both adults at the birth, founders included, the mother in her child-bearing years); no one married an ancestor
   or descendant at any depth, a sibling, half sibling or first cousin;
@@ -62,51 +62,62 @@
 Lifespans and causes of death (seed 1337, 2,000 years, everyone who died after year 0)
   race    typical  deaths  died as   age at death, adults    old-age deaths  outliers                          oldest
                            children  (10% / 50% / 90%)       median
-  human      80   13613     10%    32 / 76 / 83                 79              2.3% past 92, 14% before 40       125
-  elf       600     650      6%    104 / 449 / 616              589             1.0% past 690, 38% before 300     924
-  dwarf     300    1642      8%    60 / 229 / 309               296             1.3% past 345, 33% before 150     454
-  orc        60    6050     18%    20 / 54 / 62                 59              1.6% past 69, 21% before 30       92
-  Causes: old age 51.4%, illness 25.6%, injury 19.1%, murder 3.0%, childbirth 0.6%, execution 0.3%
-  Longest-lived human: Ida Anvilborn (#7788, human of dwarf-elf-human-orc family, f, born 629, died 754 aged 125, of old age, carter, Millbrook), constitution 1.47
-  Longest-lived elf: Aelith Moonbrook (#4002, elf of dwarf-elf-human-orc family, f, born 271, died 1195 aged 924, of old age, guard, Millbrook), constitution 1.44
-  Shortest-lived adult elf: Aelith Kell (#21276, elf of dwarf-elf-human-orc family, f, born 1806, died 1856 aged 50, murdered (poisoned) by Thora Deepdelve, Aelith Vara)
+  human      80   13432     11%    31 / 76 / 83                 79              2.1% past 92, 15% before 40       123
+  elf       600     599      7%    78 / 517 / 618               589             0.7% past 690, 32% before 300     827
+  dwarf     300    1592      8%    60 / 237 / 306               293             1.0% past 345, 33% before 150     454
+  orc        60    6895     18%    21 / 55 / 62                 59              1.9% past 69, 20% before 30       92
+  Causes: old age 51.1%, illness 26.2%, injury 19.0%, murder 2.7%, childbirth 0.6%, execution 0.4%
+  Longest-lived human: Tess Starwhisper (#20099, human of dwarf-elf-human-orc family, f, born 1650, died 1773 aged 123, of old age, sailor, Port Cassel), constitution 1.50
+  Longest-lived elf: Thalion Redfang (#11449, elf of dwarf-elf-human-orc family, m, born 893, died 1720 aged 827, of old age, weaver, Aelith Vara), constitution 1.43
+  Shortest-lived adult elf: Aelith Starwhisper (#4785, elf, f, born 334, died 384 aged 50, murdered (strangled) by Ilyra Starwhisper, Aelith Vara)
   A few human deaths:
-   Fenn Starwhisper (#23470, human of dwarf-elf-human-orc family, m, born 1989, died 1997 aged 8, of a kick from a horse, Millbrook)
-   Cedric Granitehand (#23472, human of dwarf-elf-human-orc family, m, born 1989, died 1991 aged 2, of a sickness of the blood, Millbrook)
-   Bram Starwhisper (#23496, human of dwarf-elf-human-orc family, m, born 1991, died 1994 aged 3, of a wasting illness, Millbrook)
-   Orla Kell (#23534, human of dwarf-elf-human-orc family, f, born 1994, died 1997 aged 3, of a fever of the lungs, Castle Aldermere)
-   Maud Starwhisper (#23539, human of dwarf-elf-human-orc family, f, born 1995, died 2000 aged 5, of a winter chill, Port Cassel)
-   Joan Starwhisper (#23544, human of dwarf-elf-human-orc family, f, born 1995, died 2000 aged 5, of a fever, Concord Landing)
+   Ned Starwhisper (#23948, human of dwarf-elf-human-orc family, m, born 1983, died 1988 aged 5, of a fight, Concord Landing)
+   Jory Redfang (#23970, human of dwarf-elf-human-orc family, m, born 1985, died 1990 aged 5, of a fever, Harrowgate Keep)
+   Ulric Starwhisper (#24046, human of dwarf-elf-human-orc family, m, born 1991, died 1994 aged 3, of the coughing sickness, Millbrook)
+   Orla Granitehand (#24048, human of dwarf-elf-human-orc family, f, born 1991, died 1994 aged 3, of a sickness of the blood, Kelford)
+   Wynn Starwhisper (#24049, human of dwarf-elf-human-orc family, f, born 1991, died 1992 aged 1, of a sickness of the blood, Port Cassel)
+   Rowan Granitehand (#24059, human of dwarf-elf-human-orc family, m, born 1992, died 1997 aged 5, of a winter chill, Kelford)
 
 6. Save and reload
-  PASS  reloaded 2139 KB file is identical: 3212 people, 11299 events
+  PASS  reloaded 2153 KB file is identical: 3232 people, 11371 events
   PASS  ancestry of 40 living people is the same after reloading
   PASS  relationships between them are the same after reloading
 
 8. Murders and serial killers
-  PASS  seed 1337, 500 years: 144 murders (62 ordinary, 82 by 6 serial killers), 90 solved, 39 passed for natural deaths, 3 pinned on an innocent; 0 problems
-  PASS  seed 1837, 500 years: 172 murders (63 ordinary, 109 by 13 serial killers), 95 solved, 51 passed for natural deaths, 2 pinned on an innocent; 0 problems
-  PASS  seed 42, 1000 years: 324 murders (153 ordinary, 171 by 20 serial killers), 168 solved, 87 passed for natural deaths, 17 pinned on an innocent; 0 problems
+  PASS  seed 1337, 500 years: 149 murders (66 ordinary, 83 by 6 serial killers), 89 solved, 49 passed for natural deaths, 4 pinned on an innocent; 0 problems
+  PASS  seed 1837, 500 years: 155 murders (63 ordinary, 92 by 11 serial killers), 53 solved, 47 passed for natural deaths, 3 pinned on an innocent; 0 problems
+  PASS  seed 42, 1000 years: 341 murders (144 ordinary, 197 by 23 serial killers), 150 solved, 65 passed for natural deaths, 16 pinned on an innocent; 0 problems
   Checked for every murder: the killer was alive and an adult, not the victim, and not yet caught; a serial
   killing matches the killer's method, calling card and choice of victim; a killing that passed for natural is
   unsolved; an innocent who was blamed is not the killer; a killing taken for natural is only solved
   when its killer is caught later; a caught serial killer was hanged or imprisoned for
   life; every hanging
   was for a real murder.
-  A series never solved: Mazga Skullsplitter (#1101, orc, f, born 24, died 86 aged 62, of old age, warrior, Gor Marakh)
-    signature: held under water, leaves a coin on the tongue, chooses travellers and newcomers; status: died, never caught
-    50  Brak Ironjaw         Gor Marakh       people believed: murder by an unknown hand (a coin on the tongue was found)
-    52  Kara Granitehand     Gor Marakh       people believed: drowning
-    56  Ruk Skullsplitter    Gor Marakh       people believed: murder by an unknown hand (a coin on the tongue was found)
-    57  Vorka Ashhide        Gor Marakh       people believed: drowning
-    85  Cora Ward            Gor Marakh       people believed: drowning
+  A series that was caught: Lirael Starwhisper (#212, elf, m, born -79, died 324 aged 403, hanged for the murder of Nell Starwhisper, woodcutter, Thornwick)
+    signature: held under water, leaves a knotted red cord, chooses young women; status: caught (caught 324)
+    265  Hilda Starwhisper    Thornwick        people believed: murder by an unknown hand (a knotted red cord was found); the truth came out in 324
+    271  Caelia Brightwater   Thornwick        people believed: murder by an unknown hand (a knotted red cord was found); the truth came out in 324
+    274  Sariel Ashvale       Thornwick        people believed: murder by an unknown hand (a knotted red cord was found); the truth came out in 324
+    280  Daisy Tanner         Thornwick        people believed: murder by an unknown hand (a knotted red cord was found); the truth came out in 324
+    283  Peg Brightwater      Thornwick        people believed: drowning; the truth came out in 324
+    303  Orla Brightwater     Thornwick        people believed: drowning; the truth came out in 324
+    324  Nell Starwhisper     Thornwick        people believed: drowning; the truth came out in 324
+  A series never solved: Orrin Stonehelm (#1040, dwarf, m, born 19, died 107 aged 88, of the coughing sickness, smith, Kharn Dolum)
+    signature: held under water, leaves a rune scratched into the door, chooses young women; status: died, never caught
+    70  Magna Hammerfall     Kharn Dolum      people believed: drowning
+    73  Rika Granitehand     Kharn Dolum      people believed: drowning
+    76  Disa Anvilborn       Kharn Dolum      people believed: murder by an unknown hand (a rune scratched into the door was found)
+    79  Helga Anvilborn      Kharn Dolum      people believed: drowning
+    86  Helga Anvilborn      Kharn Dolum      people believed: murder by an unknown hand (a rune scratched into the door was found)
+    96  Nala Deepdelve       Kharn Dolum      people believed: murder by an unknown hand (a rune scratched into the door was found)
+    100  Rika Granitehand     Kharn Dolum      people believed: drowning
   Pinned on an innocent: Lurk Redfang (31, Gor Marakh) was pushed to their death by Brak Ashhide over robbery; Durz Ironjaw was blamed and hanged.
   Passed for natural: Dunstan Dale (-5) was held under water by Tobin Kell; people believe: drowning.
-  Serial killers still at large at the end (a mystery waiting for a player): Dain Hammerfall (4 victims)
+  Serial killers still at large at the end (a mystery waiting for a player): Ylva Thatcher (25 victims)
 
 9. One serial killer at large at any start
-  FAIL  in 5 seeds × 13 start years (1 to 500), exactly one serial killer is at large, with victims already seed 7 year 200: 0 at large;
-  victims so far, at those starts: fewest 1, median 4, most 24
+  PASS  in 5 seeds, at every start year from 1 to 300 (1500 in all), exactly one serial killer is at large, with victims already
+  victims so far, at those starts: fewest 1, median 5, most 23
   6 serial killers over 500 years (seed 1337): one about every 100 years
   At the default start (year 1, seed 1337): Durgan Anvilborn (#45, dwarf, m, born -91, miner, Kharn Dolum)
     held under water, leaves a coin on the tongue, chooses the old; 4 victims, from the last years of the war:
@@ -116,29 +127,27 @@ Lifespans and causes of death (seed 1337, 2,000 years, everyone who died after y
     -2  Vorn Ironfoot        people believe: murder by an unknown hand (a coin on the tongue was found)
 
 10. Prisons
-  PASS  seed 1337, 300 years: 829 theft (297 caught), 395 poaching (130 caught), 408 assault (215 caught); 650 sent to the cells (8 for murder, 0 of them innocent); 0 problems
-  PASS  seed 1837, 500 years: 1383 theft (476 caught), 606 poaching (176 caught), 662 assault (320 caught); 991 sent to the cells (19 for murder, 1 of them innocent); 0 problems
+  PASS  seed 1337, 300 years: 850 theft (298 caught), 399 poaching (126 caught), 405 assault (214 caught); 647 sent to the cells (9 for murder, 1 of them innocent); 0 problems
+  PASS  seed 1837, 500 years: 1426 theft (502 caught), 632 poaching (191 caught), 730 assault (353 caught); 1057 sent to the cells (11 for murder, 1 of them innocent); 0 problems
   Checked: each prisoner went to the right castle, was released when their time was up (never from a life
   sentence), and while inside didn't marry, have children, commit crimes or suffer them; those who died inside died there.
   In the cells at year 200 (seed 1337):
    Kharn Dolum:
      Korin Hammerfall     dwarf  assault   since 200, until 212
-     Nori Ironfoot        dwarf  murder    since 161, until 231
      Bofur Anvilborn      dwarf  murder    since 89, for life
      Bera Ironfoot        dwarf  assault   since 194, until 202
      Kara Ironfoot        dwarf  assault   since 198, until 210
      Thrain Granitehand   dwarf  murder    since 149, until 218
-     Thora Stonefist      dwarf  poaching  since 200, until 205
    Harrowgate Keep:
      Aerin Brightwater    elf    assault   since 200, until 208
      Ilthan Ashvale       elf    theft     since 198, until 203
      Aelith Starwhisper   elf    assault   since 195, until 203
      Thessa Thornsong     elf    theft     since 196, until 202
    Castle Aldermere:
-     Ulric Pike           human  assault   since 199, until 203
-     Cedric Kell          human  poaching  since 200, until 203
+     Ulric Oakes          human  assault   since 199, until 203
+     Cedric Pike          human  poaching  since 200, until 203
    Gor Marakh:
-     Thrak Starwhisper    orc    theft     since 200, until 201
+     Vorka Bloodtusk      orc    theft     since 200, until 201
 
 7. A saved history keeps its own rules
   PASS  the reloaded history keeps the lifespans it was made with, not the current ones
@@ -149,11 +158,11 @@ Generation time (seed 1337; each length run 3 times, fastest shown)
   years   time      people ever  alive at end  events    saved size  alive by race (human/elf/dwarf/orc), deepest generation
       1    0.00 s          756           746      776      0.3 MB  398/102/105/141, 1
      50    0.07 s         1394           929     3368      0.8 MB  495/113/158/163, 4
-    100    0.15 s         1959           828     5897      1.2 MB  384/145/165/134, 6
-    200    0.32 s         3212           944    11299      2.1 MB  439/163/195/147, 12
-    500    0.89 s         6471           808    26287      4.6 MB  427/164/169/48, 27
-   1000    2.27 s        11888           960    50304      8.6 MB  471/175/179/135, 53
-   2000    5.25 s        23603           915   102281     17.6 MB  454/165/181/115, 108
+    100    0.16 s         1959           828     5897      1.2 MB  384/145/165/134, 6
+    200    0.30 s         3232           951    11371      2.1 MB  440/160/195/156, 12
+    500    0.91 s         6716           903    27051      4.7 MB  441/146/172/144, 29
+   1000    2.09 s        12722           929    53455      9.2 MB  423/174/190/142, 56
+   2000    5.78 s        24161           910   104341     18.0 MB  420/161/175/154, 110
   (Node v22.22.0, one thread. A browser should be similar; not measured yet.)
 
-1 CHECK(S) FAILED
+All checks passed.

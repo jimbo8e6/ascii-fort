@@ -297,7 +297,7 @@ log('  was for a real murder.');
 
 log('\n9. One serial killer at large at any start');
 {
-  const starts = [1, 2, 5, 10, 25, 50, 75, 100, 150, 200, 300, 400, 500], dist = [];
+  const starts = Array.from({ length: 300 }, (_, i) => i + 1), dist = [];   // every start year from 1 to 300
   let ok = true, where = '';
   for (const seed of [1337, 1837, 42, 7, 2024]) {
     const X = newHistory(seed);
@@ -309,7 +309,7 @@ log('\n9. One serial killer at large at any start');
     }
   }
   dist.sort((a, b) => a - b);
-  check(ok, `in 5 seeds × ${starts.length} start years (1 to 500), exactly one serial killer is at large, with victims already${where}`);
+  check(ok, `in 5 seeds, at every start year from 1 to 300 (${5 * starts.length} in all), exactly one serial killer is at large, with victims already${where}`);
   log(`  victims so far, at those starts: fewest ${dist[0]}, median ${dist[dist.length >> 1]}, most ${dist.at(-1)}`);
   const X = run(SEED, 500), turned = X.events.filter(e => e.t === 'turned').length;
   log(`  ${turned} serial killers over 500 years (seed ${SEED}): one about every ${Math.round(500 / (turned - 1))} years`);
