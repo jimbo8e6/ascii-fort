@@ -264,16 +264,21 @@ Castle Aldermere is a fort like the others on the outside (the same curtain wall
   - **The guardroom**, behind the entrance hall (the old keep's walls): a table and stools, a weapon rack, and the stair down to the cells.
   - **The barracks**, behind the guardroom through a door: seven bunks, so fourteen beds, along the back wall, a locker at the foot of each, and a weapon rack. This is where the garrison sleeps.
   - **The kitchen**, in the north wing, with its own door onto the courtyard: a great hearth with a pot over the fire, a worktable with bread and a ham, barrels, and shelves of jars, cheeses and sacks.
-  - **The servants' hall** behind it (a long table and benches, a cupboard), and behind that the **servants' dormitory**, with eight beds and a chest for each.
+  - **The servants' hall** behind it (a long table and benches, a cupboard), and behind that the **servants' dormitory**, with six bunks (twelve beds) and two beds along the north wall.
 - **First floor**, up the great stair:
   - **The landing**, over the entrance hall, with a rug and a bench under the front windows, and the stair up to the second floor.
   - **The lord's solar**: a desk and chair, shelves of books, a hearth with two chairs before it, and a rug.
   - **The lord's bedchamber**, behind the solar: a great bed with posts and a red canopy between two windows, a chest at its foot, a wardrobe, a washstand and a rug.
-  - **The north wing**: a corridor along the inside wall and four bedrooms off it, each with a bed, a chest, a table and a stool, and a rug.
+  - **The north wing**: a corridor along the inside wall and four bedrooms off it, each with a double bed, a chest at its foot, a cot, a table and a stool, and a rug.
 - **Second floor**, the middle block only: an upper landing and two bedrooms, one with two beds and one with a great bed.
 - **Doors:** every door inside the castle, and the kitchen's door to the courtyard, opens and closes with E like a cottage door. The great doors and the doorways into the great hall and the guardroom are always open.
 - **Light:** torches on the walls of every room, and fires in the hearths.
-- **People:** by day the castle's people walk about the ground-floor rooms as well as the courtyard.
+- **The household:** everyone the history has living at the castle keeps the castle's hours (`castlePlan`). They walk the castle's corridors, doorways and stairs to get about (`CNODE`, `CEDGES`), opening doors as they go.
+  - **Beds:** the lord and their spouse in the bedchamber, the rest of the lord's family on the second floor, and each office-holder's household in a north-wing bedroom. Soldiers sleep in the barracks; the day watch and the night watch share the bunks turn about. Servants and then everyone else go in the dormitory. Anyone left over sleeps on a straw pallet laid out on the great hall's floor for the night and taken up in the morning (the hall has 36). If even those run out, the last few say they sleep in the town and walk out of the gate at bedtime.
+  - **Meals:** breakfast at 7, dinner at 12 and supper at 6:30 in the great hall. The lord sits on the throne, the family at the high table and everyone else down the long tables. Servants eat in their own hall before and after, and serve the hall's meals in between.
+  - **The day:** the lord holds court on the throne from 9 to 11:30, does accounts at the solar desk from 2 to 4, and sits by the solar fire in the evening. The family and office-holders spend the day in the hall, the courtyard and their rooms. Servants rise first and work the kitchen, the hall and the rooms upstairs. Anyone whose trade is outside the walls (farming, smithing, hunting and so on) goes out after breakfast and comes back before supper. Children play in the courtyard. After supper people sit on in the hall, take the air, or go up to their rooms, and they go to bed between about 9 and 10:30, children earlier.
+  - **The watch:** soldiers stand a day watch (7 to 7) and a night watch (7 to 7), alternating by rank, on the west wall walk, the courtyard beat and either side outside the gate; a second soldier on the same post walks it the other way or stands beside the first. Each soldier leaves their post to eat at their own time (staggered over the dinner hours, and around midnight for the night watch), so a post is never left by everyone at once. Off duty they sit in the guardroom or stand about the courtyard, then sleep.
+  - **Asking:** "What are you doing?" gets what they're doing now: *Holding court. Speak, if you have business with me.*, *My turn to eat. The others are holding the walls.*, *Out at my work beyond the walls.*
 
 ## Kharn Dolum
 
@@ -338,7 +343,7 @@ Trees and cacti are low-poly models with flat-shaded facets, each turned and tin
 Guards patrol the walls and courtyards and stand at the gates. They're friendly.
 
 - **Noticing you:** a guard sees you within about 16 blocks by day and 9 at night, as long as no blocks are in the way.
-- **Greeting:** once you're within about 7 blocks, they stop, turn to face you and greet you ("Good day, traveller.", "Evening. Keep to the torchlight.").
+- **Greeting:** once you're within about 7 blocks they greet you ("Good day, traveller.", "Evening. Keep to the torchlight.") and carry on with what they were doing. People only stop, and turn to face you, while you're talking with them; when the conversation ends they go on their way.
 - **Carrying on:** walk off and they go back to their rounds, forgetting you after a few seconds.
 - **Talking:** within about 4 blocks, press **E** (or tap **TALK**) to open a conversation with anyone. The game pauses and the mouse is freed. Pick an option with the mouse or the number keys; **Esc** leaves. Everyone has the same questions:
   1. **Who are you?** Their name, trade or office, and who they live with, from the history.
@@ -399,7 +404,7 @@ garrison.
   indoors. At night only the watch is out.
 - **Talking:** each tells you who they are from the history: *I'm Aldric Thatcher, Lord of Castle Aldermere. I've
   held it since 183, after Gwen Stone. I live in the keep with my father-in-law Bram and my son Wat.*
-- (A first version: the castles' rooms and where people go inside them are still to be designed.)
+- (Castle Aldermere is different: its household keeps a full day of its own, described above. The other castles' rooms, and where people go inside them, are still to be designed.)
 
 ## Saving
 
