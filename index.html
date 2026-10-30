@@ -67,7 +67,24 @@
   #mapLegend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; max-width: min(88vw, 66vh, 640px); }
   #mapLegend i { display: inline-block; width: 10px; height: 10px; margin-right: 5px; vertical-align: -1px; }
   #map .info { font-size: 12px; opacity: .85; }
-  /* The start screen's history choice, and the Chronicle: the whole truth of the world's past */
+  /* The main menu, and the save-slot picker */
+  #menu, #slotPicker { position: fixed; inset: 0; z-index: 9; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+    background: rgba(5, 6, 13, .8); text-align: center; padding: 16px; cursor: default; }
+  #menu[hidden], #slotPicker[hidden], #menu .page[hidden] { display: none; }
+  #menu h1 { margin: 0; font-size: clamp(28px, 7vw, 56px); letter-spacing: .2em; color: #ffb347; }
+  #menu h2, #slotPicker h2 { margin: 0; font-size: 16px; letter-spacing: .2em; color: #ffb347; font-weight: normal; }
+  #menu .page, #slotPicker .page { display: flex; flex-direction: column; align-items: center; gap: 12px; max-width: min(560px, 100%); }
+  #menu .row, #slotPicker .row, #history .row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  #menu label { font-size: 13px; }
+  #menu input { width: 90px; background: rgba(10, 12, 24, .8); border: 1px solid rgba(255, 179, 71, .6); color: #e8d9b0; font: inherit; font-size: 13px; padding: 5px 6px; }
+  #menu .info, #slotPicker .info { font-size: 12px; opacity: .8; line-height: 1.6; margin: 0; }
+  #slotPicker { background: rgba(5, 6, 13, .94); }
+  .btn.big { font-size: 14px; padding: 10px 22px; min-width: 200px; letter-spacing: .12em; }
+  .slots { display: flex; flex-direction: column; gap: 6px; width: min(520px, 92vw); }
+  .slots .btn { text-align: left; padding: 8px 10px; line-height: 1.5; }
+  .slots .btn:disabled { opacity: .45; cursor: default; }
+  .slots .btn b { color: #ffb347; font-weight: normal; letter-spacing: .1em; }
+  /* The start screen's history status, and the Chronicle: the whole truth of the world's past */
   #history { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 13px; cursor: default; }
   #history[hidden] { display: none; }
   #history input { width: 70px; background: rgba(10, 12, 24, .8); border: 1px solid rgba(255, 179, 71, .6); color: #e8d9b0; font: inherit; font-size: 13px; padding: 4px 6px; }
@@ -110,11 +127,44 @@
   <p class="touchhelp">Left thumb: move &middot; right thumb: look &middot; button: jump</p>
   <p id="saveInfo"></p>
   <div id="history">
-    <label id="historyChoose">begin <input id="historyYears" type="number" min="1" max="2000" step="1" value="1"> years after the war</label>
     <span class="info" id="historyStatus"></span>
-    <button class="btn" id="btnChronicle">CHRONICLE (SPOILERS)</button>
+    <div class="row"><button class="btn" id="btnChronicle">CHRONICLE (SPOILERS)</button><button class="btn" id="btnSave">SAVE GAME</button><button class="btn" id="btnMenu">MAIN MENU</button></div>
+    <span class="info" id="saveNote"></span>
   </div>
   <div class="go" id="go">click / tap to enter</div>
+</div>
+<div id="menu" hidden>
+  <h1>ASCII FORT</h1>
+  <div class="page" id="menuMain">
+    <button class="btn big" id="menuNewBtn">NEW GAME</button>
+    <button class="btn big" id="menuLoadBtn">LOAD GAME</button>
+    <button class="btn big" id="menuOptionsBtn">OPTIONS</button>
+  </div>
+  <div class="page" id="menuNew" hidden>
+    <h2>NEW GAME</h2>
+    <label>history seed <input id="newSeed" inputmode="numeric"></label> <button class="btn" id="newRandom">RANDOM</button>
+    <label>begin <input id="newYears" type="number" min="1" max="2000" step="1" value="1"> years after the war</label>
+    <p class="info">The seed decides the world's families and everything that has happened to them since the war; the same seed and year always give the same history. A later start has more history behind it, and takes a little longer to build (seconds for centuries).</p>
+    <div class="row"><button class="btn big" id="newBegin">BEGIN</button><button class="btn" data-back>BACK</button></div>
+  </div>
+  <div class="page" id="menuLoad" hidden>
+    <h2>LOAD GAME</h2>
+    <div id="loadList" class="slots"></div>
+    <div class="row"><button class="btn" data-back>BACK</button></div>
+  </div>
+  <div class="page" id="menuOptions" hidden>
+    <h2>OPTIONS</h2>
+    <p class="info">No options yet.</p>
+    <div class="row"><button class="btn" data-back>BACK</button></div>
+  </div>
+</div>
+<div id="slotPicker" hidden>
+  <div class="page">
+    <h2>SAVE GAME</h2>
+    <p class="info">Choose a slot. Each holds one game: its seed, its history and where you are in it.</p>
+    <div id="saveList" class="slots"></div>
+    <div class="row"><button class="btn" id="slotCancel">BACK (ESC)</button></div>
+  </div>
 </div>
 <div id="chronicle" hidden>
   <header><b>CHRONICLE</b><span class="info">The whole truth of this world's past, from the end of the war: every family, death, killing, crime and office. Spoilers.</span><button id="chronicleClose">CLOSE (ESC)</button></header>
@@ -128,7 +178,7 @@
 <div id="mini"><canvas id="miniCanvas" width="192" height="192"></canvas><div id="miniWhere"></div></div>
 <div id="map" hidden>
   <div class="panel">
-    <header><span>FOLK MAP</span><button class="btn" id="mapClose">CLOSE (M)</button></header>
+    <header><span>WORLD MAP</span><button class="btn" id="mapClose">CLOSE (M)</button></header>
     <canvas id="mapCanvas" width="512" height="512"></canvas>
     <div class="row">
       <button class="btn" id="mapIn">+</button><button class="btn" id="mapOut">&minus;</button>
@@ -137,12 +187,6 @@
     </div>
     <div id="mapLegend"></div>
     <div class="info" id="mapWhere"></div>
-    <div class="row">
-      <span class="info">seed</span><input id="mapSeed" inputmode="numeric">
-      <button class="btn" id="mapGo">GO</button><button class="btn" id="mapRandom">NEW FOLK</button>
-      <button class="btn" id="mapReset">RESTART THIS FOLK</button>
-    </div>
-    <div class="row" id="savedWorlds"></div>
   </div>
 </div>
 <div id="buttons">
@@ -1481,8 +1525,12 @@ const store = {
 };
 const params = new URLSearchParams(location.search);
 // World seed: from the URL, else the world you were last in, else the default
-const SEED = (parseInt(params.get('seed'), 10) || parseInt(store.get('lastSeed'), 10) || 1337) | 0;
-if (!params.get('seed')) { params.set('seed', SEED); try { history.replaceState(null, '', '?' + params); } catch { /* file:// etc. */ } }
+// What this page load is for, from the main menu: ?play=new (a new game, with seed and years), ?play=slot&slot=N
+// (a saved game), ?play=continue&seed=S (the autosave); with none of these, the main menu (over the last world
+// played, as a backdrop). The address is cleared straight after, so reloading comes back to the menu.
+const PLAY = params.get('play'), SLOT_SAVE = PLAY === 'slot' ? store.get('slot:' + params.get('slot')) : null;
+const SEED = (SLOT_SAVE?.seed ?? (parseInt(params.get('seed'), 10) || parseInt(store.get('lastSeed'), 10) || 1337)) | 0;
+try { history.replaceState(null, '', location.pathname); } catch { /* file:// etc. */ }
 
 // 2D simplex noise, roughly in [-1, 1]
 function makeNoise2D(seed) {
@@ -6869,7 +6917,7 @@ function moveAxis(dx, dz) {
 // ---------------------------------------------------------------------------
 const keys = {};
 const touchMove = { x: 0, y: 0 };
-let started = false, jumpQueued = false, jumpHeld = false, historyReady = false;
+let started = false, jumpQueued = false, jumpHeld = false, historyReady = false, everStarted = false;
 const isTouch = matchMedia('(pointer: coarse)').matches;
 if (isTouch) document.body.classList.add('touch');
 
@@ -6877,7 +6925,7 @@ const startEl = document.getElementById('start');
 startEl.addEventListener('click', e => {
   if (e.target.closest('#history')) return;              // choosing the start year, or opening the Chronicle
   if (!historyReady) return;                             // the world's history is still being built
-  document.getElementById('historyChoose').hidden = true;   // the start year is fixed once the game begins
+  everStarted = true; document.getElementById('saveNote').textContent = '';
   if (!started) {
     P.yaw = P.homeYaw;
     if (!saved && !P.welcomed) { P.welcomed = true; setTimeout(() => announce(MAIN_TITLE), 600); }   // first visit to this world
@@ -6918,6 +6966,8 @@ document.getElementById('btnStyle').addEventListener('click', e => { e.stopPropa
 
 addEventListener('keydown', e => {
   if (!chronicleEl.hidden) { if (e.code === 'Escape') closeChronicle(); return; }   // reading the Chronicle
+  if (!pickerEl.hidden) { if (e.code === 'Escape') pickerEl.hidden = true; return; }   // choosing a save slot
+  if (!menuEl.hidden) return;                                                       // the main menu
   if (e.target instanceof HTMLInputElement) return;        // typing a seed
   keys[e.code] = true;
   if (e.code === 'Space') { jumpQueued = true; e.preventDefault(); }  // don't re-press a focused button
@@ -7151,7 +7201,6 @@ document.getElementById('mapLegend').innerHTML = LEGEND.map(([n, c]) =>
   `<span><i style="background:rgb(${c})"></i>${n}</span>`).join('') +
   '<span><i style="border:2px solid rgb(220,80,55);background:rgba(190,70,50,.35)"></i>Fort</span>' +
   '<span><b style="color:rgb(120,200,230)">&#8962;</b> Village</span><span><b style="color:rgb(240,170,70)">&#9650;</b> Watchtower</span><span><b style="color:rgb(205,200,190)">&#10005;</b> Ruins</span><span><b style="color:rgb(190,170,230)">&#9711;</b> Stones</span>';
-document.getElementById('mapSeed').value = SEED;
 
 function renderBigMap() { bigMap.request(mapState.cx, mapState.cz, MAP_SCALES[mapState.scaleIdx]); }
 function zoomMap(d) {
@@ -7185,9 +7234,8 @@ document.getElementById('mapClose').addEventListener('click', () => toggleMap(fa
 document.getElementById('mapIn').addEventListener('click', () => zoomMap(-1));
 document.getElementById('mapOut').addEventListener('click', () => zoomMap(1));
 document.getElementById('mapCenter').addEventListener('click', () => { mapState.cx = P.pos.x; mapState.cz = P.pos.z; renderBigMap(); });
-const goSeed = seed => { saveGame(); const u = new URL(location.href); u.searchParams.set('seed', seed); u.searchParams.delete('time'); location.href = u.href; };
-document.getElementById('mapGo').addEventListener('click', () => goSeed(parseInt(document.getElementById('mapSeed').value, 10) || 1));
-document.getElementById('mapRandom').addEventListener('click', () => goSeed(1 + Math.floor(Math.random() * 999999)));
+// Leave for another game or the menu (saving this one first)
+const goPlay = (query = '') => { saveGame(); location.href = location.pathname + query; };
 mapCanvas.addEventListener('wheel', e => { e.preventDefault(); zoomMap(e.deltaY > 0 ? 1 : -1); }, { passive: false });
 
 // Drag to pan (mouse or touch)
@@ -7643,12 +7691,17 @@ function saveSettings() {
   if (!saveSettingsReady) return;
   store.set('settings', { ascii: asciiOn, style: style.name, cell: cellIdx, mini: miniOn, speed: env.speedIdx });
 }
-function saveGame() {
-  if (savingOff) return;
+// Everything a save holds about this game
+function gameSnapshot() {
   for (const V of villages) villageMemory.set(placeKey(V.plan), snapshotVillage(V));
-  const save = { v: 3, seed: SEED, x: P.pos.x, y: P.pos.y, z: P.pos.z, yaw: P.yaw, pitch: P.pitch, discovered: [...discovered],
+  return { v: 3, seed: SEED, x: P.pos.x, y: P.pos.y, z: P.pos.z, yaw: P.yaw, pitch: P.pitch, discovered: [...discovered],
     villages: Object.fromEntries(villageMemory), player: { coins: player.coins, inv: { ...player.inv } },
     time: env.time, day: env.day, history: { years: historyYears }, savedAt: Date.now() };
+}
+// The autosave: the game being played, every 10 s and on leaving (only once it's begun, never from the menu)
+function saveGame() {
+  if (savingOff || !PLAY || !everStarted) return;
+  const save = gameSnapshot();
   if (!store.set('world:' + SEED, save)) return;
   store.set('lastSeed', SEED);
   const worlds = (store.get('worlds') || []).filter(w => w.seed !== SEED);
@@ -7674,7 +7727,9 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) saveG
 }
 
 // Restore this world's save, or start at the fort
-const saved = (s => s?.v === 2 || s?.v === 3 ? s : null)(store.get('world:' + SEED));   // saves from before the hand-made world are dropped
+// A new game starts afresh (its seed's old autosave is dropped); a slot or the autosave picks up where it was
+if (PLAY === 'new') store.del('world:' + SEED);
+const saved = PLAY === 'new' ? null : (s => s?.v === 2 || s?.v === 3 ? s : null)(PLAY === 'slot' ? SLOT_SAVE : store.get('world:' + SEED));   // saves from before the hand-made world are dropped
 if (saved?.v === 3 && saved.villages && typeof saved.villages === 'object')        // villages from before the history are forgotten for (const [k, v] of Object.entries(saved.villages)) if (Array.isArray(v?.houses)) villageMemory.set(k, v);
 if (Array.isArray(saved?.discovered)) for (const k of saved.discovered) {
   discovered.add(k);
@@ -7692,26 +7747,6 @@ if ([saved?.x, saved?.y, saved?.z].every(Number.isFinite)) {
   P.pos.y = surfaceY(Math.floor(P.pos.x), Math.floor(P.pos.z));
 }
 
-// Saved worlds and restart, on the map panel
-function renderSavedWorlds() {
-  const worlds = (store.get('worlds') || []).filter(w => w.seed !== SEED);
-  const el = document.getElementById('savedWorlds');
-  el.innerHTML = worlds.length ? '<span class="info">saved worlds</span>' : '';
-  for (const w of worlds) {
-    const b = Object.assign(document.createElement('button'), { className: 'btn', textContent: `${w.seed} \u00b7 day ${w.day}` });
-    b.addEventListener('click', () => { saveGame(); goSeed(w.seed); });
-    el.append(b);
-  }
-}
-renderSavedWorlds();
-document.getElementById('mapReset').addEventListener('click', () => {
-  if (!confirm(`Restart world ${SEED}? Your position and time in this world will be forgotten.`)) return;
-  store.del('world:' + SEED);
-  store.set('worlds', (store.get('worlds') || []).filter(w => w.seed !== SEED));
-  savingOff = true;
-  location.reload();
-});
-
 // ---------------------------------------------------------------------------
 // The world's history (Connected Histories): families, deaths, murders, crimes and offices from the end of
 // the war to the start year, simulated in a background worker before the game begins. A new world chooses
@@ -7720,7 +7755,7 @@ document.getElementById('mapReset').addEventListener('click', () => {
 // you play, and the Chronicle on the start/pause screen lets you read all of it.
 // ---------------------------------------------------------------------------
 const chronicleEl = document.getElementById('chronicle'), historyStatus = document.getElementById('historyStatus');
-const yearsInput = document.getElementById('historyYears'), goEl = document.getElementById('go');
+const goEl = document.getElementById('go');
 let historyYears = Number.isInteger(saved?.history?.years) ? saved.history.years : Math.max(1, Math.min(2000, parseInt(params.get('years'), 10) || 1));
 let historyJob = 0, historyWorker = null;
 const goText = goEl.textContent;
@@ -7748,21 +7783,64 @@ function buildHistory(years) {
     setTimeout(step, 0);
   }
 }
-// A new world chooses its start year; a saved one shows the year it began
-if (saved) { document.getElementById('historyChoose').hidden = true; }
-else {
-  yearsInput.value = historyYears;
-  let wait = null;
-  yearsInput.addEventListener('input', () => {
-    clearTimeout(wait);
-    wait = setTimeout(() => { const v = Math.max(1, Math.min(2000, parseInt(yearsInput.value, 10) || 1)); if (v !== historyYears) { historyYears = v; buildHistory(v); } }, 400);
-  });
-}
 function openChronicle(e) { e?.stopPropagation(); if (!window.Chronicle.ready()) return; chronicleEl.hidden = false; document.getElementById('search').focus(); }
 function closeChronicle() { chronicleEl.hidden = true; }
 document.getElementById('btnChronicle').addEventListener('click', openChronicle);
 document.getElementById('chronicleClose').addEventListener('click', closeChronicle);
-buildHistory(historyYears);
+
+// ---------------------------------------------------------------------------
+// The main menu (new game, load game, options) and the save slots
+// ---------------------------------------------------------------------------
+const SLOTS = 8, menuEl = document.getElementById('menu'), pickerEl = document.getElementById('slotPicker');
+const two = n => String(Math.floor(n)).padStart(2, '0');
+const slotText = s => `seed ${s.seed} \u00b7 ${s.history?.years ?? 1} ${(s.history?.years ?? 1) === 1 ? 'year' : 'years'} after the war \u00b7 day ${s.day || 1}, ${two(s.time)}:${two((s.time % 1) * 60)}` +
+  (s.savedAt ? ` \u00b7 saved ${new Date(s.savedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}` : '');
+const slotSave = n => (s => s?.v === 3 || s?.v === 2 ? s : null)(store.get('slot:' + n));
+function menuPage(id) { for (const p of menuEl.querySelectorAll('.page')) p.hidden = p.id !== id; }
+function slotButton(label, s, onClick) {
+  const b = Object.assign(document.createElement('button'), { className: 'btn' });
+  b.innerHTML = `<b>${label}</b><br>${s ? slotText(s) : 'empty'}`;
+  if (onClick) b.addEventListener('click', onClick); else b.disabled = true;
+  return b;
+}
+function showLoad() {
+  const list = document.getElementById('loadList'); list.innerHTML = '';
+  const last = parseInt(store.get('lastSeed'), 10), auto = Number.isFinite(last) && (s => s?.v === 3 || s?.v === 2 ? s : null)(store.get('world:' + last));
+  list.append(slotButton('AUTOSAVE (the last game played)', auto || null, auto ? () => { location.href = `${location.pathname}?play=continue&seed=${last}`; } : null));
+  for (let n = 1; n <= SLOTS; n++) { const s = slotSave(n); list.append(slotButton(`SLOT ${n}`, s, s ? () => { location.href = `${location.pathname}?play=slot&slot=${n}`; } : null)); }
+  menuPage('menuLoad');
+}
+document.getElementById('menuNewBtn').addEventListener('click', () => { document.getElementById('newSeed').value = 1 + Math.floor(Math.random() * 999999); menuPage('menuNew'); });
+document.getElementById('menuLoadBtn').addEventListener('click', showLoad);
+document.getElementById('menuOptionsBtn').addEventListener('click', () => menuPage('menuOptions'));
+for (const b of menuEl.querySelectorAll('[data-back]')) b.addEventListener('click', () => menuPage('menuMain'));
+document.getElementById('newRandom').addEventListener('click', () => { document.getElementById('newSeed').value = 1 + Math.floor(Math.random() * 999999); });
+document.getElementById('newBegin').addEventListener('click', () => {
+  const seed = Math.max(1, parseInt(document.getElementById('newSeed').value, 10) || 1), years = Math.max(1, Math.min(2000, parseInt(document.getElementById('newYears').value, 10) || 1));
+  location.href = `${location.pathname}?play=new&seed=${seed}&years=${years}`;
+});
+// Saving to a slot, from the pause screen
+function showSlots(e) {
+  e?.stopPropagation();
+  const list = document.getElementById('saveList'); list.innerHTML = '';
+  for (let n = 1; n <= SLOTS; n++) {
+    const s = slotSave(n);
+    list.append(slotButton(`SLOT ${n}`, s, () => {
+      if (s && !confirm(`Save over slot ${n} (${slotText(s)})?`)) return;
+      const ok = store.set('slot:' + n, gameSnapshot());
+      pickerEl.hidden = true;
+      document.getElementById('saveNote').textContent = ok ? `Saved to slot ${n}.` : "Couldn't save: this browser's storage is full or blocked.";
+    }));
+  }
+  pickerEl.hidden = false;
+}
+document.getElementById('btnSave').addEventListener('click', showSlots);
+document.getElementById('slotCancel').addEventListener('click', () => { pickerEl.hidden = true; });
+document.getElementById('btnMenu').addEventListener('click', e => { e.stopPropagation(); goPlay(); });
+
+// Playing: build the history, then the start screen lets you in. Otherwise: the main menu.
+if (PLAY) buildHistory(historyYears);
+else { startEl.style.display = 'none'; menuEl.hidden = false; }
 
 // Load the area around the start before the first frame so nothing pops in
 P.eye = P.pos.y + 1.6;

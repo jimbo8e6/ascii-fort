@@ -228,13 +228,13 @@ Lifespans and causes of death (seed 1337, 2,000 years, everyone who died after y
 
 Generation time (seed 1337; each length run 3 times, fastest shown)
   years   time      people ever  alive at end  events    saved size  alive by race (human/elf/dwarf/orc), deepest generation
-      1    0.00 s          872           862      953      0.4 MB  506/102/113/141, 1
+      1    0.01 s          872           862      953      0.4 MB  506/102/113/141, 1
      50    0.13 s         1617          1082     4342      0.9 MB  639/116/169/158, 4
-    100    0.23 s         2284           930     7637      1.5 MB  446/147/183/154, 7
-    200    0.63 s         3742          1048    14666      2.6 MB  562/171/181/134, 13
-    500    1.95 s         7992          1045    34975      5.9 MB  559/161/186/139, 29
-   1000    3.71 s        14919          1089    68495     11.4 MB  546/170/193/180, 56
-   2000    7.33 s        25174           834   120927     20.0 MB  484/159/186/5, 99
+    100    0.26 s         2284           930     7637      1.5 MB  446/147/183/154, 7
+    200    0.50 s         3742          1048    14666      2.6 MB  562/171/181/134, 13
+    500    1.49 s         7992          1045    34975      5.9 MB  559/161/186/139, 29
+   1000    3.44 s        14919          1089    68495     11.4 MB  546/170/193/180, 56
+   2000    7.38 s        25174           834   120927     20.0 MB  484/159/186/5, 99
   (Node v22.22.0, one thread. A browser should be similar; not measured yet.)
 
 All checks passed.
