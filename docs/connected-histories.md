@@ -22,6 +22,8 @@ of bakers) are as valid as famous ones (a displaced king in the family tree).
 - **Journal:** records everything the player has encountered, and only that. Taking something to a
   historian can open up its past in the journal. Once a world is built, a main-menu screen lets you look
   through all the items and people in the world and see their lineage (the full truth).
+  Built for people (items to come): the game builds the history in a background worker when a world starts,
+  and the CHRONICLE button on the start/pause screen opens it.
 - **Hidden followers of the ancients:** independent pockets of believers, unaffiliated with each other,
   hidden, and *not necessarily family groups*.
 - **Murder:** deaths include murder outside any war, including serial killers, so that quests can turn on

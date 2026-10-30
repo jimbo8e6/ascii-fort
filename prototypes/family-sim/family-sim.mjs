@@ -1,4 +1,4 @@
-// Family simulation prototype for Connected Histories. Standalone: nothing in the game uses it yet.
+// Family simulation prototype for Connected Histories. The game (index.html) builds a history with it when a world starts and shows it as the Chronicle.
 //
 // The world's families are simulated year by year from the end of the war (year 0). Every random
 // choice comes from a hash of (seed, year, what is being decided, who it concerns), never from a

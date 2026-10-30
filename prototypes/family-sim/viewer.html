@@ -66,8 +66,8 @@
   setTimeout(function () { if (!window.__viewerReady) showProblem("The page's script didn't start. Open this file in an up-to-date web browser (Chrome, Edge, Firefox or Safari), not a file preview or an app's viewer."); }, 2500);
 </script>
 <script type="module">
-// <family-sim> (copied from family-sim.mjs by build-viewer.mjs; edit that file, not this block)
-// Family simulation prototype for Connected Histories. Standalone: nothing in the game uses it yet.
+// <family-sim> (copied from prototypes/family-sim/family-sim.mjs by build-viewer.mjs; edit that file, not this block)
+// Family simulation prototype for Connected Histories. The game (index.html) builds a history with it when a world starts and shows it as the Chronicle.
 //
 // The world's families are simulated year by year from the end of the war (year 0). Every random
 // choice comes from a hash of (seed, year, what is being decided, who it concerns), never from a
@@ -1133,15 +1133,12 @@ const describe = (H, id) => {
 };
 // </family-sim>
 
-// ---- The viewer ----
+// <chronicle> (copied from prototypes/family-sim/chronicle.js by build-viewer.mjs; edit that file, not this block)
+// The Chronicle: browsing a finished history (people, families, deaths, killings, crimes and offices). Shared by
+// viewer.html and the game (index.html); build-viewer.mjs copies it into both. It expects the simulation's
+// functions in the same scope, and elements with ids stats, search, results and card.
 const $ = id => document.getElementById(id);
 let H = null, pickA = null, pickB = null;
-
-// Editable placeholder lifespans
-const fields = [['life', 'typical life'], ['adult', 'adult at']];
-$('races').innerHTML = '<tr><th></th>' + fields.map(f => `<th>${f[1]}</th>`).join('') + '<th>child-bearing</th></tr>' +
-  Object.keys(RACES).map(r => `<tr><td>${r}</td>${fields.map(([k]) => `<td><input type="number" data-r="${r}" data-k="${k}" value="${RACES[r][k]}"></td>`).join('')}<td><input type="number" data-r="${r}" data-k="f0" value="${RACES[r].fertile[0]}">–<input type="number" data-r="${r}" data-k="f1" value="${RACES[r].fertile[1]}"></td></tr>`).join('');
-$('races').addEventListener('change', e => { const { r, k } = e.target.dataset, v = +e.target.value; if (k === 'f0') RACES[r].fertile[0] = v; else if (k === 'f1') RACES[r].fertile[1] = v; else RACES[r][k] = v; });
 
 const name = id => { const p = H.people[id]; return `${p.name} ${p.surname}`; };
 const link = id => id === null ? '<span class="dim">unknown</span>' : `<a data-id="${id}">${name(id)}</a>${H.people[id].notable ? ' <span class="star">★</span>' : ''}`;
@@ -1156,14 +1153,6 @@ function stats() {
   const mu = H.events.filter(e => e.t === 'death' && e.kind === 'murder'), C = cases(H);
   return `${H.people.length} people ever, ${H._living.length} alive in year ${H.year}\n${H.events.length} events, ${H.lines.length} founding family lines\nalive: ${Object.entries(by).map(([r, n]) => `${r} ${n}`).join(', ')}` +
     `\n${mu.length} murders (${mu.filter(e => !solved(H, e)).length} unsolved), ${C.filter(c => c.victims.length).length} serial killers, ${C.filter(c => c.status === 'at large').length} at large\n${Object.values(prisoners(H)).flat().length} in the cells\n${officeHolders(H).filter(o => o.p !== null).length} offices held, ${officeHolders(H).filter(o => o.p === null).length} empty\nsearch "murder", "unsolved", "killer", "prison" or "offices" to list them`;
-}
-function generate() {
-  const t = performance.now();
-  H = simulate(newHistory(+$('seed').value), +$('years').value);
-  const ms = performance.now() - t;
-  $('stats').textContent = `Generated in ${(ms / 1000).toFixed(2)} s\n` + stats();
-  pickA = pickB = null; search();
-  show(H._living[0]);
 }
 function search() {
   if (!H) return;
@@ -1271,8 +1260,25 @@ function relBox() {
     ${nearest.slice(0, 6).map(n => `<div style="margin-top:6px">${brief(n.id)}<br><span class="dim">A:</span> ${route(pickA, n.fromA.routes[0])}<br><span class="dim">B:</span> ${route(pickB, n.fromB.routes[0])}</div>`).join('')}</div>`;
 }
 document.body.addEventListener('click', e => { const o = e.target.closest('a[data-office]'); if (o) return showOffice(o.dataset.office); const a = e.target.closest('a[data-id]'); if (a) show(+a.dataset.id); });
-$('go').onclick = generate;
 $('search').oninput = search;
+// </chronicle>
+
+// ---- The viewer ----
+// Editable placeholder lifespans
+const fields = [['life', 'typical life'], ['adult', 'adult at']];
+$('races').innerHTML = '<tr><th></th>' + fields.map(f => `<th>${f[1]}</th>`).join('') + '<th>child-bearing</th></tr>' +
+  Object.keys(RACES).map(r => `<tr><td>${r}</td>${fields.map(([k]) => `<td><input type="number" data-r="${r}" data-k="${k}" value="${RACES[r][k]}"></td>`).join('')}<td><input type="number" data-r="${r}" data-k="f0" value="${RACES[r].fertile[0]}">–<input type="number" data-r="${r}" data-k="f1" value="${RACES[r].fertile[1]}"></td></tr>`).join('');
+$('races').addEventListener('change', e => { const { r, k } = e.target.dataset, v = +e.target.value; if (k === 'f0') RACES[r].fertile[0] = v; else if (k === 'f1') RACES[r].fertile[1] = v; else RACES[r][k] = v; });
+
+function generate() {
+  const t = performance.now();
+  H = simulate(newHistory(+$('seed').value), +$('years').value);
+  const ms = performance.now() - t;
+  $('stats').textContent = `Generated in ${(ms / 1000).toFixed(2)} s\n` + stats();
+  pickA = pickB = null; search();
+  show(H._living[0]);
+}
+$('go').onclick = generate;
 if ($('saveBtn')) $('saveBtn').onclick = () => { if (!H) return; const b = new Blob([save(H)], { type: 'application/json' }), u = URL.createObjectURL(b), a = document.createElement('a'); a.href = u; a.download = `history-${H.seed}-${H.year}.json`; a.click(); URL.revokeObjectURL(u); };
 // A loaded history brings its own rules: show its lifespans in the editor (and use them for anything generated next)
 function showRules(races) {

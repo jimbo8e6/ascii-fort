@@ -9,6 +9,10 @@ Nothing in the game uses it.
   rules in `RULES`; the places it runs over in `PLACES`; five placeholder notable founders in `NOTABLES` (the first rulers of the seats); offices and titles in `OFFICES`.
 - `test.mjs`: runs the checks (the six first asked for, then murder, prisons and offices) and times generation. `node test.mjs` prints the report and writes
   `results.txt`, plus a saved history in `out/` (not committed).
+- `chronicle.js`: the browser for a finished history (search, person cards, office pages, relationships),
+  shared by `viewer.html` and the game, where it's the Chronicle.
+- `build-viewer.mjs`: copies the simulation and `chronicle.js` into `viewer.html` and the game's `index.html`
+  (between `// <family-sim>` and `// <chronicle>` markers). `test.mjs` runs it.
 - `viewer.html`: generate a history and browse it: search people, follow parents, spouses and children,
   see ancestry trees, family lines and notable ancestors, and pick two people to see how they're related
   and through whom. Edit the placeholder lifespans, save and load histories (LOAD takes a file saved with
