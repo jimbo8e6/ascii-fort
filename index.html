@@ -2295,7 +2295,8 @@ function buildFort({ N, wall, mat, keep = true, crates = [], dungeon = false, ca
   // Inside Castle Aldermere (in the fort's own frame, so C + the castle's centred coordinates): the great hall's walls
   // and hearths, the guardroom, barracks, kitchen and servants' rooms; the landing, solar, bedchamber, corridor and
   // bedrooms; the upper landing and its two rooms
-  if (castle) torches.push([C - 18.7, 3.4, C - 15], [C - 18.7, 3.4, C - 2], [C - 7.3, 3.4, C - 8], [C - 18.5, .55, C - 12], [C - 18.5, .55, C - 5.5],
+  if (castle) torches.push([C + 29.7, 2.9, C - 12.2], [C + 29.7, 2.9, C - 3.4], [C + 24.3, 2.9, C - 7.8],     // the children's house
+    [C - 18.7, 3.4, C - 15], [C - 18.7, 3.4, C - 2], [C - 7.3, 3.4, C - 8], [C - 18.5, .55, C - 12], [C - 18.5, .55, C - 5.5],
     [C - 4.7, 3.2, C - 7], [C + 5.7, 3.2, C - 16], [C + 18.3, .55, C - 2.5], [C + 7.3, 3.2, C - 2], [C + 18.7, 3.2, C - 9], [C + 18.7, 3.2, C - 15.5],
     [C, 8.2, C - 3.7], [C + 5.7, 8.2, C - 8.5], [C + 5.7, 8.2, C - 14], [C - 5.6, 5.55, C - 8.3], [C + 7.3, 8.2, C - 6], [C + 7.3, 8.2, C - 16],
     ...[-16.3, -10.75, -5.25, .3].map(z => [C + 18.7, 8.2, C + z]), [C - 5.7, 13.2, C - 12], [C + 5.7, 13.2, C - 12], [C + 5.7, 13.2, C - 2]);
@@ -4509,7 +4510,8 @@ function makeFort(m) {
   // Curtain walls, between the towers (the south wall is broken by the gatehouse)
   blk(stone, 5, 0, 0, N - 5, wall, 3);
   blk(stone, 0, 0, 5, 3, wall, N - 5);
-  blk(stone, N - 3, 0, 5, N, wall, N - 5);
+  if (keep && m.castle) holed(stone, N - 3, 5, N, N - 5, 0, wall, [[C - 8.4, C - 7.2, 0, 2.3]]);   // the passage out to the children's house
+  else blk(stone, N - 3, 0, 5, N, wall, N - 5);
   blk(stone, 5, 0, N - 3, C - 6, wall, N);
   blk(stone, C + 6, 0, N - 3, N - 5, wall, N);
   // Parapets with merlons along the outer edges
@@ -4596,6 +4598,8 @@ function spire(K, stone, x, y, z, r, body, high, corbel = 0) {
 //  - outside: battlements all round, a round turret with a spire at every corner, and a great square tower
 //    with a tall spire rising from the middle
 // Returns the doors to hang: [hx, hy, hz, width, turn] (see hangDoor).
+const SCHOOL_ROWS = [-12.6, -11.2, -9.8], SCHOOL_COLS = [24.75, 25.75, 28.25, 29.25];                 // the schoolroom's desks
+const CRADLES = [-2.6, -1.6], NURSERY_STOOLS = [[28.35, -5.5], [29.85, -5.5], [29.1, -4.75]];
 const CASTLE_ROOMS = [[-19, -13.65], [-13.35, -8.15], [-7.85, -2.65], [-2.35, 3]];   // the north wing's bedrooms, z0..z1
 const BUNK_X = i => -5.8 + i * 1.6, DORM_X = i => 9.6 + i * 1.6;                    // the barracks' and the dormitory's bunks, x0
 function buildCastle(K, { blk }, stone, C, m) {
@@ -4647,7 +4651,8 @@ function buildCastle(K, { blk }, stone, C, m) {
   door(12, 0, 2.955);
   // The sides, along the north and south curtain walls (the wall walks pass outside); the back, along the west wall
   outer(-21, -21, -19, 4, 0, 10, [-15.5, -9, -2].map(a => win(a, 7.2, 9.2)), 'x1');
-  outer(19, -21, 21, 4, 0, 10, [-14.8, -9.25, -3.75].map(a => win(a, 7.2, 9)), 'x0');
+  outer(19, -21, 21, 4, 0, 10, [...[-14.8, -9.25, -3.75].map(a => win(a, 7.2, 9)), [-8.4, -7.2, 0, 2.3]], 'x0');      // (the passage to the children's house)
+  door(18.955, 0, -7.2, Math.PI / 2);
   outer(-19, -21, -7, -19, 0, 10, [], 'z1');
   outer(7, -21, 19, -19, 0, 10, [], 'z1');
   outer(-7, -21, 7, -19, 0, 15, [win(-2, 7.2, 9), win(2, 7.2, 9), win(-3, 11.2, 13.4), win(3, 11.2, 13.4)], 'z1');
@@ -4842,6 +4847,29 @@ function buildCastle(K, { blk }, stone, C, m) {
     rug(12.5, c - 1, 15.5, c + 1, 5, '#5a3a2a');
   }
 
+  // The children's house, built against the outside of the north curtain wall (columns D to G), reached from the
+  // servants' hall by a passage through both walls: a lobby with the pages' bench, the schoolroom to the west with a
+  // blackboard, the teacher's desk and twelve desks with stools, and the nursery to the east with a rug, toys, two
+  // cradles, a low table and stools and a chair for the servant minding them. One storey, battlements on top.
+  outer(30, -16, 31, 0, 0, 4.5, [win(-13.2, 1.2, 3.2), win(-10.6, 1.2, 3.2), win(-7.6, 1.2, 3.2), win(-3.6, 1.2, 3.2)], 'x0');
+  outer(24, -16, 30, -15, 0, 4.5, [], 'z1'); outer(24, -1, 30, 0, 0, 4.5, [[26.4, 27.6, 1.2, 3.2]], 'z0');
+  D(IN, 24, 0, -15, 24.03, 4.2, -1);
+  D(FS, 24, 0, -15, 30, .04, -1); D(FS, 19, 0, -8.4, 24, .04, -7.2);
+  B(FL, 24, 4.2, -15, 30, 4.35, -1); B(stone, 24, 4.35, -16, 31, 4.5, 0);
+  merl(30.5, -16, 31, 0, 4.5); merl(24, -16, 31, -15.5, 4.5); merl(24, -.5, 31, 0, 4.5);
+  D(stone, 31, 0, -16.2, 31.25, .5, .2);
+  wall(IN, 24, -8.9, 30, -8.6, 0, 4.2, [[26.4, 27.6, 0, 2.3]]); wall(IN, 24, -6.6, 30, -6.3, 0, 4.2, [[26.4, 27.6, 0, 2.3]]);
+  bench(29.4, -8.45, 29.85, -6.75, 0); for (const z of [-8.2, -7.6, -7]) { D(dark, 29.95, 1.6, z - .03, 30, 1.66, z + .03); D(['#5a3a2a', '#3a4a6a', '#6a5a2a'][Math.round(z * 3) & 1 ? 1 : 0], 29.86, .9, z - .18, 29.95, 1.6, z + .18); }
+  D('#1e2a22', 25.6, 1, -15, 28.4, 2.4, -14.94); D(dark, 25.5, .92, -15, 28.5, 1, -14.85); for (const x of [26, 26.9, 27.7]) D('#e8e0c0', x, 1.9, -14.94, x + .35, 1.93, -14.93);
+  table(26.2, -14, 27.8, -13.5, 0, .8); D('#e8e0c0', 26.5, .8, -13.9, 27, .83, -13.6);
+  for (const zr of SCHOOL_ROWS) for (const x of SCHOOL_COLS) { table(x - .42, zr - .25, x + .42, zr + .25, 0, .62); stool(x, zr + .5, 0); D('#d9d4c4', x - .2, .62, zr - .15, x + .15, .63, zr + .1); }
+  rug(25, -5.3, 29, -2, 0, '#3a5a3a');
+  for (const [x, z, c] of [[25.6, -4.6, '#c03a2a'], [25.9, -4.5, '#2a5ac0'], [25.7, -4.2, '#d8b048'], [28.2, -2.6, '#2a8a4a'], [28.5, -2.4, '#c03a2a']]) D(c, x - .12, .06, z - .12, x + .12, .3, z + .12);
+  { const x = 27.8, z = -4.4; for (const s of [-1, 1]) D(dark, x - .5, .05, z + s * .2 - .03, x + .5, .12, z + s * .2 + .03); D('#8a5a34', x - .35, .3, z - .15, x + .35, .55, z + .15); D('#8a5a34', x + .3, .45, z - .1, x + .55, .85, z + .1); for (const s of [-1, 1]) D(dark, x + s * .25 - .03, .1, z - .03, x + s * .25 + .03, .32, z + .03); }
+  for (const z of CRADLES) { D(dark, 29.1, .1, z - .32, 29.9, .45, z + .32); D(hay, 29.15, .4, z - .27, 29.85, .44, z + .27); for (const s of [-1, 1]) D(dark, 29.1, 0, z + s * .25 - .04, 29.9, .12, z + s * .25 + .04); S(29.1, 0, z - .32, 29.9, .45, z + .32); }
+  table(28.6, -5.9, 29.6, -5.1, 0, .42); for (const [x, z] of NURSERY_STOOLS) { D(wood, x - .14, .25, z - .14, x + .14, .28, z + .14); legs(x - .12, z - .12, x + .12, z + .12, 0, .25, .04); }
+  chair(25, -1.8, 0, [1, 0], red);
+
   // Second floor. Two beds in the south room, one great bed in the north room, a chest and a table in each
   bed(-5.5, -19, -4.4, -17, 10, 'z0', '#3a4a6a'); bed(-2.5, -19, -1.4, -17, 10, 'z0', '#3a5a3a');
   chest(-5.4, -16.9, -4.5, -16.5, 10); chest(-2.4, -16.9, -1.5, -16.5, 10); table(-5.6, -9, -4.6, -8, 10); stool(-4.2, -8.5, 10);
@@ -4861,6 +4889,7 @@ function buildDungeon(K, { blk }, stone, C) {
   blk('floor:in', X0, -.3, Z0, SX, 0, Z1);
   blk('floor:in', SX, -.3, Z0, X1, 0, Z0 + 1);
   blk('floor:in', SX, -.3, Z1 - 1.6, X1, 0, Z1);
+  blk(stone, ox - 1, -.3, Z1, ox + 1, 0, Z1 + 1.1);                                  // the doorway's threshold, over the sunk ground's edge
   blk(iron, SX - .12, 0, Z0 + 1, SX, 1.15, Z1 - 1.6);                                   // (too high to step up onto)
   // The stair, eight half steps down northwards to the corridor
   const run = (Z1 - 1.6 - (Z0 + 1)) / 8;
@@ -4879,7 +4908,14 @@ function buildDungeon(K, { blk }, stone, C) {
     for (const [p, q] of i === 1 ? [[x0, d0], [d1, x1]] : [[x0, x1]]) {
       blk(iron, p, -D, FZ - .05, q, -D + .1, FZ + .05); blk(iron, p, -.75, FZ - .05, q, -.65, FZ + .05);
       for (let x = p + .15; x < q - .05; x += .3) blk(iron, x - .035, -D, FZ - .035, x + .035, -.65, FZ + .035, false);
-      K.aabb(iron, p - C, -D, FZ - .06 - C, q - C, -.65, FZ + .06 - C, false); K.solid(p - C, -D, FZ - .08 - C, q - C, -.3, FZ + .08 - C);
+      K.solid(p - C, -D, FZ - .08 - C, q - C, -.3, FZ + .08 - C);                     // (you can see between the bars, not walk through)
+    }
+    // The outer cells' barred doors, locked: a frame in the bars, a band across, hinges and a lock
+    if (i !== 1) {
+      for (const x of [d0, d1]) blk(iron, x - .05, -D, FZ - .06, x + .05, -.65, FZ + .06, false);
+      blk(iron, d0, -D + 1.85, FZ - .05, d1, -D + 1.95, FZ + .05, false);
+      for (const y of [.4, 2.6]) blk(iron, d0 - .1, -D + y, FZ - .08, d0 + .06, -D + y + .14, FZ + .08, false);
+      blk('#6a5a3a', d1 - .25, -D + 1.1, FZ - .09, d1 - .08, -D + 1.3, FZ + .09, false);
     }
   });
   furnishDungeon(K, blk, stone, C);
@@ -5789,7 +5825,8 @@ function residentAbout(p) {
   const who = p.ruler ? `I'm ${p.name}, ${p.role}.` : p.office ? `I'm ${p.name}, ${p.role}.` : p.soldier ? `${p.name}, of the garrison here.` : p.grown ? `I'm ${p.name}. I'm a ${hp.trade || 'labourer'} here.` : `I'm ${hp.name}. I'm ${age}${hp.race !== 'human' ? `, and not yet grown for ${hp.race === 'elf' ? 'an elf' : 'a ' + hp.race}` : ''}.`;
   const home = p.home.kind === 'the garrison' ? 'I sleep in the garrison with the others.' : `I live in ${p.home.kind}${kin.length ? ` with ${andList(kin.slice(0, 4).map(q => `${rel(q)} ${q.name}`))}` : ''}.`;
   const held = p.ruler && (() => { const hs = holdings(H).filter(x => x.place === p.plan.title && x.p === p.id && x.to === null)[0]; return hs ? ` I've held it since ${hs.from}${hs.after !== undefined ? `, after ${P[hs.after].name} ${P[hs.after].surname}` : ''}.` : ''; })();
-  return `${who}${held || ''} ${home}`;
+  const duty = p.duty ? ` I'm ${p.role}.` : '';
+  return `${who}${duty}${held || ''} ${home}${p.errand ? ` ${p.errand}` : ''}`;
 }
 
 // The daily routine: what someone should be doing at hour h
@@ -8032,17 +8069,24 @@ function seatOver(place) {
   const race = Object.entries(pl.races).sort((a, b) => b[1] - a[1])[0][0];
   return race === 'human' ? (R.prisons.westPlaces.includes(place) ? R.prisons.west : R.prisons.rest) : Object.keys(O.seats).find(k => O.seats[k].race === race);
 }
-// How a death is spoken of: what people believe, or the truth once it came out
-function deathWords(x) {
+// How a death is spoken of: what people believe, or the truth once it came out. By the one who did it (me), or
+// the one wrongly blamed for it, in their own words
+function deathWords(x, me = null) {
   const H = FOLK.H, e = FOLK.lore.death.get(x.id);
   if (!e) return `died in ${x.death}`;
+  const myName = me && `${me.name} ${me.surname}`;
   if (e.kind === 'murder') {
     const rev = H._revealed[x.id];
+    if (me && e.by === me.id) {
+      if (rev !== undefined || e.solved || me.jail) return `died by my hand, in ${e.y}. I won't deny it${me.jail ? `. It's why I'm in here` : ''}`;
+      return /^murder/.test(e.believed) ? `was murdered in ${e.y}. They never found out who did it` : `died in ${e.y}, of ${e.believed}. That's what everyone says, anyway`;
+    }
+    if (me && e.believed?.includes(myName)) return `was murdered in ${e.y}, and they said I did it. ${rev !== undefined ? `It was ${fullOf(H.people[e.by])}, and it came out in the end` : 'I never did'}`;
     if (rev !== undefined) return `was murdered in ${e.y}, by ${fullOf(H.people[e.by])}, though no one knew it till ${H.people[e.by].sex === 'f' ? 'she' : 'he'} was caught in ${rev}`;
     return /^murder/.test(e.believed) ? `was murdered in ${e.y}${/unknown/.test(e.believed) ? ', and no one ever found out who did it' : `, by ${e.believed.replace(/^murder by /, '')}, they say`}` : `died in ${e.y}, of ${e.believed}`;
   }
   if (e.kind === 'execution') return `was ${e.cause.replace(/^put to death/, 'put to death').replace(/^hanged/, 'hanged')} in ${e.y}`;
-  if (e.kind === 'challenge') return `was ${e.cause} in ${e.y}`;
+  if (e.kind === 'challenge') return me && e.cause.includes(myName) ? `fell to me in a fight to the death, in ${e.y}` : `was ${e.cause} in ${e.y}`;
   if (e.kind === 'old age') return `died in ${e.y}, of old age`;
   return `died in ${e.y}, of ${e.cause}`;
 }
@@ -8078,6 +8122,7 @@ function tellAbout(gd, t, raw) {
     const x = P[id];
     if (x.id === me.id) return { x, s: 100, how: 'me' };
     const k = kinWord(me, x) !== 'my kin' ? kinWord(me, x) : null;
+    if (!k && L.death.get(x.id)?.by === me.id) return { x, s: 95, how: 'victim' };      // whoever they killed, they know
     if (k) return { x, s: 90, how: 'kin', k };
     const local = lived(x) && (x.place === me.place || x.birthPlace === me.place && x.death === null);
     const judged = (L.byJudge.get(x.id) || []).find(e => P[e.p] && (e.p === me.id || kinWord(me, P[e.p]) !== 'my kin'));
@@ -8114,11 +8159,12 @@ function aboutPerson(me, c) {
     const what = e.t === 'exiled' ? 'sent into exile' : e.t === 'death' ? 'put to death' : e.condemned ? 'condemned to die' : e.until === null ? 'locked away for life' : 'sent to the cells';
     out.push(`${fullOf(x)}. I know that name. ${cap(he(x))}'s the one who had ${whom} ${what}${e.crime && e.crime !== 'murder' ? ` for ${e.crime}` : ''}, back in ${e.y}.${wrong ? ` For something ${e.p === me.id ? 'I' : he(v)} never did.` : ''}`);
   } else if (c.how === 'office') out.push(`${fullOf(x)}? ${x.death === null && c.h.to === null ? `${cap(he(x))}'s ${c.h.office} of ${c.h.place}.` : `${cap(he(x))} was ${c.h.office} of ${c.h.place}.`}`);
+  else if (c.how === 'victim') out.push(`${fullOf(x)}. ${pick(["I know the name.", "Why do you ask me about that one?", "I'd rather not talk about that one."])}`);
   else if (c.how === 'killer') { const k = x.killer; out.push(`${fullOf(x)}? Everyone knows that name. The one who left ${k?.mark || 'a mark'} by the dead. Caught in ${c.e.y}.`); }
   else out.push(`${fullOf(x)}? ${pick(['I know them.', 'Yes, I know of them.', 'Of course.'])}`);
   // Their life, as far as the speaker would know it
   const detail = c.how === 'kin' || c.how === 'local';
-  if (x.death !== null) out.push(`${cap(he(x))} ${deathWords(x)}${detail ? `, aged ${age}` : ''}.`);
+  if (x.death !== null) { const w = deathWords(x, me); out.push(`${cap(he(x))} ${w}${detail && !w.includes('. ') ? `, aged ${age}` : ''}.`); }
   else if (x.jail) {
     const j = x.jail;
     out.push(j.condemned ? `${cap(he(x))}'s in the cells beneath ${j.at}, waiting to die, for murder.` : `${cap(he(x))}'s in the cells beneath ${j.at}${j.until === null ? ' for life' : ` till ${j.until}`}, for ${j.crime}.`);
@@ -8764,7 +8810,7 @@ function walkTo(gd, pts, spot, arrive = settle) {
   gd.drive = dt => {
     const r = gd.route, pos = gd.g.position;
     if (!r.length) return;
-    const [tx, ty, tz] = r[0], dx = tx - pos.x, dz = tz - pos.z, d = Math.hypot(dx, dz), step = 1.3 * dt;
+    const [tx, ty, tz] = r[0], dx = tx - pos.x, dz = tz - pos.z, d = Math.hypot(dx, dz), step = (gd.pace || 1.3) * dt;
     if (d <= step) { pos.set(tx, ty, tz); r.shift(); if (!r.length && gd.spot) arrive(gd, gd.spot); return; }
     pos.x += dx / d * step; pos.z += dz / d * step; pos.y += (ty - pos.y) * Math.min(1, step / d);
     turnTowards(gd, Math.atan2(dx, dz), dt * 3);
@@ -8871,6 +8917,7 @@ const CNODE = {
   solDoor: [0, 5, -4.5], sol: [0, 5, -7], bcDoor: [2.6, 5, -11], bc: [2.6, 5, -13],
   ustairBot: [-5.25, 5, -3.6], ustairTop: [-5.25, 10, 1.75], ustairOff: [-5.25, 10, 2.5], land2: [-3, 10, 2.5], land2C: [0, 10, -1],
   rADoor: [-2.4, 10, -4.5], rA: [-2.4, 10, -6.2], rBDoor: [2.4, 10, -4.5], rB: [2.4, 10, -6.2],
+  shN: [18.2, 0, -7.8], pass: [21.5, 0, -7.8], lobby: [27, 0, -7.6], school: [27, 0, -9.3], nursery: [27, 0, -5.9],
 };
 CASTLE_ROOMS.forEach(([a], i) => { CNODE['c' + i] = [8, 5, a + 1.1]; CNODE['r' + i] = [10, 5, a + 1.1]; });
 const CEDGES = `out-gateOut gateOut-gate gate-yard yard-yardN yard-yardS yard-wallBy wallBy-wallFoot wallFoot-wallTop wallTop-walkE walkE-walkSE walkSE-walkSW walkSW-walkW
@@ -8879,7 +8926,8 @@ const CEDGES = `out-gateOut gateOut-gate gate-yard yard-yardN yard-yardS yard-wa
   landSW-ustairBot ustairBot-ustairTop ustairTop-ustairOff ustairOff-land2 land2-land2C land2C-rADoor rADoor-rA land2C-rBDoor rBDoor-rB
   eh-hallDoor hallDoor-hall hall-hallF hallF-hallW hallF-hallTop hallTop-daisW daisW-daisBW hallTop-daisE daisE-daisBE
   eh-grDoor grDoor-gr gr-grSW grSW-bar0 bar0-barDoor barDoor-bar
-  yardN-kOut kOut-kIn kIn-k k-kBack kBack-shDoor shDoor-sh sh-dormDoor dormDoor-dorm`;
+  yardN-kOut kOut-kIn kIn-k k-kBack kBack-shDoor shDoor-sh sh-dormDoor dormDoor-dorm
+  shDoor-shN shN-pass pass-lobby lobby-school lobby-nursery`;
 let CGRAPH = null;
 // The shortest way between two of the castle's places, as a list of their names
 function castlePath(a, b) {
@@ -8967,6 +9015,18 @@ function castleSpots() {
   S.posts2 = [post('walkW', [[18, 6, -22.5]], [18, 6, -22.5], [-18, 6, -22.5], 1.3), post('yard', [[16, 0, 9]], [16, 0, 9], [-16, 0, 9], 1.2),
     post('gateOut', [], [-4.1, 0, 26], null, 0, T(-4.1, 26, -4.1, 30)), post('gateOut', [], [4.1, 0, 26], null, 0, T(4.1, 26, 4.1, 30))];
   S.out = { node: 'out', via: [], at: CNODE.out, away: true };
+  // The children's house: desks in the schoolroom (and places to stand at the back), the teacher at the board; the
+  // nursery's rug, little stools and cradles, and the minding servant's chair; the pages' bench in the lobby
+  S.desks = SCHOOL_ROWS.flatMap(zr => SCHOOL_COLS.map(x => seat('school', [[27, 0, zr + .95], [x, 0, zr + .95]], [x, .43, zr + .5], Sx)));
+  S.schoolBack = [stand('school', [], [25, 0, -9.25], Sx), stand('school', [], [29, 0, -9.25], Sx), stand('school', [[27, 0, -10.4]], [26.5, 0, -10.4], Sx), stand('school', [[27, 0, -11.8]], [27.5, 0, -11.8], Sx)];
+  S.teach = stand('school', [[27, 0, -13.1], [28.2, 0, -13.1], [28.2, 0, -14.5]], [27.1, 0, -14.5], N);
+  S.play = [[25.6, -3.6], [26.5, -4.9], [27.2, -3], [28.1, -3.3], [26.2, -2.5], [25.7, -5.1], [27, -2.1], [28.6, -2.9]].map(([x, z], i) => stand('nursery', [], [x, 0, z], i * 2.1));
+  S.littleStools = NURSERY_STOOLS.map(([x, z], i) => seat('nursery', [[x, 0, z + (i === 2 ? .45 : 0) + .01]], [x, .28, z], [E, W, Sx][i]));
+  S.cradles = CRADLES.map(z => lie('nursery', [[28.6, 0, z]], [29.65, .44, z], [29.3, .44, z]));
+  S.nurse = seat('nursery', [[25.6, 0, -1.8]], [25, .48, -1.8], E);
+  S.pageBench = [seat('lobby', [], [29.62, .46, -8.1], W), seat('lobby', [], [29.62, .46, -7.1], W)];
+  S.gateSpots = [stand('gate', [], [-5, 0, 18.4], N), stand('gate', [], [5, 0, 18.4], N)];
+  S.servHall = [stand('sh', [], [12, 0, -11.3], N), stand('shN', [], [16, 0, -7.6], Sx)];
   return CSPOTS = S;
 }
 // Who does what: the lord; the lord's family; an office-holder's household; servants (and cooks, bakers, brewers);
@@ -8978,9 +9038,26 @@ function castleFolkStart(S) {
   S.people.forEach((p, n) => {
     const t = H.people[p.id].trade || 'no trade';
     p.n = n;
-    p.cls = p.soldier ? 'soldier' : p.ruler ? 'ruler' : !p.grown ? 'child' : p.home.kind === 'the keep' ? 'family' : p.home.kind === 'rooms in the keep' ? 'office'
+    const age = H.year - H.people[p.id].birth, adult = H.rules.races[H.people[p.id].race].adult;
+    p.age = age;
+    p.cls = p.soldier ? 'soldier' : p.ruler ? 'ruler' : !p.grown ? (age < adult * .3 ? 'little' : age < adult * .75 ? 'pupil' : 'teen') : p.home.kind === 'the keep' ? 'family' : p.home.kind === 'rooms in the keep' ? 'office'
       : KITCHEN_TRADES.has(t) ? 'servant' : INDOOR_TRADES.has(t) ? 'indoor' : 'out';
   });
+  // Who minds the little ones (a servant) and who teaches (a clerk, scribe, healer or singer, failing that an
+  // office-holder's family or a servant); the pupils' desks; what each of the older children does
+  const grownUps = S.people.filter(p => p.grown && !p.soldier), tradeOf = p => H.people[p.id].trade || 'no trade';
+  const servantsAll = grownUps.filter(p => p.cls === 'servant');
+  S.nurse = servantsAll[0]?.id;
+  S.teacher = (grownUps.find(p => ['clerk', 'scribe', 'healer', 'singer'].includes(tradeOf(p))) || grownUps.find(p => p.cls === 'office') || servantsAll[1])?.id;
+  S.cradle = new Map(); const cradles = [...sp.cradles];
+  for (const p of S.people) if (p.cls === 'little' && p.age < 2 && cradles.length) S.cradle.set(p.id, cradles.shift());
+  S.desks = new Map(); const desks = [...sp.desks];
+  for (const p of S.people) if (p.cls === 'pupil' && desks.length) S.desks.set(p.id, desks.shift());
+  const masters = grownUps.filter(p => tradeOf(p) !== 'no trade' && !p.ruler);
+  for (const p of S.people) if (p.cls === 'teen') {
+    if (hash2(p.id, 41) < .5 || !masters.length) { p.duty = 'page'; p.role = `a page at ${S.plan.title}`; }
+    else { const m = masters[Math.floor(hash2(p.id, 43) * masters.length)]; p.duty = 'apprentice'; p.master = m; p.role = `apprenticed to ${m.name}, the ${tradeOf(m)}`; }
+  }
   // Beds
   const upper = [...sp.upper], rooms = sp.rooms.map(r => [...r]), dorm = [...sp.dorm], pallets = [...sp.pallets];
   const give = (p, list) => { const b = list?.shift(); if (b) S.beds.set(p.id, b); return !!b; };
@@ -9051,9 +9128,13 @@ function castlePlan(S, p, h) {
     if (within(h, din, din + .5)) return [seat, 'My dinner, before the night watch.'];
     return [idle, 'Off duty till the night watch.'];
   }
-  const kid = p.cls === 'child', serv = p.cls === 'servant';
-  const wake = kid ? 7 : serv ? 5.4 + j * .3 : 6.1 + j * .5, sleep = kid ? 20.3 + j * .4 : serv ? 21.2 + j * .4 : 21.5 + j * .7;
+  const teen = p.cls === 'teen', kid = !p.grown && !teen, serv = p.cls === 'servant';
+  const wake = kid ? 7 : teen ? 6.5 + j * .3 : serv ? 5.4 + j * .3 : 6.1 + j * .5, sleep = kid ? 20.3 + j * .4 : teen ? 21 + j * .5 : serv ? 21.2 + j * .4 : 21.5 + j * .7;
+  p.errand = null;
   if (!within(h, wake, sleep)) return sleepTo;
+  // Minding the little ones and teaching come before anything else in the day
+  if (p.id === S.nurse && within(h, 7.9, 17.5) && !within(h, 11, 11.6)) return [sp.nurse, "Minding the little ones. Mind you don't wake the babies."];
+  if (p.id === S.teacher && (within(h, 8.5, 11.8) || within(h, 13, 15.8))) return [sp.teach, 'Teaching the children their letters and their sums.'];
   const hallMeal = within(h, 7, 7.6) ? 'Breakfast in the hall.' : within(h, 12, 12.75) ? 'Dinner in the hall.' : within(h, 18.5, 19.2) ? 'Supper in the hall.' : null;
   if (serv) {
     if (within(h, 5.8, 6.3) || within(h, 11, 11.6) || within(h, 19.3, 19.9)) return [seat, 'Eating with the other servants while we can.'];
@@ -9064,6 +9145,22 @@ function castlePlan(S, p, h) {
   }
   if (p.cls === 'out' && within(h, 7.8 + j * .4, 17.6 + j * .5)) return [sp.out, 'Out at my work beyond the walls.'];
   if (hallMeal) return [seat, hallMeal];
+  // The children: the little ones in the nursery all day, the younger ones at their lessons, the older ones running
+  // errands about the castle for whoever sends them
+  if (p.cls === 'little' && within(h, 7.9, 17.5)) {
+    if (S.cradle?.has(p.id)) return [S.cradle.get(p.id), r < .5 ? '(The baby is fast asleep.)' : '(The baby gurgles up at you.)'];
+    return r < .65 ? [pickFor(p, sp.play, slot), ['Playing!', "I'm building a tower.", "We're playing horses."][Math.floor(r * 3)]] : [pickFor(p, sp.littleStools, slot), 'Sitting at the little table.'];
+  }
+  if (p.cls === 'pupil' && (within(h, 8.5, 11.8) || within(h, 13, 15.8))) return [S.desks.get(p.id) || pickFor(p, sp.schoolBack, slot), "Lessons. I'd rather be outside."];
+  if (teen && p.master?.cls === 'out' && within(h, 7.8 + hash2(p.master.id, 5) * .4, 17.6 + hash2(p.master.id, 5) * .5))
+    return [sp.out, `Out at work with my master, ${p.master.name}.`];                         // (an apprentice goes where the work is)
+  if (teen && within(h, 7.8, 17.8)) {
+    const es = Math.floor(h * 3), er = hash2(p.id * 7 + env.day, es * 13 + 5);
+    if (er < .2) return [pickFor(p, sp.pageBench, es + .5), p.duty === 'page' ? 'Waiting on the bench in case someone needs me.' : 'Waiting for my next job.'];
+    const task = ERRANDS[Math.floor(hash2(es, p.id * 3 + env.day) * ERRANDS.length)], from = errandFrom(S, p, es);
+    p.errand = `I'm on an errand: ${from} sent me ${task[0]}.`;
+    return [pickFor(p, sp[task[1]], es + .5), `${cap(from)} sent me ${task[0]}. Can't stop long!`, true];
+  }
   let room = bed && !bed.pallet && !sp.bunks.includes(bed) && !sp.dorm.includes(bed) ? (sp.upper.includes(bed) ? sp.upperStools[sp.upper.indexOf(bed) < 2 ? 0 : 1]
     : sp.lord.includes(bed) ? sp.solar[1] : sp.roomStools[sp.rooms.findIndex(rm => rm.includes(bed))]) : null;
   if (room) { const who = castleTaken.get(spotKey(room)); if (who !== undefined && who !== p.id) room = null; }      // someone else is in the chair
@@ -9074,9 +9171,25 @@ function castlePlan(S, p, h) {
     return r < .4 ? [sp.solar[0], 'A quiet hour in my solar.'] : r < .7 ? [pickFor(p, sp.yard, slot), 'Taking the air in the courtyard.'] : [pickFor(p, sp.hall, slot), 'Seeing that all is well in the hall.'];
   }
   if (h >= 19.2) return r < .5 ? [seat, 'Sitting in the hall after supper.'] : r < .75 && room ? [room, 'Gone up to my room for the night.'] : [pickFor(p, sp.yard, slot), 'A breath of air before bed.'];
-  if (kid) return r < .75 ? [pickFor(p, sp.yard, slot), 'Playing!'] : [pickFor(p, sp.hall, slot), 'Nothing. Just waiting for dinner.'];
+  if (kid || teen) return r < .75 ? [pickFor(p, sp.yard, slot), 'Playing!'] : [pickFor(p, sp.hall, slot), 'Nothing. Just waiting for dinner.'];
   return r < .35 ? [pickFor(p, sp.yard, slot), 'Taking the air in the courtyard.'] : r < .6 ? [pickFor(p, sp.hall, slot), 'Passing the time in the hall.']
     : room && r < .85 ? [room, 'Sitting in my room a while.'] : [pickFor(p, sp.upstairs, slot), 'Seeing to things upstairs.'];
+}
+// Errands the older children are sent on: what, and the places they might go
+const ERRANDS = [['to the kitchen for a jug of ale for the hall', 'kitchen'], ['to carry a message to the guardroom', 'guardroom'],
+  ['up with candles for the rooms', 'upstairs'], ['to find someone in the hall', 'hall'], ['out to the gate with word for the guards', 'gateSpots'],
+  ['to fetch firewood in from the courtyard', 'yard'], ['up with clean linen for the bedrooms', 'upstairs'], ["to the servants' hall with the day's orders", 'servHall'],
+  ['to the kitchen to see when dinner will be ready', 'kitchen'], ['to the hall with a stack of trenchers', 'hall']];
+// Who sent them: a page waits on the lord, the family and the office-holders; an apprentice on their master, the
+// servants and the guard
+function errandFrom(S, p, es) {
+  const pool = p.duty === 'page' ? S.people.filter(q => q.grown && ['ruler', 'family', 'office'].includes(q.cls))
+    : [p.master, p.master, ...S.people.filter(q => q.grown && (q.cls === 'servant' || q.soldier))].filter(Boolean);
+  const q = pool.length ? pool[Math.floor(hash2(es * 5 + env.day, p.id) * pool.length)] : null;
+  if (!q) return 'Someone';
+  const hp = FOLK.H.people[q.id];
+  return q === p.master ? `my master, ${q.name},` : q.ruler ? (hp.sex === 'f' ? 'the lady' : 'the lord') : q.office ? `${q.name}, the ${q.role.split(' of ')[0]},`
+    : q.soldier ? `${q.name} of the guard` : q.cls === 'servant' ? `${q.name} in the kitchen` : q.name;
 }
 // Straw pallets, laid out where someone sleeps in the hall and taken up when they rise
 const PALLET_GEO = [new THREE.BoxGeometry(.8, .12, 1.9), new THREE.BoxGeometry(.72, .05, 1.1)];
@@ -9106,12 +9219,13 @@ function castleSettle(gd, spot) {
     return;
   }
   const [x, y, z] = spot.at;
-  gd.g.position.set(...dw(x, spot.sit !== undefined ? y - .8 : y, z));
+  gd.g.position.set(...dw(x, spot.sit !== undefined ? y - .8 * gd.g.scale.y : y, z));         // (a child's legs are shorter)
   gd.g.rotation.y = gd.face = spot.sit ?? spot.face ?? gd.g.rotation.y;
   if (spot.sit !== undefined) sitPose(gd, true);
 }
 // Walk from where someone is to a spot by the castle's ways
-function castleGo(gd, spot) {
+function castleGo(gd, spot, run = false) {
+  gd.pace = run ? 2.6 : 1.3;                                     // (errands are run)
   const from = gd.cspot, pts = [...[...from.via].reverse()];
   for (const n of castlePath(from.node, spot.node)) pts.push(CNODE[n]);
   pts.push(...spot.via, spot.at);
@@ -9130,7 +9244,7 @@ function updateCastle(S) {
   for (const p of S.people) {
     let gd = S.shown.get(p.id);
     if (belowStairs(p.id)) { if (gd) { removePallet(gd); removeGuard(gd); S.shown.delete(p.id); } continue; }   // down with the jailer
-    let [spot, line] = castlePlan(S, p, env.time);
+    let [spot, line, run] = castlePlan(S, p, env.time);
     spot ||= pickFor(p, castleSpots().hall, Math.floor(env.time * 2));
     if (!spot.lie && !spot.away) castleTaken.set(spotKey(spot), p.id);
     p.cellAct = () => line;
@@ -9139,7 +9253,7 @@ function updateCastle(S) {
         color: 0x5a5a6a + (p.id % 5) * 0x0a0a04, person: p });
       gd.g.rotation.order = 'YXZ'; gd.route = []; gd.cspot = spot;
       castleSettle(gd, spot); S.shown.set(p.id, gd);
-    } else if (spot !== gd.cspot && !gd.route?.length && dlg.gd !== gd) castleGo(gd, spot);
+    } else if (spot !== gd.cspot && !gd.route?.length && dlg.gd !== gd) castleGo(gd, spot, run);
   }
 }
 
