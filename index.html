@@ -4141,9 +4141,7 @@ function makeCottage(m) {
   const leftWin1 = two ? [] : [win((D - 2 * t) / 2 + .2)];
   wall('left', floorY, groundTop - floorY, leftWin1).forEach(o => windowAt('left', floorY, o));
   wall('right', floorY, groundTop - floorY, []);
-  // Door: frame and an open leaf swung inwards
-  const leaf = K.box('#4a3020', .9, 2.05, .07, 0, 0, 0);
-  leaf.translate(.45, 0, 0); leaf.rotateY(1.2); leaf.translate(doorX - .5, floorY + 1.03, D / 2 - t);
+  // (the door itself is its own piece, hung after the build: see below)
 
   // Upper storey
   if (two) {
@@ -4267,7 +4265,18 @@ function makeCottage(m) {
     ovenFire = addFire(...built.toWorld(ovX, floorY + .95, ovZ + .3)); ovenFire.big = false; ovenFire.off = true;
     torchList.push(ovenFire);
   }
-  const obj = { g: built.group, spec: m, doorX, colliders: built.colliders, torches: torchList, fire, loaves, ovenFire, ovenLit: false, glass: built.meshes.glass,
+  // The door: a leaf hung on the inside of the doorway from its left jamb, shut until someone opens it (E, or a
+  // villager coming through), when it swings inwards right round, half a turn, to lie against the wall
+  const hingeX = doorX - .5, hingeZ = D / 2 - t - .045, pivot = new THREE.Group();
+  pivot.position.set(hingeX, floorY, hingeZ);
+  const leaf = new THREE.Mesh(scaledBox(.98, 2.05, .07), buildingMat('#4a3020')); leaf.position.set(.5, 1.03, 0); pivot.add(leaf);
+  const knob = new THREE.Mesh(scaledBox(.07, .07, .16), buildingMat('#2a2a2e')); knob.position.set(.86, 1.05, 0); pivot.add(knob);
+  built.group.add(pivot);
+  const DK = new Kit(); DK.solid(hingeX, floorY, hingeZ - .07, hingeX + 1, floorY + 2.1, hingeZ + .07);
+  const door = { pivot, leaf, col: DK.build(m.pos[0], m.pos[1], m.pos[2], m.angle).colliders, colOn: true, angle: 0, manual: null,
+    at: built.toWorld(doorX, floorY, D / 2 - t) };
+  addColliders(door.col);
+  const obj = { g: built.group, spec: m, doorX, door, colliders: built.colliders, torches: torchList, fire, loaves, ovenFire, ovenLit: false, glass: built.meshes.glass,
     seed: m.seed, chimney: built.toWorld(cx, chimTop + .45, 0), smokeT: 0, on: null };   // null: first update sets the fire
   cottages.add(obj);
   return obj;
@@ -5035,6 +5044,7 @@ const MODEL_MAKERS = { cottage: makeCottage, stall: makeStall, windmill: makeTow
 
 function removeBuilding(obj) {
   scene.remove(obj.g);
+  if (obj.door?.colOn) removeColliders(obj.door.col);
   for (const e of obj.extra || []) scene.remove(e);
   removeColliders(obj.colliders);
   for (const t of obj.torches) removeTorch(t);
@@ -5052,7 +5062,29 @@ const smokeTex = (() => {
   return new THREE.CanvasTexture(c);
 })();
 const puffs = [], puffPool = [];
+// Doors: open when the player has opened one, or while a villager is at it; each swings half a turn, and
+// blocks the way only when shut. It won't shut on you.
+const DOOR_SPEED = 3.2;
+function updateDoors(dt) {
+  const walkers = [];
+  for (const V of villages) for (const p of V.people) walkers.push(p.gd.g.position);
+  for (const h of cottages) {
+    const d = h.door; if (!d) continue;
+    const [x, y, z] = d.at;
+    if (Math.abs(x - P.pos.x) > 60 || Math.abs(z - P.pos.z) > 60) continue;
+    const busy = walkers.some(q => Math.abs(q.x - x) < 1.8 && Math.abs(q.z - z) < 1.8 && Math.abs(q.y - y) < 2.5);
+    const inWay = d.col.some(k => colliderOver(k, P.pos.x, P.pos.z) && P.pos.y < k.y1 && P.pos.y + HEIGHT > k.y0);
+    const target = d.manual === true || busy || inWay && d.angle > .01 ? Math.PI : 0;
+    if (d.angle !== target) {
+      d.angle += Math.sign(target - d.angle) * Math.min(Math.abs(target - d.angle), dt * DOOR_SPEED);
+      d.pivot.rotation.y = d.angle;
+    }
+    if (d.angle < .15 && !d.colOn) { addColliders(d.col); d.colOn = true; }
+    else if (d.angle >= .15 && d.colOn) { removeColliders(d.col); d.colOn = false; }
+  }
+}
 function updateCottages(dt) {
+  updateDoors(dt);
   for (const h of cottages) {
     const on = activeHouses.has(h.seed) ? (houseAwake.get(h.seed) || 0) > 0 : fireLit(h.seed, env.time);
     if (on !== h.on) {
@@ -7480,9 +7512,51 @@ function updateGuards(dt) {
       gd.legs[0].rotation.x = swing; gd.legs[1].rotation.x = -swing;
     }
   }
-  const prompt = !!talkTarget && !dlg.open;
-  document.getElementById('talk').hidden = !prompt;
-  document.getElementById('talkHint').hidden = !prompt || isTouch;
+  updateInteract();
+}
+// What E acts on now: whichever person (in talking range and seeing you) or door (within reach) you're most
+// nearly facing. It's outlined in white, and the prompt says what E will do.
+let interact = null;
+function updateInteract() {
+  const fx = -Math.sin(P.yaw), fz = -Math.cos(P.yaw), cands = [];
+  const facing = (x, z) => { const dx = x - P.pos.x, dz = z - P.pos.z, d = Math.hypot(dx, dz) || 1; return (dx * fx + dz * fz) / d; };
+  if (talkTarget) { const f = facing(talkTarget.gd.g.position.x, talkTarget.gd.g.position.z);
+    if (f > .3 || talkTarget.dist < 1.5) cands.push({ kind: 'talk', gd: talkTarget.gd, obj: talkTarget.gd.g, face: f - talkTarget.dist * .04 }); }
+  for (const h of cottages) {
+    const d = h.door; if (!d) continue;
+    const [x, y, z] = d.at, dist = Math.hypot(x - P.pos.x, z - P.pos.z);
+    if (dist > 2.6 || Math.abs(y - P.pos.y) > 2) continue;
+    const f = facing(x, z);
+    if (f > .5 || dist < 1) cands.push({ kind: 'door', door: d, obj: d.leaf, face: f - dist * .04 });
+  }
+  interact = dlg.open ? null : cands.sort((a, b) => b.face - a.face)[0] || null;
+  setOutline(interact?.obj || null);
+  const btn = document.getElementById('talk'), hint = document.getElementById('talkHint');
+  btn.hidden = !interact; hint.hidden = !interact || isTouch;
+  if (interact) {
+    const open = interact.kind === 'door' && (interact.door.manual === true || interact.door.angle > Math.PI / 2);
+    btn.textContent = interact.kind === 'talk' ? 'TALK' : open ? 'CLOSE' : 'OPEN';
+    hint.textContent = interact.kind === 'talk' ? 'E \u00b7 talk' : `E \u00b7 ${open ? 'close' : 'open'} the door`;
+  }
+}
+// A thin white line round what E would act on: each of its parts drawn again a touch larger, inside out
+const OUTLINE_MAT = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.BackSide });
+let outlined = null, outlineParts = [];
+function setOutline(obj) {
+  if (obj === outlined) return;
+  for (const o of outlineParts) o.parent?.remove(o);
+  outlineParts = []; outlined = obj;
+  if (!obj) return;
+  const parts = [];
+  obj.traverse(o => { if (o.isMesh && o.visible && !o.userData.outline && o.material !== HIT_MAT) parts.push(o); });
+  for (const m of parts) {
+    if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
+    const sz = m.geometry.boundingBox.getSize(new THREE.Vector3()), th = .03;
+    const hull = new THREE.Mesh(m.geometry, OUTLINE_MAT);
+    hull.userData.outline = true;
+    hull.scale.set(1 + 2 * th / Math.max(sz.x, .01), 1 + 2 * th / Math.max(sz.y, .01), 1 + 2 * th / Math.max(sz.z, .01));
+    m.add(hull); outlineParts.push(hull);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -7498,8 +7572,9 @@ const BIOME_PHRASE = { [DESERT]: 'desert', [PLAINS]: 'open grassland', [FOREST]:
 const cap = t => t[0].toUpperCase() + t.slice(1);
 
 function talk() {
-  if (!talkTarget || dlg.open) return;
-  openDialogue(talkTarget.gd);
+  if (!interact || dlg.open) return;
+  if (interact.kind === 'door') { const d = interact.door, open = d.manual === true || d.angle > Math.PI / 2; d.manual = !open; return; }
+  openDialogue(interact.gd);
 }
 
 function openDialogue(gd) {

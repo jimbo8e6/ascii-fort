@@ -42,7 +42,7 @@ Saving into slots happens in the game: Esc pauses, and the pause screen has SAVE
 | T: toggle ASCII, G: style, `[` `]`: character size | ASCII / STYLE / SIZE buttons |
 | M: world map, N: minimap | MAP button |
 | K: time speed (normal / 20× / paused) | TIME button |
-| E: talk to a guard nearby; 1–2 or click to choose, Esc to leave | TALK button (appears near a guard) |
+| E: talk to the person you're facing, or open or close the door you're facing (it's outlined in white); 1–6 or click to choose in a conversation, Esc to leave | TALK / OPEN / CLOSE button (appears when something's in reach) |
 | Esc: pause and free the mouse (top-right buttons stay clickable); the pause screen has SAVE GAME and MAIN MENU | |
 | CHRONICLE on the start / pause screen: the world's whole history (spoilers); Esc to close | CHRONICLE button |
 
@@ -108,12 +108,14 @@ Villages on a road have the road meeting at a village square with a stone well (
 - **Sized to their people:** each village has homes enough for its families in nine in ten of the histories the simulation makes for it (`homes` and `shacks` in `PLACES`), so it grows with them: straight lanes run across the village, broken where a road or the square is in the way, each with a row of cottages and their plots on either side. Kelford, the biggest, has 35 cottages. Hunters' families live in shacks out in the woods beyond the village, on fairly level ground, with a stone foundation down to the ground where it slopes away. In a bigger history than the village has homes for, families share. (A first layout: each village is to be laid out by hand.)
 
 - **Cottages** are built as 3D models, not blocks:
-  - **Outside:** a stone plinth, plaster walls with dark timber framing, framed windows with coloured shutters, an open door with a lantern beside it, and a pitched tiled roof with overhangs and a chimney with a pot.
+  - **Outside:** a stone plinth, plaster walls with dark timber framing, framed windows with coloured shutters, a front door with a lantern beside it, and a pitched tiled roof with overhangs and a chimney with a pot.
   - **Single-storey:** a living room and a bedroom, split by an inner wall with a doorway.
   - **Two-storey:** a living room downstairs, stairs up the side wall, a bedroom on a proper upper floor with a banister round the stairwell.
   - **Furniture:** a table and benches, a rug, a shelf of pots, a barrel, a bed with pillow and blanket, and a chest. Inside surfaces are a little darker than outside.
   - **Fireplace:** a stone fireplace with a hearth, logs and a mantel.
 - **Fires:** most houses light the fire in the evening, through the night and early morning, and some cook at midday. A lit fire flickers and lights the room. At night its windows glow, and smoke drifts up from the chimney. When the fire's out there's no flame and no smoke.
+- **Doors:** every cottage door starts shut. Face it and press **E** (or OPEN) and it swings inwards half a turn, right round to lie flat against the inside wall; press E again (CLOSE) to shut it. Shut, it blocks the way; it won't shut on you while you're in the doorway. Villagers open their doors as they come and go, and they swing shut again behind them unless you left them open.
+- **What E will act on** is outlined in a thin white line: the person (in talking range, and that you're facing) or the door (within reach) you're most nearly facing, and the prompt says what E will do (*E · talk*, *E · open the door*).
 - **Solid:** walls, the plinth, floors, stairs and furniture are all solid. You go in through the door and climb the stairs, and you can't walk through tables or into the fire.
 - **Windmills:** farming villages have one, a tapered tower mill with a stone base, a door facing the square with a lantern, small windows, a pointed cap and turning sails.
 - **Villagers are the history's people:** every family the history has living in the village keeps house in one of its cottages, with their own names, races, ages and trades: a married couple with their unmarried children, an old widowed parent with a married child. Whoever's trade is the village's work does it (one baker runs the bakery, one miller the mill, the farmers farm, the woodcutters and hunters go out), and everyone else keeps house and goes about the village. Children are smaller, dwarves short and broad, elves tall with long pale hair, orcs green with tusks. *Who are you?* tells you their trade and who they live with (*my wife Fern, my daughter Ada*). Merchants are traders from the village they come from, and the bakery's carter is from the baker's household.
