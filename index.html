@@ -128,7 +128,7 @@
 <div id="mini"><canvas id="miniCanvas" width="192" height="192"></canvas><div id="miniWhere"></div></div>
 <div id="map" hidden>
   <div class="panel">
-    <header><span>WORLD MAP</span><button class="btn" id="mapClose">CLOSE (M)</button></header>
+    <header><span>FOLK MAP</span><button class="btn" id="mapClose">CLOSE (M)</button></header>
     <canvas id="mapCanvas" width="512" height="512"></canvas>
     <div class="row">
       <button class="btn" id="mapIn">+</button><button class="btn" id="mapOut">&minus;</button>
@@ -139,8 +139,8 @@
     <div class="info" id="mapWhere"></div>
     <div class="row">
       <span class="info">seed</span><input id="mapSeed" inputmode="numeric">
-      <button class="btn" id="mapGo">GO</button><button class="btn" id="mapRandom">NEW WORLD</button>
-      <button class="btn" id="mapReset">RESTART THIS WORLD</button>
+      <button class="btn" id="mapGo">GO</button><button class="btn" id="mapRandom">NEW FOLK</button>
+      <button class="btn" id="mapReset">RESTART THIS FOLK</button>
     </div>
     <div class="row" id="savedWorlds"></div>
   </div>
@@ -295,7 +295,7 @@ const RULES = {
   // The cells beneath the castles: dwarves and orcs go to their own holds, everyone else to the nearest
   // human castle (Harrowgate Keep for the west and the Wenmere, Castle Aldermere for the rest)
   prisons: { dwarf: 'Kharn Dolum', orc: 'Gor Marakh', west: 'Harrowgate Keep', rest: 'Castle Aldermere',
-    westPlaces: ['Aelith Vara', 'Mistwater', 'Thornwick', 'Port Cassel', 'Harrowgate Keep'] },
+    westPlaces: ['Aelith Vara', 'Mistwater', 'Thornwick', 'Port Cassel', 'Harrowgate Keep', 'Wreck Point'] },
   // Offices (placeholders, apart from the succession rules James chose; see OFFICES)
   stepDown: .08,             // an ageing post-holder's (past 75% of a typical life) yearly chance of stepping down; rulers never do
   newBroom: .25,             // a new ruler's chance of dismissing each post-holder at their seat
@@ -342,6 +342,8 @@ const OFFICES = {
   hangman: { office: 'Hangman', seat: 'Castle Aldermere' },
   // Every other place has a head and a priest, in the title of its main race, appointed by that race's
   // ruler (the human villages by the lord whose cells serve them)
+  // ...except the garrisons, which have officers instead
+  placePosts: { 'Fort Greyhold': ['Commander', 'Sergeant'], 'Wreck Point': ['Keeper of the Watch'] },
   villages: { human: ['Reeve', 'Priest'], dwarf: ['Clan-Head', 'Rune-priest'], elf: ['Grove-Keeper', 'Grove-priest'], orc: ['Camp Chief', 'Shaman'] },
   // Trades a ruler looks to first when filling a post
   prefer: { 'Captain of the Guard': ['guard'], Jailer: ['guard'], Hangman: ['guard', 'servant'], Steward: ['servant', 'clerk'], Magistrate: ['clerk', 'trader'],
@@ -351,23 +353,31 @@ const OFFICES = {
     Reeve: ['farmer', 'miller', 'trader', 'innkeeper'], 'Clan-Head': ['miner', 'smith'] },
 };
 
-// ---- Places (a subset of the gazetteer). Who lives there, how many it holds, and its trades. ----
+// ---- Places: every settlement in the game, who lives there, how many it holds, and its trades ----
+// A place's trades include the work the game gives its people: a farming village (one with a windmill) farms,
+// mills and bakes; the others cut wood and hunt. `essential` trades are taken up first by someone coming of
+// age whenever no one in the place has them. `kind`: a village of houses, a seat (see OFFICES), or a garrison.
 const PLACES = [
-  { name: 'Kharn Dolum', races: { dwarf: 1 }, cap: 140, trades: ['miner', 'smith', 'mason', 'brewer', 'guard'] },
-  { name: "Anvil's Rest", races: { dwarf: .5, human: .5 }, cap: 60, trades: ['miner', 'smith', 'carter', 'innkeeper'] },
-  { name: 'Aelith Vara', races: { elf: 1 }, cap: 90, trades: ['warden', 'weaver', 'herbalist', 'carver', 'singer'] },
-  { name: 'Mistwater', races: { elf: .8, human: .2 }, cap: 40, trades: ['fisher', 'herbalist', 'healer'] },
-  { name: 'Thornwick', races: { human: .7, elf: .3 }, cap: 70, trades: ['trader', 'woodcutter', 'hunter', 'guard'] },
-  { name: 'Gor Marakh', races: { orc: 1 }, cap: 140, trades: ['warrior', 'smith', 'tanner', 'herder'] },
-  { name: 'Ashen Camp', races: { orc: 1 }, cap: 60, trades: ['herder', 'tanner'] },
-  { name: 'Dust Wells', races: { human: .5, orc: .3, dwarf: .2 }, cap: 60, trades: ['trader', 'stablehand', 'innkeeper', 'well-keeper'] },
-  { name: 'Kelford', races: { human: 1 }, cap: 110, trades: ['baker', 'trader', 'mason', 'carter', 'guard'] },
-  { name: 'Millbrook', races: { human: 1 }, cap: 70, trades: ['baker', 'miller', 'farmer', 'farmer'] },
-  { name: "Hollin's Ferry", races: { human: 1 }, cap: 50, trades: ['ferryman', 'innkeeper', 'boatwright'] },
-  { name: 'Castle Aldermere', races: { human: 1 }, cap: 90, trades: ['guard', 'farmer', 'smith', 'servant'] },
-  { name: 'Concord Landing', races: { human: .4, elf: .2, dwarf: .2, orc: .2 }, cap: 70, trades: ['carpenter', 'trader', 'healer', 'farmer'] },
-  { name: 'Port Cassel', races: { human: .9, elf: .1 }, cap: 100, trades: ['sailor', 'docker', 'trader', 'clerk'] },
-  { name: 'Harrowgate Keep', races: { human: 1 }, cap: 60, trades: ['guard', 'farmer', 'servant'] },
+  { name: 'Kharn Dolum', kind: 'seat', races: { dwarf: 1 }, cap: 140, trades: ['miner', 'smith', 'mason', 'brewer', 'guard'] },
+  { name: "Anvil's Rest", kind: 'village', races: { dwarf: .5, human: .5 }, cap: 60, trades: ['miner', 'smith', 'carter', 'innkeeper', 'woodcutter', 'hunter'], essential: ['woodcutter', 'hunter'] },
+  { name: 'Aelith Vara', kind: 'seat', races: { elf: 1 }, cap: 90, trades: ['warden', 'weaver', 'herbalist', 'carver', 'singer'] },
+  { name: 'Mistwater', kind: 'village', races: { elf: .8, human: .2 }, cap: 40, trades: ['fisher', 'herbalist', 'healer', 'woodcutter', 'hunter'], essential: ['woodcutter', 'hunter'] },
+  { name: 'Thornwick', kind: 'village', races: { human: .7, elf: .3 }, cap: 70, trades: ['trader', 'woodcutter', 'hunter', 'guard'], essential: ['woodcutter', 'hunter'] },
+  { name: 'Gor Marakh', kind: 'seat', races: { orc: 1 }, cap: 140, trades: ['warrior', 'smith', 'tanner', 'herder'] },
+  { name: 'Ashen Camp', kind: 'village', races: { orc: 1 }, cap: 60, trades: ['herder', 'tanner', 'woodcutter', 'hunter'], essential: ['woodcutter', 'hunter'] },
+  { name: 'Dust Wells', kind: 'village', races: { human: .5, orc: .3, dwarf: .2 }, cap: 60, trades: ['trader', 'stablehand', 'innkeeper', 'well-keeper', 'woodcutter', 'hunter'], essential: ['woodcutter', 'hunter'] },
+  { name: 'Kelford', kind: 'village', races: { human: 1 }, cap: 110, trades: ['baker', 'miller', 'farmer', 'farmer', 'trader', 'mason', 'carter', 'guard'], essential: ['miller', 'baker'] },
+  { name: 'Millbrook', kind: 'village', races: { human: 1 }, cap: 70, trades: ['baker', 'miller', 'farmer', 'farmer'], essential: ['miller', 'baker'] },
+  { name: "Hollin's Ferry", kind: 'village', races: { human: 1 }, cap: 50, trades: ['ferryman', 'innkeeper', 'boatwright', 'woodcutter', 'hunter'], essential: ['woodcutter', 'hunter'] },
+  { name: 'Castle Aldermere', kind: 'seat', races: { human: 1 }, cap: 90, trades: ['guard', 'farmer', 'smith', 'servant'] },
+  { name: 'Concord Landing', kind: 'village', races: { human: .4, elf: .2, dwarf: .2, orc: .2 }, cap: 70, trades: ['carpenter', 'trader', 'healer', 'farmer', 'woodcutter', 'hunter'], essential: ['woodcutter', 'hunter'] },
+  { name: 'Port Cassel', kind: 'village', races: { human: .9, elf: .1 }, cap: 100, trades: ['sailor', 'docker', 'trader', 'clerk', 'woodcutter', 'hunter'], essential: ['woodcutter', 'hunter'] },
+  { name: 'Harrowgate Keep', kind: 'seat', races: { human: 1 }, cap: 60, trades: ['guard', 'farmer', 'servant'] },
+  { name: 'Greycrest', kind: 'village', races: { human: .8, dwarf: .2 }, cap: 50, trades: ['woodcutter', 'hunter', 'charcoal-burner', 'shepherd'], essential: ['woodcutter', 'hunter'] },
+  { name: 'Scarrow Hovel', kind: 'village', races: { human: 1 }, cap: 30, trades: ['woodcutter', 'hunter', 'trapper'], essential: ['woodcutter', 'hunter'] },
+  { name: 'Gullcove', kind: 'village', races: { human: 1 }, cap: 60, trades: ['fisher', 'boatwright', 'woodcutter', 'hunter', 'smuggler'], essential: ['woodcutter', 'hunter'] },
+  { name: 'Fort Greyhold', kind: 'garrison', races: { human: 1 }, cap: 40, trades: ['guard', 'guard', 'guard', 'smith', 'servant'] },
+  { name: 'Wreck Point', kind: 'garrison', races: { human: 1 }, cap: 8, trades: ['guard'] },
 ];
 
 // A few founders known for their part in the war. Placeholders, not canon: they show that a famous
@@ -474,7 +484,7 @@ function found(H) {
       for (const p of [husband, wife]) {
         setConstitution(seed, p, null, null);
         p.name = firstName(p.race, p.sex, p.id);
-        p.trade = pl.trades[rand(seed, T.foundTrade, p.id) * pl.trades.length | 0];
+        p.trade = p === husband && hh < (pl.essential || []).length ? pl.essential[hh] : pl.trades[rand(seed, T.foundTrade, p.id) * pl.trades.length | 0];   // the first households take the place's essential trades
         H.events.push({ y: 0, t: 'found', p: p.id, place: pl.name });
       }
       if (nb) { nb.used = true; (nb.sex === 'f' ? wife : husband).notable = nb.title; }
@@ -799,7 +809,7 @@ function officeList(H) {
   for (const pl of H.rules.places) if (!O.seats[pl.name]) {
     const race = Object.entries(pl.races).sort((a, b) => b[1] - a[1])[0][0];
     const seat = race === 'human' ? (PR.westPlaces.includes(pl.name) ? PR.west : PR.rest) : Object.keys(O.seats).find(s => O.seats[s].race === race);
-    for (const office of O.villages[race]) out.push(item(pl.name, office, 'village', seat, race));
+    for (const office of O.placePosts?.[pl.name] || O.villages[race]) out.push(item(pl.name, office, 'village', seat, race));
   }
   return H._officeList = out;
 }
@@ -1029,6 +1039,7 @@ function simulate(H, to) {
     // Deaths
     // Deaths: illness, injury and old age each have a yearly chance; one roll decides whether and which
     for (const p of living) {
+      if (p.death !== null) continue;                                           // hanged already this year
       const R = RACES[TEMP_RULES.lifespanRace(p)], a = age(p, y);
       const ill = (a < R.adult / 3 ? R.childIllness : R.illness * (1 + Math.max(0, a / R.life - .5))) * (p.jail ? RULES.prisonIllness : 1);   // the old, and prisoners, sicken more easily
       const hurt = a < R.adult / 2 ? R.injury * .3 : R.injury * (RISKY[p.trade] || 1);
@@ -1049,7 +1060,9 @@ function simulate(H, to) {
       if (age(p, y) !== R.adult) continue;
       const pl = PLACES[placeIndex[p.place]], f = p.father !== null ? H.people[p.father] : null, m = p.mother !== null ? H.people[p.mother] : null;
       const r = rand(seed, T.trade, y, p.id);
-      p.trade = r < RULES.tradeFromFather && f?.trade ? f.trade : r < RULES.tradeFromFather + RULES.tradeFromMother && m?.trade ? m.trade
+      // A trade the place has no one for comes first; otherwise a parent's, or one of the place's
+      const missing = (pl.essential || []).find(t => !alive.some(q => q !== p && q.place === p.place && !q.jail && q.death === null && q.trade === t && age(q, y) >= RACES[q.race].adult));
+      p.trade = missing && rand(seed, T.tradePick, y, p.id + 1) < .8 ? missing : r < RULES.tradeFromFather && f?.trade ? f.trade : r < RULES.tradeFromFather + RULES.tradeFromMother && m?.trade ? m.trade
         : pl.trades[rand(seed, T.tradePick, y, p.id) * pl.trades.length | 0];
       H.events.push({ y, t: 'trade', p: p.id, trade: p.trade });
       const crowded = (pop[key(p.place, p.race)] || 0) / Math.max(1, room(p.place, p.race));
@@ -1207,6 +1220,72 @@ function prisoners(H) {
   for (const id of H._living) { const p = H.people[id]; if (p.jail) (out[p.jail.at] ||= []).push(p.id); }
   return out;
 }
+// ---- Where everyone lives now ----
+// Every living person has one home. Families keep house together: a married couple with their unmarried
+// children, and a widowed parent grown old with a married child; anyone else alone. Where they live depends
+// on the place: a village has houses (a hunter's family has a shack in the woods); at a seat the ruler's
+// family lives in the keep (or the hold's hall, the Elder's hall, the chief's longhouse), office-holders'
+// families in rooms there, and everyone else in its quarters; soldiers (guards, warriors, elf wardens) at a seat or a
+// garrison sleep in the garrison, apart from their families. Prisoners are in the cells.
+// Returns { households: [{ id, place, kind, members, head }], of: { personId: householdId }, cells: [ids] }.
+const HOME_KINDS = {
+  ruler: { human: 'the keep', dwarf: "the thane's hall", elf: "the Elder's hall", orc: "the chief's longhouse" },
+  office: { human: 'rooms in the keep', dwarf: 'chambers off the great hall', elf: 'a tree hall', orc: 'a longhouse' },
+  quarters: { human: 'the castle quarters', dwarf: 'the hold chambers', elf: 'a tree hall', orc: 'a hut' },
+};
+function homes(H) {
+  const P = H.people, R = H.rules, O = R.offices, races = R.races, y = H.year;
+  const kindOf = name => R.places.find(q => q.name === name)?.kind || (O.seats[name] ? 'seat' : 'village');
+  const grown = p => y - p.birth >= races[p.race].adult;
+  const out = { households: [], of: {}, cells: [] }, live = [];
+  for (const id of H._living) { const p = P[id]; if (p.jail) out.cells.push(id); else live.push(p); }
+  const add = (place, members) => { const h = { id: out.households.length, place, kind: null, members, head: members[0] }; out.households.push(h); for (const m of members) out.of[m] = h.id; return h; };
+  // Couples first, then the unmarried, eldest first, joining a parent's household (or an old widowed
+  // parent joining a married child's), or keeping house alone
+  for (const p of live) { const s = spouseNow(H, p); if (s && !s.jail && s.place === p.place && p.id < s.id && out.of[p.id] === undefined) add(p.place, p.sex === 'm' ? [p.id, s.id] : [s.id, p.id]); }
+  const single = live.filter(p => out.of[p.id] === undefined).sort((a, b) => a.birth - b.birth || a.id - b.id);
+  const lateBirths = [];
+  for (const p of single) {
+    const par = [p.mother, p.father].filter(x => x !== null).map(x => P[x]).find(q => q.death === null && !q.jail && q.place === p.place && out.of[q.id] !== undefined);
+    if (par) { out.households[out.of[par.id]].members.push(p.id); out.of[p.id] = out.of[par.id]; continue; }
+    const old = y - p.birth > races[p.race].life * .6 && p.spouses.length;
+    const kid = old && H._children[p.id].map(c => P[c]).find(c => c.death === null && !c.jail && c.place === p.place && out.of[c.id] !== undefined && spouseNow(H, c));
+    if (kid) { out.households[out.of[kid.id]].members.push(p.id); out.of[p.id] = out.of[kid.id]; continue; }
+    if (!grown(p)) { lateBirths.push(p); continue; }                       // a child whose family isn't settled yet
+    add(p.place, [p.id]);
+  }
+  // Children left over (an orphan, or one whose parents live elsewhere) live with the nearest kin here, else alone
+  for (const p of lateBirths) {
+    const kin = [...new Set([p.mother, p.father].filter(x => x !== null).flatMap(x => [...H._children[x], P[x].mother, P[x].father]))]
+      .filter(x => x !== null && x !== p.id).map(x => P[x]).find(q => q.death === null && !q.jail && q.place === p.place && out.of[q.id] !== undefined);
+    if (kin) { out.households[out.of[kin.id]].members.push(p.id); out.of[p.id] = out.of[kin.id]; }
+    else add(p.place, [p.id]);
+  }
+  // Soldiers at a seat or a garrison sleep in its garrison
+  const garrison = {}, rules = p => (H._holds[p.id] || []).some(key => O.seats[key.split('|')[0]]?.ruler === key.split('|')[1]);
+  for (const p of live) if (!rules(p) && (kindOf(p.place) === 'seat' || kindOf(p.place) === 'garrison') && ['guard', 'warrior', 'warden'].includes(p.trade) && grown(p)) {
+    const hh = out.households[out.of[p.id]];
+    hh.members = hh.members.filter(m => m !== p.id);
+    if (hh.head === p.id) hh.head = hh.members[0] ?? null;
+    (garrison[p.place] ||= add(p.place, [])).members.push(p.id); out.of[p.id] = garrison[p.place].id;
+    garrison[p.place].kind = 'the garrison';
+  }
+  // What kind of home each household has
+  const rulerAt = {}; for (const [seat, S] of Object.entries(O.seats)) { const h = H._held[seat + '|' + S.ruler]; if (h) rulerAt[seat] = h.p; }
+  for (const h of out.households) {
+    if (h.kind) continue;
+    if (!h.members.length) { h.kind = 'empty'; continue; }
+    const k = kindOf(h.place), race = O.seats[h.place]?.race || P[h.head].race;
+    if (k === 'village') h.kind = h.members.some(m => P[m].trade === 'hunter' && grown(P[m])) && P[h.head].trade === 'hunter' ? 'a shack in the woods' : 'a house';
+    else if (k === 'garrison') h.kind = 'the garrison';
+    else if (h.members.includes(rulerAt[h.place])) h.kind = HOME_KINDS.ruler[race];
+    else if (h.members.some(m => (H._holds[m] || []).some(key => key.startsWith(h.place + '|')))) h.kind = HOME_KINDS.office[race];
+    else h.kind = HOME_KINDS.quarters[race];
+  }
+  out.households = out.households.filter(h => h.members.length);
+  out.households.forEach((h, i) => { h.id = i; for (const m of h.members) out.of[m] = i; });
+  return out;
+}
 // Every holding of an office, oldest first: { place, office, p, from, to (null while held), how, why, by?, for?, after? }
 function holdings(H) {
   const open = {}, out = [];
@@ -1246,6 +1325,14 @@ const life = p => `${p.birth}–${p.death ?? ''}`;
 // A title, as a link to the office's own page (everyone who has held it, and how)
 const officeLink = (place, office) => `<a class="office" data-office="${place}|${office}">${office} of ${place}</a>`;
 const brief = (id, withTitles = true) => { const p = H.people[id], t = p.death === null && withTitles ? H._holds[id] || [] : []; return `${link(id)} <span class="dim">${p.race}${p.heritage.length > 1 ? '*' : ''} ${life(p)}${p.trade ? ' · ' + p.trade : ''}</span>${t.length ? ' ' + t.map(k => officeLink(...k.split('|'))).join(', ') : ''}`; };
+// Where someone lives now (their household's home, from homes()), or where they lived
+const homeText = id => {
+  const p = H.people[id];
+  if (p.death !== null) return `lived in ${p.place}`;
+  if (p.jail) return `in the cells beneath ${p.jail.at}`;
+  const hm = H._homeCache ||= homes(H), h = hm.households[hm.of[id]];
+  return h ? `lives in ${h.kind === 'a house' || h.kind === 'a shack in the woods' ? h.kind + ' at' : h.kind + ' of'} ${h.place}${h.members.length > 1 && h.kind !== 'the garrison' ? ` (a household of ${h.members.length})` : ''}` : `lives in ${p.place}`;
+};
 const died = p => ['murder', 'execution', 'challenge'].includes(p.deathKind) ? p.cause : 'of ' + p.cause;
 
 function stats() {
@@ -1310,7 +1397,7 @@ function show(id) {
   $('card').innerHTML = `
     <h2>${name(id)} <span class="dim">#${id}</span>${p.notable ? ` <span class="star">★ ${p.notable}</span>` : ''}</h2>
     <div>${p.race}${p.heritage.length > 1 ? ` <span class="temp">(family of ${p.heritage.join(', ')}; race chosen by a temporary rule)</span>` : ''}, ${p.sex === 'f' ? 'female' : 'male'}, born ${p.birth} in ${p.birthPlace}${p.death !== null ? `, died ${p.death} aged ${p.death - p.birth}, ${died(p)}` : `, alive, aged ${H.year - p.birth}`} · constitution ${p.constitution.toFixed(2)}</div>
-    <div>${p.trade || 'no trade yet'} · lives in ${p.place} · generation ${p.gen}</div>
+    <div>${p.trade || 'no trade yet'} · ${homeText(id)} · generation ${p.gen}</div>
     ${deathPart}${killsPart}${crimePart}
     ${offs.length ? `<h3>Offices</h3><div>${offs.map(h => `${h.from}–${h.to ?? ''}: ${officeLink(h.place, h.office)} <span class="dim">${h.how}${h.after !== undefined ? ' from ' + link(h.after) : ''}${h.by !== undefined ? ' by ' + link(h.by) : ''}${h.for !== undefined ? ' for ' + link(h.for) : ''}${h.why ? '; ' + h.why : ''}</span>`).join('<br>')}</div>` : ''}
     ${myVerdicts.length ? `<h3>Verdicts given (${myVerdicts.length}, ${myVerdicts.filter(v => v.wrongful).length} wrongful)</h3><div class="dim">${myVerdicts.slice(0, 40).map(v => `${v.y}: ${link(v.p)}, ${v.crime}: ${v.sentence}${v.wrongful ? ' <span class="temp">(innocent)</span>' : ''}`).join('<br>')}${myVerdicts.length > 40 ? '<br>…' : ''}</div>` : ''}
@@ -1364,7 +1451,7 @@ $('search').oninput = search;
 // </chronicle>
 window.Chronicle = {
   simSource: () => { const t = document.getElementById('chronicleScript').textContent; return t.slice(t.indexOf('// <family-sim>'), t.indexOf('// </family-sim>')); },
-  newHistory, simulate, save,
+  newHistory, simulate, save, homes, holdings, history: () => H,
   // Take a finished history (saved text) for reading, and show it from the start
   use(text) { H = load(text); pickA = pickB = null; $('stats').textContent = `Year ${H.year} after the war\n` + stats(); $('search').value = ''; search(); $('card').innerHTML = '<p class="dim">Pick someone on the left. Click any name or title to follow it. Set A and B to see how two people are related.</p>'; },
   ready: () => H !== null,
@@ -2183,11 +2270,6 @@ function buildVillage(set, plan, rnd) {
     }
     return false;
   });
-  // Paint the village's own streets (network roads are already surfaced) and the square
-  for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
-    const sq = Math.hypot(x + .5 - C, z + .5 - C) < 6.5;
-    if (sq || !roads.length && nearRoad(x + .5, z + .5, ROAD_HALF)) set(x, -1, z, PATH);
-  }
   // Well
   for (let z = -1; z <= 1; z++) for (let x = -1; x <= 1; x++) {
     set(C + x, -1, C + z, x || z ? ROCK : WATER);
@@ -2199,16 +2281,17 @@ function buildVillage(set, plan, rnd) {
 
   // Cottages along each street, alternating sides, turned to face the road
   const used = new Uint8Array(N * N), models = [];
+  for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) if (Math.hypot(x + .5 - C, z + .5 - C) < 7.5) used[x + z * N] = 1;   // the square stays open
   const free = (x0, x1, z0, z1) => {
     if (x0 < 2 || z0 < 2 || x1 > N - 3 || z1 > N - 3) return false;
     for (let z = z0 - 1; z <= z1 + 1; z++) for (let x = x0 - 1; x <= x1 + 1; x++) if (used[x + z * N] || nearRoad(x + .5, z + .5, ROAD_HALF + 1.2)) return false;
     return true;
   };
   let side = 1;
-  for (const p of streets) for (let i = 1; i < p.length; i++) {
+  const placeAlong = (p, both) => { for (let i = 1; i < p.length; i++) for (let pass = 0; pass < (both ? 2 : 1); pass++) {
     const [ax, az] = p[i - 1], [bx, bz] = p[i];
     const len = Math.hypot(bx - ax, bz - az) || 1, ux = (bx - ax) / len, uz = (bz - az) / len;
-    if (Math.hypot(bx - C, bz - C) > C - 6) break;
+    if (!both && Math.hypot(bx - C, bz - C) > C - 6) continue;           // (lanes use the corners too)
     side = -side;
     const storeys = rnd() < .45 ? 2 : 1, w = storeys === 2 ? 8 + (rnd() * 3 | 0) * .5 : 7 + (rnd() * 3 | 0) * .5, d = 6 + (rnd() * 3 | 0) * .5;
     const nx = -uz * side, nz = ux * side, off = ROAD_HALF + 2 + d / 2, cx = bx + nx * off, cz = bz + nz * off;
@@ -2220,12 +2303,39 @@ function buildVillage(set, plan, rnd) {
     for (let lx = -w / 2 - 1; lx <= w / 2 + 1.01 && ok; lx += .7) for (let lz = -d / 2 - 6.3; lz <= d / 2 + 1.01 && ok; lz += .7) {
       const wx = cx + lx * c + lz * s, wz = cz - lx * s + lz * c, ix = Math.floor(wx), iz = Math.floor(wz);
       if (ix < 2 || iz < 2 || ix > N - 3 || iz > N - 3 || used[ix + iz * N]) ok = false;
-      else if (Math.abs(lx) <= w / 2 + .3 && Math.abs(lz) <= d / 2 + .3 && nearRoad(wx, wz, ROAD_HALF + .4)) ok = false;
+      else if (Math.abs(lx) <= w / 2 + .3 && Math.abs(lz) <= d / 2 + .3 ? nearRoad(wx, wz, ROAD_HALF + .4) : nearRoad(wx, wz, ROAD_HALF)) ok = false;   // the plot behind stays off the roads too
       else cells.push(ix + iz * N);
     }
     if (!ok) continue;
     for (const k of cells) used[k] = 1;
     models.push({ kind: 'cottage', x: cx, y: 0, z: cz, angle: yaw, w, d, storeys, seed: rnd() * 1e9 | 0 });
+  } };
+  // Lanes, so there are homes enough for the place's families: straight across the village, broken where
+  // a road or the square is in the way, a row of houses and plots either side of each (as many as needed)
+  const lanes = [], placed = () => models.filter(m => m.kind === 'cottage').length, firstLane = streets.length;
+  const usedNear = (x, z, r) => { for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) { const ix = Math.floor(x) + dx, iz = Math.floor(z) + dz; if (ix < 0 || iz < 0 || ix >= N || iz >= N || used[ix + iz * N]) return true; } return false; };
+  // (lanes run straight across the village, a row of houses and plots either side of each, nearest the square first)
+  const rows = [], net = streets.length;
+  for (let k = 0; 17 + k * 34 < C - 4; k++) for (const sgn of [1, -1]) rows.push(C + sgn * (17 + k * 34));
+  const a0 = rnd() < .5 ? 0 : Math.PI / 2, ux = Math.cos(a0), uz = Math.sin(a0);   // the lanes run along the village's edges, one way or the other
+  for (const off of rows) {
+    const d = off - C;
+    let arc = [];
+    const done = () => { if (arc.length >= 4) { lanes.push(arc); streets.push(arc); } arc = []; };
+    for (let t = -C; t <= C; t += 3) {
+      const x = C + ux * t - uz * d, z = C + uz * t + ux * d;
+      if (x < 4 || z < 4 || x > N - 4 || z > N - 4 || usedNear(x, z, 2) || nearRoad(x, z, ROAD_HALF + 1.5)) done(); else arc.push([x, z]);
+    }
+    done();
+  }
+  for (const p of streets.slice(0, firstLane)) placeAlong(p, false);
+  for (const p of lanes) { if (placed() >= plan.homes) break; placeAlong(p, true); }
+  // Paint the village's own streets and lanes (network roads are already surfaced) and the square
+  const onLane = (x, z) => lanes.some(p => { for (let i = 1; i < p.length; i++) { const [ax, az] = p[i - 1], [bx, bz] = p[i], dx = bx - ax, dz = bz - az, t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz || 1)));
+    if (Math.hypot(x - ax - dx * t, z - az - dz * t) < ROAD_HALF * .8) return true; } return false; });
+  for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
+    const sq = Math.hypot(x + .5 - C, z + .5 - C) < 6.5;
+    if (sq && Math.max(Math.abs(x - C), Math.abs(z - C)) > 1 || !sq && (!roads.length && nearRoad(x + .5, z + .5, ROAD_HALF) || onLane(x + .5, z + .5))) set(x, -1, z, PATH);
   }
   // A windmill (tower mill) at the edge of a farming village, door towards the square
   const millRoll = rnd() < .68;
@@ -2250,7 +2360,18 @@ function buildVillage(set, plan, rnd) {
     }
     models.push({ kind: 'stall', x: best.x, y: 0, z: best.z, angle: Math.atan2(-Math.cos(best.a), -Math.sin(best.a)) });
   }
-  return { torches, guards, models, village: { streets, radius: C - 3 } };
+  // Hunters' shacks: small huts out in the woods beyond the village, clear of the roads, on the ground as it lies
+  const shackAt = [];
+  for (let k = 0; k < 48 && shackAt.length < plan.shacks; k++) {
+    const a = k * 2.39996 + 1.3, r = C + 7 + (k % 3) * 3, x = C + Math.cos(a) * r, z = C + Math.sin(a) * r;
+    if (nearRoad(x, z, ROAD_HALF + 6) || shackAt.some(([sx, sz]) => Math.hypot(sx - x, sz - z) < 10) || models.some(m => Math.hypot(m.x - x, m.z - z) < 13)) continue;
+    let lo = Infinity;
+    for (const [dx, dz] of [[-3, -3], [3, -3], [-3, 3], [3, 3], [0, 0]]) lo = Math.min(lo, naturalHeightF(plan.ox + x + dx, plan.oz + z + dz));
+    if (lo < SEA + 1) continue;                                             // not in the water
+    shackAt.push([x, z]);
+    models.push({ kind: 'cottage', shack: true, x, y: Math.floor(lo) - plan.base, z, angle: Math.atan2(C - x, C - z), w: 6, d: 5.5, storeys: 1, seed: rnd() * 1e9 | 0 });
+  }
+  return { torches, guards, models, village: { streets, firstLane, radius: C - 3 } };
 }
 
 
@@ -2274,38 +2395,40 @@ const regionOf = v => Math.floor(v / REGION);
 
 // at: image pixel on the painted map. gate: the side a fort's gate or a tower's door faces.
 // mill: a village with a windmill farms; one without lives by woodcutting and hunting.
-// Places on the Vael stand back from the water, River Road towns on the west bank.
+// Places on the Vael stand back from the water, River Road towns on the west bank. A village's homes
+// (cottages) and shacks (hunters' huts in the woods outside) are enough for nine in ten of the histories
+// the family simulation makes for it; in a bigger one, families share. (To be laid out by hand later.)
 const PLACES = [
   // The Greyspine
   { name: 'Kharn Dolum', type: FORT, at: [724, 207], N: 48, gate: 'S', style: 'hold' },
-  { name: "Anvil's Rest", type: VILLAGE, at: [655, 238], mill: false },
+  { name: "Anvil's Rest", type: VILLAGE, at: [655, 238], mill: false, homes: 18, shacks: 5 },
   { name: 'the Cold Gallery', type: RUINS, at: [930, 250], N: 24 },
   // The Hollow
   { name: 'the Victory Fields', type: STONES, at: [706, 338], N: 22, stones: 'field' },
   { name: 'the Sunken Throne', type: RUINS, at: [668, 415], N: 56, style: 'throne' },
   { name: 'Oathstone', type: STONES, at: [690, 444], N: 8, stones: 'single' },
-  { name: 'Concord Landing', type: VILLAGE, at: [672, 522], mill: false },
+  { name: 'Concord Landing', type: VILLAGE, at: [672, 522], mill: false, homes: 22, shacks: 5 },
   // The Vael Marches
-  { name: "Hollin's Ferry", type: VILLAGE, at: [706, 563], mill: false },
-  { name: 'Kelford', type: VILLAGE, at: [681, 641], mill: true },
-  { name: 'Millbrook', type: VILLAGE, at: [671, 670], mill: true },
+  { name: "Hollin's Ferry", type: VILLAGE, at: [706, 563], mill: false, homes: 14, shacks: 4 },
+  { name: 'Kelford', type: VILLAGE, at: [681, 641], mill: true, homes: 32, shacks: 1 },
+  { name: 'Millbrook', type: VILLAGE, at: [671, 670], mill: true, homes: 21, shacks: 3 },
   { name: 'Castle Aldermere', type: FORT, at: [620, 708], N: 48, gate: 'E' },
-  { name: 'Greycrest', type: VILLAGE, at: [830, 610], mill: false },
+  { name: 'Greycrest', type: VILLAGE, at: [830, 610], mill: false, homes: 15, shacks: 5 },
   { name: 'Harrowgate Keep', type: FORT, at: [547, 703], N: 44, gate: 'E' },
-  { name: 'Scarrow Hovel', type: VILLAGE, at: [600, 690], mill: false },
+  { name: 'Scarrow Hovel', type: VILLAGE, at: [600, 690], mill: false, homes: 8, shacks: 4 },
   // The Wenmere
   { name: 'Aelith Vara', type: VILLAGE, at: [230, 420], N: 72, style: 'elf' },
   { name: 'the Silent Grove', type: STONES, at: [190, 335], N: 16, stones: 'ring' },
-  { name: 'Mistwater', type: VILLAGE, at: [522, 452], mill: false },
-  { name: 'Thornwick', type: VILLAGE, at: [570, 575], mill: false },
+  { name: 'Mistwater', type: VILLAGE, at: [522, 452], mill: false, homes: 15, shacks: 6 },
+  { name: 'Thornwick', type: VILLAGE, at: [570, 575], mill: false, homes: 20, shacks: 7 },
   // The Rustwaste
   { name: 'Gor Marakh', type: FORT, at: [1150, 400], N: 56, gate: 'W', style: 'orc' },
-  { name: 'Ashen Camp', type: VILLAGE, at: [1100, 600], mill: false },
-  { name: 'Dust Wells', type: VILLAGE, at: [930, 760], mill: false },
+  { name: 'Ashen Camp', type: VILLAGE, at: [1100, 600], mill: false, homes: 13, shacks: 5 },
+  { name: 'Dust Wells', type: VILLAGE, at: [930, 760], mill: false, homes: 18, shacks: 5 },
   { name: 'the Broken Bastion', type: RUINS, at: [900, 440], N: 28 },
   // The Saltline
-  { name: 'Port Cassel', type: VILLAGE, at: [515, 900], mill: false },
-  { name: 'Gullcove', type: VILLAGE, at: [706, 969], mill: false },
+  { name: 'Port Cassel', type: VILLAGE, at: [515, 900], mill: false, homes: 26, shacks: 6 },
+  { name: 'Gullcove', type: VILLAGE, at: [706, 969], mill: false, homes: 16, shacks: 6 },
   { name: 'Wreck Point', type: TOWER, at: [184, 872], gate: 'E' },
 ];
 const PLACE_N = { [FORT]: 44, [TOWER]: 7, [RUINS]: 20, [VILLAGE]: 56, [STONES]: 12 };
@@ -2315,7 +2438,8 @@ const plans = new Map(), placeRegions = new Map();   // home region -> plan; reg
 const placesIn = (rx, rz) => placeRegions.get(chunkKey(rx, rz)) || [];
 const planFor = (rx, rz) => plans.get(chunkKey(rx, rz)) || null;
 for (const p of PLACES) {
-  const type = p.type, N = p.N || PLACE_N[type], S = type === TOWER ? 7 : N, [cx, cz] = mapToWorld(...p.at);
+  // A village grows with the homes it needs
+  const type = p.type, N = p.N || (p.homes ? Math.max(PLACE_N[type], 2 * Math.round(9 * Math.sqrt(p.homes) + 10)) : PLACE_N[type]), S = type === TOWER ? 7 : N, [cx, cz] = mapToWorld(...p.at);
   const ox = Math.round(cx - S / 2), oz = Math.round(cz - S / 2);
   const pad = type === FORT ? 4 : 2, blend = type === FORT || type === VILLAGE ? 14 : 9;
   // Stand on the average of the natural ground over the footprint, clear of the water
@@ -2324,7 +2448,7 @@ for (const p of PLACES) {
   const base = Math.max(SEA + 2, Math.min(H - 24, Math.round(sum / n))), rnd = mulberry32(hash2(ox, oz) * 1e9 | 0);
   const plan = {
     type, N, ox, oz, base, pad, blend, rot: GATE_ROT[type]?.[p.gate] ?? 0, seed: rnd() * 1e9 | 0,
-    mat: climate(cx, cz).desert > .5 ? SANDSTONE : BRICK, towerH: 11 + (rnd() * 4 | 0), mill: p.mill, stones: p.stones, style: p.style,
+    mat: climate(cx, cz).desert > .5 ? SANDSTONE : BRICK, towerH: 11 + (rnd() * 4 | 0), mill: p.mill, stones: p.stones, style: p.style, homes: p.homes || 0, shacks: p.shacks || 0,
     name: STRUCT_NAMES[type], title: p.name, cx: ox + S / 2, cz: oz + S / 2, rx: regionOf(ox), rz: regionOf(oz),
     _edits: null, decor: null, edits() { return this._edits || buildPlan(this); },
   };
@@ -2373,7 +2497,7 @@ function buildPlan(plan) {
     models: (extra.models || []).map(m => ({ ...m, pos: toWorld([m.x, m.y, m.z]), angle: (m.angle || 0) - plan.rot * Math.PI / 2 })),
     village: extra.village && {
       streets: extra.village.streets.map(p => p.map(([x, z]) => [x + plan.ox, z + plan.oz])),
-      radius: extra.village.radius, centre: toWorld([plan.N / 2, 0, plan.N / 2]),
+      radius: extra.village.radius, firstLane: extra.village.firstLane ?? Infinity, centre: toWorld([plan.N / 2, 0, plan.N / 2]),
     },
     guards: extra.guards.map(g => {
       const a = toWorld(g.a), b = g.b ? toWorld(g.b) : null;
@@ -3453,7 +3577,7 @@ addTorch(CX, G + 3.4, 22.5);                             // inside the main keep
 // Guards: patrol between a and b, or stand still facing `face` (radians)
 const guards = [];
 const guardGeo = new Map(), guardMat = new Map();
-function makeGuard(kind = 'guard', color = 0x3c6e8a, job = null) {
+function makeGuard(kind = 'guard', color = 0x3c6e8a, job = null, look = null) {
   const g = new THREE.Group();
   let sack = null, bow = null;
   const box = (w, h, d, c, x, y, z) => {
@@ -3536,11 +3660,32 @@ function makeGuard(kind = 'guard', color = 0x3c6e8a, job = null) {
     g.add(box(.05, 2.4, .05, 0x5a4028, .35, 1.2, .1));      // spear
     g.add(box(.1, .25, .1, 0xaaaaaa, .35, 2.5, .1));
   }
+  // A villager or resident looks their race, and children are small
+  if (look && kind === 'villager') {
+    if (look.race === 'orc') {
+      g.add(box(.33, .33, .33, 0x6a8a4a, 0, 1.65, 0));
+      for (const x of [-.08, .08]) g.add(box(.04, .09, .04, 0xe4dcc4, x, 1.56, .16));
+      g.scale.set(1.12, 1.04, 1.12);
+    } else if (look.race === 'dwarf') {
+      if (look.sex === 'm' && look.grown) g.add(box(.3, .38, .08, 0x8a5a2a, 0, 1.4, .17));   // beard
+      g.scale.set(1.1, .78, 1.1);
+    } else if (look.race === 'elf') {
+      g.add(box(.32, .3, .32, 0xe8e0c0, 0, 1.73, -.03)); g.add(box(.3, .32, .08, 0xe8e0c0, 0, 1.46, -.15));   // long pale hair
+      g.scale.set(.92, 1.1, .92);
+    }
+    if (look.size < 1) g.scale.multiplyScalar(look.size);
+  }
   scene.add(g);
   return { g, legs, sack, bow };
 }
+// How someone from the history looks: race, sex, and how grown they are
+function lookOf(id) {
+  if (!FOLK || id === undefined) return null;
+  const p = FOLK.H.people[id], R = FOLK.H.rules.races[p.race], age = FOLK.H.year - p.birth;
+  return { race: p.race, sex: p.sex, grown: age >= R.adult, size: age >= R.adult ? 1 : .45 + .55 * Math.max(0, age) / R.adult };
+}
 function addGuard(a, b, speed, face = 0, home = null) {
-  const guard = makeGuard(home?.kind, home?.color, home?.person?.job);
+  const guard = makeGuard(home?.kind, home?.color, home?.person?.job, lookOf(home?.person?.id));
   guard.a = new THREE.Vector3(...a); guard.b = b && new THREE.Vector3(...b);
   guard.speed = speed; guard.t = rand() * 10; guard.face = face; guard.home = home;
   guard.g.position.copy(guard.a);
@@ -3549,14 +3694,15 @@ function addGuard(a, b, speed, face = 0, home = null) {
 }
 function removeGuard(gd) { scene.remove(gd.g); gd.bubble?.remove(); guards.splice(guards.indexOf(gd), 1); }
 
-for (const [a, b, speed] of [
+// Fort Greyhold's guard posts, manned by its garrison from the history (see startSeat)
+const MAIN_POSTS = [
   [[14, 7, 9.5], [50, 7, 9.5], 1.4],
   [[54.5, 7, 15], [54.5, 7, 47], 1.2],
   [[14.5, 7, 54.5], [24, 7, 54.5], 1.0],
   [[19, 0, 33], [45, 0, 33], 1.3],
   [[CX - 3.2, 0, F1 + 2], null, 0],
   [[CX + 3.2, 0, F1 + 2], null, 0],
-]) addGuard([a[0], a[1] + G, a[2]], b && [b[0], b[1] + G, b[2]], speed, 0, { title: MAIN_TITLE });
+].map(([a, b, speed]) => ({ a: [a[0], a[1] + G, a[2]], b: b && [b[0], b[1] + G, b[2]], speed, face: 0, kind: 'guard' }));
 
 // ---------------------------------------------------------------------------
 // Models: windmill sails, boats and carts, built from boxes and cylinders
@@ -4806,6 +4952,15 @@ const FIRST_NAMES = ['Ada', 'Bram', 'Cora', 'Dunstan', 'Edda', 'Fenn', 'Gilda', 
   'Quill', 'Rosalind', 'Silas', 'Tamsin', 'Ulric', 'Vera', 'Wat', 'Yara', 'Alwin', 'Bess', 'Cuthbert', 'Dilys', 'Elric', 'Freya'];
 const FAMILY_NAMES = ['Thorne', 'Miller', 'Ashby', 'Cole', 'Fletcher', 'Greaves', 'Hollins', 'Marsh', 'Pike', 'Rook', 'Tanner', 'Webb', 'Yates', 'Brook', 'Dale'];
 const villages = new Set();
+// The world's people, from the history (set once it's built, before the game starts): the history H, each
+// household's home (FOLK.homes, from the family simulation's homes()), and the households of each place
+let FOLK = null;
+const holdings = H => window.Chronicle.holdings(H);
+function makeWorld(H, hm) {
+  const byPlace = new Map();
+  for (const h of hm.households) { if (!byPlace.has(h.place)) byPlace.set(h.place, []); byPlace.get(h.place).push(h); }
+  return { H, homes: hm, byPlace };
+}
 const activeHouses = new Set(), houseAwake = new Map(), millBusy = new Map();
 const millKey = pos => `${Math.round(pos[0])},${Math.round(pos[2])}`;
 
@@ -4824,7 +4979,7 @@ function snapshotVillage(V) {
     kind: V.kind, runAt: V.runAt, lastCart: V.lastCart,
     houses: V.houses.map(h => ({ seed: h.m.seed, coins: h.coins, stock: { ...h.stock }, boughtDay: h.boughtDay, ateDay: h.ateDay, work: h.work, huntDay: h.huntDay,
       field: h.field && { stage: h.field.stage, sownAt: h.field.sownAt, work: h.field.work, stubble: h.field.stubble },
-      people: h.people.map(p => ({ name: p.name, job: p.job, jitter: p.jitter, firstUp: p.firstUp, color: p.color, carrying: p.carrying || 0, carryKind: p.carryKind || null })) })),
+      people: h.people.map(p => ({ id: p.id, name: p.name, job: p.job, trade: p.trade, jitter: p.jitter, firstUp: p.firstUp, color: p.color, carrying: p.carrying || 0, carryKind: p.carryKind || null })) })),
     millStock: { ...V.millStock }, grind: V.grind,
     bakery: V.bakery && { flour: V.bakery.flour, bread: V.bakery.bread, batch: V.bakery.batch, soldToday: V.bakery.soldToday, soldDay: V.bakery.soldDay,
       store: { ...V.bakery.store }, cart: V.bakery.cart, lastRun: V.bakery.lastRun },
@@ -4841,7 +4996,8 @@ function startVillage(plan) {
   V.ring.forEach((n, i) => link(n, V.ring[(i + 1) % 8]));
   // Streets: a point every ~4 blocks out to the village edge, joined to the square
   const chains = [];
-  for (const p of info.streets) {
+  for (const [si, p] of info.streets.entries()) {
+    const lane = si >= info.firstLane;                     // a lane: joined to the streets at both ends, not to the square
     let prev = null;
     const chain = [];
     chains.push(chain);
@@ -4850,16 +5006,24 @@ function startVillage(plan) {
       for (let k = 0; k < steps; k++) {
         const t = k / steps, x = ax + (bx - ax) * t, z = az + (bz - az) * t, r = Math.hypot(x - Cx, z - Cz);
         if (r < 5) continue;
-        if (r > info.radius) break outer;
-        const n = node(x, base, z, 'street');
-        if (!prev) chain.push(nearest(x, z, m => m.tag === 'square'));
-        link(prev || chain[0], n); prev = n; chain.push(n);
+        if (r > info.radius && !lane) break outer;
+        const n = node(x, base, z, lane ? 'lane' : 'street');
+        if (!prev && !lane) chain.push(nearest(x, z, m => m.tag === 'square'));
+        if (prev || !lane) link(prev || chain[0], n);
+        prev = n; chain.push(n);
       }
+    }
+    // A lane joins the streets where its ends meet one (within a few blocks), or failing that at its nearest point
+    if (lane && chain.length) {
+      const other = m => (m.tag === 'street' || m.tag === 'square' || m.tag === 'lane') && !chain.includes(m);
+      let joined = false;
+      for (const e of [chain[0], chain.at(-1)]) { const m = nearest(e.x, e.z, other); if (m && Math.hypot(m.x - e.x, m.z - e.z) < 7) { link(e, m); joined = true; } }
+      if (!joined) { let best = null; for (const e of chain) { const m = nearest(e.x, e.z, other); if (m && (!best || Math.hypot(m.x - e.x, m.z - e.z) < best.d)) best = { e, m, d: Math.hypot(m.x - e.x, m.z - e.z) }; } if (best) link(best.e, best.m); }
     }
   }
   startMerchantRoute(V, chains);
   V.edge = V.merchantRoute?.[0] || chains.reduce((a, b) => (b.length > a.length ? b : a), []).at(-1);
-  const toStreet = n => link(n, nearest(n.x, n.z, m => m.tag === 'street' || m.tag === 'square'));
+  const toStreet = n => link(n, nearest(n.x, n.z, m => m.tag === 'street' || m.tag === 'lane' || m.tag === 'square'));
   // Houses: door, rooms, stairs and bed, plus a path round the outside to the plot behind
   for (const m of info.cottages) {
     const L = cottagePlan(m), c = Math.cos(m.angle), s = Math.sin(m.angle), [ox, oy, oz] = m.pos;
@@ -4965,6 +5129,105 @@ function stopVillage(V) {
   for (const w of V.workViews) scene.remove(w.group);
   if (V.piles) for (const g of [...V.piles.wheat, ...V.piles.flour]) scene.remove(g);
   villages.delete(V);
+}
+
+// ---- Seats and garrisons: the castles, holds, the elf city, the orc town and the forts ----
+// Everyone the history has living at one of these is there. Soldiers man its guard posts, by day or by
+// night in turn (a garrison too small for every post leaves some unmanned); by day the ruler, the
+// office-holders and a share of everyone else are out about the place, and the rest are indoors: in the
+// keep and its rooms, the hall's chambers, the tree halls or the huts (see homes() in the family simulation).
+const seats = new Set();
+const SEAT_KIND = { human: 'guard', dwarf: 'dwarf', elf: 'elf', orc: 'orc' };
+// Fort Greyhold isn't one of the places: its plan for the purposes of who lives there
+const MAIN_SEAT_PLAN = { title: MAIN_TITLE, ox: F0, oz: F0, N: F1 - F0, base: G, cx: CX, cz: (F0 + F1) / 2, decor: { guards: MAIN_POSTS } };
+const isSeat = plan => !!FOLK && (plan === MAIN_SEAT_PLAN || plan.type !== VILLAGE || plan.style === 'elf') && FOLK.byPlace.has(plan.title);
+function startSeat(plan) {
+  const H = FOLK.H, R = H.rules, O = R.offices, P = H.people;
+  const S = { plan, people: [], shown: new Map(), slot: null, points: null };
+  for (const hh of FOLK.byPlace.get(plan.title) || []) for (const id of hh.members) {
+    const hp = P[id], titles = (H._holds[id] || []).map(k => k.split('|')).filter(([pl]) => pl === plan.title).map(([, o]) => o);
+    const ruler = titles.includes(O.seats[plan.title]?.ruler), soldier = hh.kind === 'the garrison';
+    const grown = H.year - hp.birth >= R.races[hp.race].adult;
+    const role = titles.length ? `${titles[0]} of ${plan.title}` : soldier ? (hp.trade === 'warrior' ? 'warrior' : 'guard') + ` of ${plan.title}` : grown ? hp.trade || 'no trade' : 'child';
+    S.people.push({ id, name: `${hp.name} ${hp.surname}`, job: 'resident', resident: true, role, plan, home: hh, ruler, office: titles.length > 0, soldier, grown });
+  }
+  S.soldiers = S.people.filter(p => p.soldier).sort((a, b) => a.id - b.id);
+  seats.add(S);
+  updateSeat(S);
+  return S;
+}
+function stopSeat(S) { for (const gd of S.shown.values()) removeGuard(gd); S.shown.clear(); seats.delete(S); }
+// Open ground about the place to stand and walk on, once all of it has loaded
+function seatPoints(S) {
+  const pl = S.plan, n = pl.N || 7, out = [];
+  for (let cz = pl.oz >> 4; cz <= (pl.oz + n) >> 4; cz++) for (let cx = pl.ox >> 4; cx <= (pl.ox + n) >> 4; cx++) if (!chunks.get(chunkKey(cx, cz))?.decor) return null;
+  for (let z = pl.oz + 3; z < pl.oz + n - 3; z += 2.5) for (let x = pl.ox + 3; x < pl.ox + n - 3; x += 2.5) {
+    const y = surfaceY(Math.floor(x), Math.floor(z));
+    if (Math.abs(y - pl.base) > 1.5 || collides(x, y + .05, z) || colliderPoint(x, y + .5, z) || colliderPoint(x, y + 1.5, z)) continue;
+    out.push([x, y, z]);
+  }
+  return out;
+}
+const clearWalk = (a, b) => { for (let t = .1; t < 1; t += .1) { const x = a[0] + (b[0] - a[0]) * t, z = a[2] + (b[2] - a[2]) * t, y = a[1] + (b[1] - a[1]) * t; if (colliderPoint(x, y + .5, z) || collides(x, y + .05, z)) return false; } return true; };
+// Who is out now, refreshed every couple of game hours (and at dawn and dusk)
+function updateSeat(S) {
+  const h = env.time, day = h >= 7 && h < 20, slot = `${env.day}:${day ? Math.floor(h / 2) : 'night'}`;
+  if (slot === S.slot) return;
+  S.points ??= seatPoints(S);
+  S.slot = S.points ? slot : null;                               // try again until the place has loaded
+  const want = new Map(), posts = S.plan.decor.guards || [];
+  // The watch: half the soldiers by day, the other half by night (all of them if there's only one)
+  const watch = S.soldiers.filter((p, i) => S.soldiers.length < 2 ? day : i % 2 === (day ? 0 : 1));
+  posts.forEach((post, i) => { const p = watch[i]; if (p) want.set(p.id, { p, post }); });
+  if (day && S.points?.length) {
+    const others = S.people.filter(p => !want.has(p.id) && !p.ruler && !p.office), share = Math.min(1, 16 / Math.max(1, others.length));
+    const out = [...S.people.filter(p => p.ruler || p.office), ...others.filter(p => hash2(p.id * 7 + env.day, Math.floor(h / 2) * 13) < share)].slice(0, 24);
+    for (const p of out) {
+      const r = mulberry32((p.id * 9973 + env.day * 31 + Math.floor(h / 2)) >>> 0), a = S.points[r() * S.points.length | 0];
+      const near = S.points.filter(q => q !== a && Math.hypot(q[0] - a[0], q[2] - a[2]) < 9 && clearWalk(a, q)), b = near.length && r() < .6 ? near[r() * near.length | 0] : null;
+      want.set(p.id, { p, spot: { a, b, speed: b ? .7 + r() * .4 : 0, face: r() * Math.PI * 2 } });
+    }
+  }
+  for (const [id, gd] of S.shown) if (!want.has(id) || (want.get(id).post ? gd.post !== want.get(id).post : gd.post)) { removeGuard(gd); S.shown.delete(id); }
+  for (const [id, w] of want) {
+    if (S.shown.has(id)) continue;
+    const at = w.post || w.spot, race = FOLK.H.people[id].race;
+    const kind = w.post || w.p.soldier ? SEAT_KIND[race] || 'guard' : 'villager';
+    const gd = addGuard(at.a, at.b, at.speed, at.face ?? 0, { title: S.plan.title, plan: S.plan, kind, color: 0x5a5a6a + (id % 5) * 0x0a0a04, person: w.p });
+    gd.post = w.post || null;
+    S.shown.set(id, gd);
+  }
+}
+function updateSeats() {
+  if (!FOLK) return;
+  const nearMain = Math.hypot(P.pos.x - CX, P.pos.z - CX) < 220;
+  const main = [...seats].find(S => S.plan === MAIN_SEAT_PLAN);
+  if (nearMain && !main) startSeat(MAIN_SEAT_PLAN); else if (!nearMain && main) stopSeat(main);
+  for (const S of seats) updateSeat(S);
+}
+// How one person of the history speaks of another in their household: 'my mother', 'my brother', 'my son-in-law'...
+function kinWord(p, q) {
+  const P = FOLK.H.people, f = q.sex === 'f', par = x => [x.mother, x.father].filter(i => i !== null), wed = (a, b) => a.spouses.some(s => s.id === b.id);
+  if (par(p).includes(q.id)) return f ? 'my mother' : 'my father';
+  if (wed(p, q)) return f ? 'my wife' : 'my husband';
+  if (par(q).includes(p.id)) return f ? 'my daughter' : 'my son';
+  if (par(p).some(i => par(q).includes(i))) return f ? 'my sister' : 'my brother';
+  if (par(p).some(i => par(P[i]).includes(q.id))) return f ? 'my grandmother' : 'my grandfather';
+  if (par(q).some(i => par(P[i]).includes(p.id))) return f ? 'my granddaughter' : 'my grandson';
+  if (p.spouses.some(s => par(P[s.id]).includes(q.id))) return f ? 'my mother-in-law' : 'my father-in-law';
+  if (q.spouses.some(s => par(P[s.id]).includes(p.id))) return f ? 'my daughter-in-law' : 'my son-in-law';
+  if (par(p).some(i => par(P[i]).some(g => par(q).some(j => par(P[j]).includes(g)))) ) return 'my cousin';
+  return 'my kin';
+}
+// What a resident of a seat says about themselves, from the history
+function residentAbout(p) {
+  const H = FOLK.H, hp = H.people[p.id], age = H.year - hp.birth, P = H.people;
+  const kin = p.home.kind === 'the garrison' ? [] : p.home.members.filter(m => m !== p.id).map(m => P[m]);
+  const rel = q => kinWord(hp, q);
+  const who = p.ruler ? `I'm ${p.name}, ${p.role}.` : p.office ? `I'm ${p.name}, ${p.role}.` : p.soldier ? `${p.name}, of the garrison here.` : p.grown ? `I'm ${p.name}. I'm a ${hp.trade || 'labourer'} here.` : `I'm ${hp.name}. I'm ${age}${hp.race !== 'human' ? `, and not yet grown for ${hp.race === 'elf' ? 'an elf' : 'a ' + hp.race}` : ''}.`;
+  const home = p.home.kind === 'the garrison' ? 'I sleep in the garrison with the others.' : `I live in ${p.home.kind}${kin.length ? ` with ${andList(kin.slice(0, 4).map(q => `${rel(q)} ${q.name}`))}` : ''}.`;
+  const held = p.ruler && (() => { const hs = holdings(H).filter(x => x.place === p.plan.title && x.p === p.id && x.to === null)[0]; return hs ? ` I've held it since ${hs.from}${hs.after !== undefined ? `, after ${P[hs.after].name} ${P[hs.after].surname}` : ''}.` : ''; })();
+  return `${who}${held || ''} ${home}`;
 }
 
 // The daily routine: what someone should be doing at hour h
@@ -5380,7 +5643,10 @@ function updateMerchant(V, dt) {
 function makeMerchant(V) {
   const r = mulberry32((V.plan.seed ^ env.day * 7919) >>> 0), from = nearestVillageWith(V, () => true);
   const fromMill = from && (from.edits(), from.decor.models.some(m => m.kind === 'windmill'));
-  const person = { name: `${FIRST_NAMES[r() * FIRST_NAMES.length | 0]} ${FAMILY_NAMES[r() * FAMILY_NAMES.length | 0]}`, job: 'merchant', village: V,
+  // A trader from that village (or, failing one, any grown-up there), as the history has them
+  const folk = (FOLK.byPlace.get(from?.title) || []).flatMap(h => h.members).map(id => FOLK.H.people[id]).filter(q => FOLK.H.year - q.birth >= FOLK.H.rules.races[q.race].adult);
+  const traders = folk.filter(q => q.trade === 'trader'), pool = traders.length ? traders : folk, trader = pool[r() * pool.length | 0];
+  const person = { id: trader?.id, name: trader ? `${trader.name} ${trader.surname}` : `${FIRST_NAMES[r() * FIRST_NAMES.length | 0]} ${FAMILY_NAMES[r() * FAMILY_NAMES.length | 0]}`, job: 'merchant', village: V,
     from: from ? from.title : 'the next valley', coins: 150 + (r() * 100 | 0),
     goods: { wheatSeed: 6 + (r() * 6 | 0), flour: fromMill ? 4 + (r() * 6 | 0) : 2, bread: 3 + (r() * 5 | 0), wheat: 2 + (r() * 4 | 0) } };
   const cart = makeCart(0x6a3a5a);
@@ -5520,36 +5786,60 @@ function villageNews(V) {
 
 // A village's roster as plain data: who lives where, their jobs, stock, coins and fields. It exists
 // whether or not the village is loaded, so trade can reach villages you've never visited.
+// A village's people are the history's: each family the history has living here (see homes() in the
+// family simulation) keeps house in one of its cottages, a hunter's family in a shack in the woods, and
+// in a bigger history than the village has homes for, families share. Each person keeps their name, race,
+// age and trade; the trades the village's work needs (baker, miller, farmer, woodcutter, hunter) do that
+// work, and everyone else keeps house and goes about the village.
 function rosterFor(plan) {
   const key = placeKey(plan);
   if (villageMemory.has(key)) return villageMemory.get(key);
   plan.edits();
   const models = plan.decor.models, mill = models.find(m => m.kind === 'windmill'), T = gameHours();
   const rnd = mulberry32(plan.seed ^ 0x51ab1e), tunics = [0x3c6e8a, 0x6a8a3c, 0x8a6a3c, 0x7a4a6a, 0x9a8a5a, 0x4a4a7a];
-  const houses = models.filter(m => m.kind === 'cottage').map(m => {
-    const fam = FAMILY_NAMES[rnd() * FAMILY_NAMES.length | 0], n = m.storeys === 2 ? 2 + (rnd() < .4 ? 1 : 0) : 1 + (rnd() < .5 ? 1 : 0), people = [];
-    for (let k = 0; k < n; k++) people.push({ name: `${FIRST_NAMES[rnd() * FIRST_NAMES.length | 0]} ${fam}`, job: 'homemaker', jitter: (rnd() - .5) * .8, firstUp: k === 0, color: tunics[rnd() * tunics.length | 0] });
-    return { seed: m.seed, m, coins: 15 + (rnd() * 25 | 0), stock: {}, people, field: null };
-  });
-  const bakeryH = houses.find(h => h.m.bakery);
-  let bakery = null;
-  if (bakeryH) { bakeryH.people[0].job = 'baker'; bakeryH.coins += 25; bakery = { flour: 2 + (rnd() * 3 | 0), bread: 4 + (rnd() * 6 | 0), batch: 0, soldToday: 0, soldDay: env.day, store: {}, cart: null }; }
+  const W = FOLK, HP = W.H.people, families = (W.byPlace.get(plan.title) || []).map(h => ({ ...h, members: [...h.members] }));
+  const cottages = models.filter(m => m.kind === 'cottage' && !m.shack), shacks = models.filter(m => m.shack);
+  const houses = [...cottages, ...shacks].map(m => ({ seed: m.seed, m, coins: 15 + (rnd() * 25 | 0), stock: {}, people: [], field: null, fams: [] }));
+  const home = m => houses.find(h => h.m === m), trades = f => f.members.map(id => HP[id].trade);
+  const grown = id => W.H.year - HP[id].birth >= W.H.rules.races[HP[id].race].adult;
+  const take = (list, test) => { const i = list.findIndex(test); return i < 0 ? null : list.splice(i, 1)[0]; };
+  const left = [...families].sort((a, b) => b.members.length - a.members.length || a.id - b.id);
+  // The baker's family in the bakery, the miller's nearest the mill, hunters in the shacks; then the
+  // biggest families in the biggest cottages
+  const bakeryM = cottages.find(m => m.bakery);
+  if (bakeryM) { const f = take(left, f => f.members.some(id => HP[id].trade === 'baker' && grown(id))); if (f) home(bakeryM).fams.push(f); }
   if (mill) {
-    // A farming village: the miller lives nearest the mill, and at least half the rest farm
-    const others = houses.filter(h => h !== bakeryH), d = h => Math.hypot(h.m.pos[0] - mill.pos[0], h.m.pos[2] - mill.pos[2]);
-    const mh = others.reduce((a, b) => d(b) < d(a) ? b : a, others[0]);
-    if (mh) { mh.people[0].job = 'miller'; mh.stock.wheatSeed = 3 + (rnd() * 3 | 0); }
-    const rest = others.filter(h => h.people[0].job === 'homemaker');
-    rest.forEach((h, i) => { if (i < Math.max(1, Math.ceil(rest.length / 2))) { h.people[0].job = 'farmer'; h.stock.wheatSeed = 2 + (rnd() * 4 | 0); } });
-  } else {
-    // A forest village: a woodcutter and a hunter, and no way of growing grain
-    if (houses[0]) { houses[0].people[0].job = 'woodcutter'; houses[0].stock.lumber = 3 + (rnd() * 4 | 0); }
-    if (houses[1]) { houses[1].people[0].job = 'hunter'; houses[1].stock.meat = 2 + (rnd() * 3 | 0); houses[1].stock.hide = 1 + (rnd() * 2 | 0); houses[1].stock.arrows = MAX_ARROWS; }
+    const d = m => Math.hypot(m.pos[0] - mill.pos[0], m.pos[2] - mill.pos[2]), mm = cottages.filter(m => !m.bakery).sort((a, b) => d(a) - d(b))[0];
+    const f = mm && take(left, f => f.members.some(id => HP[id].trade === 'miller' && grown(id))); if (f) home(mm).fams.push(f);
   }
+  for (const m of shacks) { const f = take(left, f => f.kind === 'a shack in the woods'); if (f) home(m).fams.push(f); }
+  const free = houses.filter(h => !h.fams.length && !h.m.shack).sort((a, b) => b.m.storeys - a.m.storeys || b.m.w * b.m.d - a.m.w * a.m.d);
+  for (const h of free) { const f = left.shift(); if (f) h.fams.push(f); }
+  // More families than homes: each of the rest lodges with the household that has the most room
+  for (const f of left) { const h = houses.filter(x => x.fams.length).sort((a, b) => a.fams.reduce((n, x) => n + x.members.length, 0) - b.fams.reduce((n, x) => n + x.members.length, 0))[0]; if (h) h.fams.push(f); }
+  // The people, and the work their trades give them here
+  let baker = false, miller = false;
+  for (const h of houses) {
+    for (const f of h.fams) for (const id of f.members) {
+      const hp = HP[id], adult = grown(id);
+      let job = !adult ? 'child' : 'homemaker';
+      if (adult && hp.trade === 'baker' && h.m.bakery && !baker) { job = 'baker'; baker = true; }
+      else if (adult && hp.trade === 'miller' && mill && !miller) { job = 'miller'; miller = true; }
+      else if (adult && hp.trade === 'farmer' && mill) job = 'farmer';
+      else if (adult && (hp.trade === 'woodcutter' || hp.trade === 'hunter')) job = hp.trade;
+      h.people.push({ id, name: `${hp.name} ${hp.surname}`, job, trade: hp.trade, jitter: (rnd() - .5) * .8, firstUp: !h.people.length, color: tunics[rnd() * tunics.length | 0] });
+    }
+    if (h.people.some(p => p.job === 'baker')) h.coins += 25;
+    if (h.people.some(p => p.job === 'miller')) h.stock.wheatSeed = 3 + (rnd() * 3 | 0);
+    else if (h.people.some(p => p.job === 'farmer')) h.stock.wheatSeed = 2 + (rnd() * 4 | 0);
+    if (h.people.some(p => p.job === 'woodcutter')) h.stock.lumber = 3 + (rnd() * 4 | 0);
+    if (h.people.some(p => p.job === 'hunter')) { h.stock.meat = 2 + (rnd() * 3 | 0); h.stock.hide = 1 + (rnd() * 2 | 0); h.stock.arrows = MAX_ARROWS; }
+  }
+  const bakery = baker ? { flour: 2 + (rnd() * 3 | 0), bread: 4 + (rnd() * 6 | 0), batch: 0, soldToday: 0, soldDay: env.day, store: {}, cart: null } : null;
   for (const h of houses) {
     if (h.people.some(p => p.job === 'farmer' || p.job === 'miller')) { const r = rnd(); h.field = { stage: r < .45 ? 'growing' : r < .7 ? 'ripe' : 'empty', sownAt: T - rnd() * (GROW_HOURS - 2), work: 0, stubble: rnd() < .5 }; }
     if (!h.stock.bread) h.stock.bread = rnd() * 3 | 0;
-    delete h.m;
+    delete h.m; delete h.fams;
   }
   const snap = { at: T, kind: mill ? 'farming' : 'forest', houses, millStock: { wheat: rnd() * 3 | 0, flour: 1 + (rnd() * 4 | 0) }, grind: 0, bakery };
   villageMemory.set(key, snap);
@@ -5655,6 +5945,7 @@ function runEvent(run, ev, day) {
 // Bring every cart near the player up to the current time, whether its villages are loaded or not
 let runScan = 0, runList = [];
 function processRuns(dt) {
+  if (!FOLK) return;                                    // the villages' people aren't here until the history is built
   runScan -= dt;
   if (runScan <= 0) {
     runScan = 2; runList = [];
@@ -5719,16 +6010,18 @@ function carterAbout(p) {
 }
 
 // Conversation pieces for villagers
-const JOB_NAMES = { miller: 'miller', farmer: 'farmer', homemaker: 'villager', baker: 'baker', woodcutter: 'woodcutter', hunter: 'hunter', carter: 'carter' };
+const JOB_NAMES = { child: 'child', miller: 'miller', farmer: 'farmer', homemaker: 'villager', baker: 'baker', woodcutter: 'woodcutter', hunter: 'hunter', carter: 'carter' };
 function villagerAbout(p) {
   const h = p.house, V = p.village, [Cx, , Cz] = V.plan.decor.village.centre;
   const where = Math.hypot(h.out.x - Cx, h.out.z - Cz) < 8 ? 'by the square' : `on the ${compass(h.out.x - Cx, h.out.z - Cz)} side of the village`;
   const job = { miller: "I'm the miller. I grind the village's grain at the windmill.", farmer: 'I farm the plot behind our house.',
     homemaker: 'I keep house for the family.', baker: "I'm the baker. I bake the village's bread and sell it on the square at midday.",
     woodcutter: 'I\'m the woodcutter. I fell timber in the woods and split it into lumber behind the house.',
-    hunter: "I'm the hunter. I'm out in the woods most days, and I tan the hides on the rack behind our house." }[p.job];
-  const others = h.people.filter(q => q !== p).map(q => q.name.split(' ')[0]);
-  return `I'm ${p.name}. ${job} We live in the ${h.two ? 'two-storey ' : ''}cottage ${where}` + (others.length ? `, with ${others.join(' and ')}.` : '.');
+    hunter: "I'm the hunter. I'm out in the woods most days, and I tan the hides on the rack behind our house.",
+    child: `I'm ${FOLK ? FOLK.H.year - FOLK.H.people[p.id].birth : 'nearly grown'}${FOLK && FOLK.H.people[p.id].race !== 'human' ? `, and not yet grown for ${FOLK.H.people[p.id].race === 'elf' ? 'an elf' : 'a ' + FOLK.H.people[p.id].race}` : ''}.` }[p.job];
+  const trade = p.job === 'homemaker' && p.trade && p.trade !== 'servant' ? `I'm a ${p.trade} by trade, and I keep house for the family.` : job;
+  const others = h.people.filter(q => q !== p).map(q => FOLK && q.id !== undefined && p.id !== undefined ? `${kinWord(FOLK.H.people[p.id], FOLK.H.people[q.id])} ${q.name.split(' ')[0]}` : q.name.split(' ')[0]);
+  return `I'm ${p.name}. ${trade} We live in the ${h.m.shack ? 'shack out in the woods' : `${h.two ? 'two-storey ' : ''}cottage ${where}`}` + (others.length ? `, with ${andList(others.slice(0, 6))}${others.length > 6 ? ' and the rest of us' : ''}.` : '.');
 }
 function villagerDoing(p) {
   const h = env.time;
@@ -6382,17 +6675,29 @@ function addChunkDecor(c) {
     plan.edits();
     for (const [x, y, z] of plan.decor.torches) if (mine(x, z)) c.decor.push(['torch', addTorch(x, y, z)]);
     for (const m of plan.decor.models) if (mine(m.pos[0], m.pos[2])) c.decor.push(['building', MODEL_MAKERS[m.kind](m)]);
-    if (plan.decor.village && mine(plan.cx, plan.cz)) {               // the village's people live with its central chunk
-      plan.decor.village.cottages = plan.decor.models.filter(m => m.kind === 'cottage');
-      plan.decor.village.mill = plan.decor.models.find(m => m.kind === 'windmill');
-      plan.decor.village.stall = plan.decor.models.find(m => m.kind === 'stall');
-      c.decor.push(['village', startVillage(plan)]);
-    }
-    for (const gd of plan.decor.guards) if (mine(gd.a[0], gd.a[2])) c.decor.push(['guard', addGuard(gd.a, gd.b, gd.speed, gd.face ?? 0, { title: plan.title, plan, kind: gd.kind, color: gd.color })]);
+    // Its people come from the history, so until that's built they wait
+    if (FOLK) addPeople(c, plan); else c.decor.push(['pending', plan]);
   }
 }
+// A place's people in this chunk: a village's live with its central chunk, as do a seat's (who also man
+// its guard posts); any other place's guards stand in the chunk they're posted in
+function addPeople(c, plan) {
+  const mine = (x, z) => Math.floor(x / CHUNK) === c.cx && Math.floor(z / CHUNK) === c.cz;
+  if (plan.decor.village && mine(plan.cx, plan.cz)) {
+    plan.decor.village.cottages = plan.decor.models.filter(m => m.kind === 'cottage');
+    plan.decor.village.mill = plan.decor.models.find(m => m.kind === 'windmill');
+    plan.decor.village.stall = plan.decor.models.find(m => m.kind === 'stall');
+    c.decor.push(['village', startVillage(plan)]);
+  }
+  if (isSeat(plan)) { if (mine(plan.cx, plan.cz)) c.decor.push(['seat', startSeat(plan)]); }
+  else for (const gd of plan.decor.guards) if (mine(gd.a[0], gd.a[2])) c.decor.push(['guard', addGuard(gd.a, gd.b, gd.speed, gd.face ?? 0, { title: plan.title, plan, kind: gd.kind, color: gd.color })]);
+}
+// Once the history is built: everyone who was waiting comes in
+function peopleArrive() {
+  for (const c of chunks.values()) if (c.decor) for (let i = c.decor.length - 1; i >= 0; i--) if (c.decor[i][0] === 'pending') { const plan = c.decor[i][1]; c.decor.splice(i, 1); addPeople(c, plan); }
+}
 function removeChunkDecor(c) {
-  for (const [kind, obj] of c.decor || []) kind === 'animal' ? removeAnimal(obj) : kind === 'torch' ? removeTorch(obj) : kind === 'model' ? removeModel(obj) : kind === 'building' ? removeBuilding(obj) : kind === 'village' ? stopVillage(obj) : removeGuard(obj);
+  for (const [kind, obj] of c.decor || []) kind === 'animal' ? removeAnimal(obj) : kind === 'torch' ? removeTorch(obj) : kind === 'model' ? removeModel(obj) : kind === 'building' ? removeBuilding(obj) : kind === 'village' ? stopVillage(obj) : kind === 'seat' ? stopSeat(obj) : kind === 'pending' ? null : removeGuard(obj);
   c.decor = null;
 }
 
@@ -7039,7 +7344,7 @@ function talk() {
 function openDialogue(gd) {
   dlg.open = true; dlg.gd = gd; dlg.area = null;
   if (document.pointerLockElement) document.exitPointerLock();
-  const p = gd.home?.person, role = p ? `${p.name} \u00b7 ${p.job === 'merchant' ? 'merchant from ' + p.from : p.job === 'carter' ? 'carter from ' + p.from : JOB_NAMES[p.job]}` : gd.home?.kind === 'villager' ? 'Villager' : gd.home?.kind === 'dwarf' ? 'Dwarf guard' : gd.home?.kind === 'elf' ? 'Elf warden' : gd.home?.kind === 'orc' ? 'Orc warrior' : 'Guard';
+  const p = gd.home?.person, role = p ? `${p.name} \u00b7 ${p.resident ? p.role : p.job === 'merchant' ? 'merchant from ' + p.from : p.job === 'carter' ? 'carter from ' + p.from : p.job === 'homemaker' && p.trade ? p.trade : JOB_NAMES[p.job]}` : gd.home?.kind === 'villager' ? 'Villager' : gd.home?.kind === 'dwarf' ? 'Dwarf guard' : gd.home?.kind === 'elf' ? 'Elf warden' : gd.home?.kind === 'orc' ? 'Orc warrior' : 'Guard';
   dlgEl.querySelector('.who').textContent = gd.home ? `${role} \u00b7 ${gd.home.title}` : role;
   const night = env.daylight < .35;
   showDialogue(night ? 'Evening, traveller. Something you need?' : 'Good day. What can I do for you?');
@@ -7047,7 +7352,9 @@ function openDialogue(gd) {
 
 function showDialogue(text) {
   const p = dlg.gd.home?.person, opts = [];
-  if (p?.job === 'carter') {
+  if (p?.resident) {
+    opts.push(['Who are you?', () => showDialogue(residentAbout(p))]);
+  } else if (p?.job === 'carter') {
     opts.push(['Who are you?', () => showDialogue(carterAbout(p))]);
     opts.push(["Let's trade.", () => showTrade(p)]);
   } else if (p?.job === 'merchant') {
@@ -7282,6 +7589,7 @@ function update(dt, t) {
   updateLantern(dt);
   checkDiscoveries(dt);
   updateVillages();
+  updateSeats();
   processRuns(dt);
   updateModels(dt);
   updateAnimals(dt);
@@ -7338,7 +7646,7 @@ function saveSettings() {
 function saveGame() {
   if (savingOff) return;
   for (const V of villages) villageMemory.set(placeKey(V.plan), snapshotVillage(V));
-  const save = { v: 2, seed: SEED, x: P.pos.x, y: P.pos.y, z: P.pos.z, yaw: P.yaw, pitch: P.pitch, discovered: [...discovered],
+  const save = { v: 3, seed: SEED, x: P.pos.x, y: P.pos.y, z: P.pos.z, yaw: P.yaw, pitch: P.pitch, discovered: [...discovered],
     villages: Object.fromEntries(villageMemory), player: { coins: player.coins, inv: { ...player.inv } },
     time: env.time, day: env.day, history: { years: historyYears }, savedAt: Date.now() };
   if (!store.set('world:' + SEED, save)) return;
@@ -7366,8 +7674,8 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) saveG
 }
 
 // Restore this world's save, or start at the fort
-const saved = (s => s?.v === 2 ? s : null)(store.get('world:' + SEED));   // saves from before the hand-made world are dropped
-if (saved?.villages && typeof saved.villages === 'object') for (const [k, v] of Object.entries(saved.villages)) if (Array.isArray(v?.houses)) villageMemory.set(k, v);
+const saved = (s => s?.v === 2 || s?.v === 3 ? s : null)(store.get('world:' + SEED));   // saves from before the hand-made world are dropped
+if (saved?.v === 3 && saved.villages && typeof saved.villages === 'object')        // villages from before the history are forgotten for (const [k, v] of Object.entries(saved.villages)) if (Array.isArray(v?.houses)) villageMemory.set(k, v);
 if (Array.isArray(saved?.discovered)) for (const k of saved.discovered) {
   discovered.add(k);
   const [rx, rz] = String(k).split(',').map(Number);
@@ -7420,7 +7728,8 @@ function buildHistory(years) {
   const job = ++historyJob, C = window.Chronicle;
   historyReady = false; goEl.style.opacity = .4; goEl.textContent = 'building the world\'s history\u2026';
   historyWorker?.terminate(); historyWorker = null;
-  const done = text => { if (job !== historyJob) return; C.use(text); historyReady = true; goEl.style.opacity = ''; goEl.textContent = goText;
+  const done = text => { if (job !== historyJob) return; C.use(text); historyReady = true;
+    if (!FOLK) { FOLK = makeWorld(C.history(), C.homes(C.history())); peopleArrive(); } goEl.style.opacity = ''; goEl.textContent = goText;
     historyStatus.textContent = `year ${years} after the war`; historyWorker?.terminate(); historyWorker = null; };
   const progress = y => { if (job === historyJob) historyStatus.textContent = `building: year ${y} of ${years}`; };
   // In a worker, ten years at a time (the history comes out the same however it's split)

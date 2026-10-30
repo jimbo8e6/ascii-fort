@@ -24,6 +24,11 @@ of bakers) are as valid as famous ones (a displaced king in the family tree).
   through all the items and people in the world and see their lineage (the full truth).
   Built for people (items to come): the game builds the history in a background worker when a world starts,
   and the CHRONICLE button on the start/pause screen opens it.
+- **Everyone in the history is in the world** (decided): every NPC is a person from the history, and every
+  living person in the history lives somewhere in the world. Villages are grown to house their families (for
+  now generated; James will lay out each village and town by hand: where buildings go, their insides, and who
+  lives where). A castle is full of rooms; soldiers live in a garrison, not every NPC has a house of their own,
+  and a hunter may live in a shack in the woods.
 - **Hidden followers of the ancients:** independent pockets of believers, unaffiliated with each other,
   hidden, and *not necessarily family groups*.
 - **Murder:** deaths include murder outside any war, including serial killers, so that quests can turn on

@@ -194,7 +194,7 @@ const RULES = {
   // The cells beneath the castles: dwarves and orcs go to their own holds, everyone else to the nearest
   // human castle (Harrowgate Keep for the west and the Wenmere, Castle Aldermere for the rest)
   prisons: { dwarf: 'Kharn Dolum', orc: 'Gor Marakh', west: 'Harrowgate Keep', rest: 'Castle Aldermere',
-    westPlaces: ['Aelith Vara', 'Mistwater', 'Thornwick', 'Port Cassel', 'Harrowgate Keep'] },
+    westPlaces: ['Aelith Vara', 'Mistwater', 'Thornwick', 'Port Cassel', 'Harrowgate Keep', 'Wreck Point'] },
   // Offices (placeholders, apart from the succession rules James chose; see OFFICES)
   stepDown: .08,             // an ageing post-holder's (past 75% of a typical life) yearly chance of stepping down; rulers never do
   newBroom: .25,             // a new ruler's chance of dismissing each post-holder at their seat
@@ -241,6 +241,8 @@ const OFFICES = {
   hangman: { office: 'Hangman', seat: 'Castle Aldermere' },
   // Every other place has a head and a priest, in the title of its main race, appointed by that race's
   // ruler (the human villages by the lord whose cells serve them)
+  // ...except the garrisons, which have officers instead
+  placePosts: { 'Fort Greyhold': ['Commander', 'Sergeant'], 'Wreck Point': ['Keeper of the Watch'] },
   villages: { human: ['Reeve', 'Priest'], dwarf: ['Clan-Head', 'Rune-priest'], elf: ['Grove-Keeper', 'Grove-priest'], orc: ['Camp Chief', 'Shaman'] },
   // Trades a ruler looks to first when filling a post
   prefer: { 'Captain of the Guard': ['guard'], Jailer: ['guard'], Hangman: ['guard', 'servant'], Steward: ['servant', 'clerk'], Magistrate: ['clerk', 'trader'],
@@ -250,23 +252,31 @@ const OFFICES = {
     Reeve: ['farmer', 'miller', 'trader', 'innkeeper'], 'Clan-Head': ['miner', 'smith'] },
 };
 
-// ---- Places (a subset of the gazetteer). Who lives there, how many it holds, and its trades. ----
+// ---- Places: every settlement in the game, who lives there, how many it holds, and its trades ----
+// A place's trades include the work the game gives its people: a farming village (one with a windmill) farms,
+// mills and bakes; the others cut wood and hunt. `essential` trades are taken up first by someone coming of
+// age whenever no one in the place has them. `kind`: a village of houses, a seat (see OFFICES), or a garrison.
 const PLACES = [
-  { name: 'Kharn Dolum', races: { dwarf: 1 }, cap: 140, trades: ['miner', 'smith', 'mason', 'brewer', 'guard'] },
-  { name: "Anvil's Rest", races: { dwarf: .5, human: .5 }, cap: 60, trades: ['miner', 'smith', 'carter', 'innkeeper'] },
-  { name: 'Aelith Vara', races: { elf: 1 }, cap: 90, trades: ['warden', 'weaver', 'herbalist', 'carver', 'singer'] },
-  { name: 'Mistwater', races: { elf: .8, human: .2 }, cap: 40, trades: ['fisher', 'herbalist', 'healer'] },
-  { name: 'Thornwick', races: { human: .7, elf: .3 }, cap: 70, trades: ['trader', 'woodcutter', 'hunter', 'guard'] },
-  { name: 'Gor Marakh', races: { orc: 1 }, cap: 140, trades: ['warrior', 'smith', 'tanner', 'herder'] },
-  { name: 'Ashen Camp', races: { orc: 1 }, cap: 60, trades: ['herder', 'tanner'] },
-  { name: 'Dust Wells', races: { human: .5, orc: .3, dwarf: .2 }, cap: 60, trades: ['trader', 'stablehand', 'innkeeper', 'well-keeper'] },
-  { name: 'Kelford', races: { human: 1 }, cap: 110, trades: ['baker', 'trader', 'mason', 'carter', 'guard'] },
-  { name: 'Millbrook', races: { human: 1 }, cap: 70, trades: ['baker', 'miller', 'farmer', 'farmer'] },
-  { name: "Hollin's Ferry", races: { human: 1 }, cap: 50, trades: ['ferryman', 'innkeeper', 'boatwright'] },
-  { name: 'Castle Aldermere', races: { human: 1 }, cap: 90, trades: ['guard', 'farmer', 'smith', 'servant'] },
-  { name: 'Concord Landing', races: { human: .4, elf: .2, dwarf: .2, orc: .2 }, cap: 70, trades: ['carpenter', 'trader', 'healer', 'farmer'] },
-  { name: 'Port Cassel', races: { human: .9, elf: .1 }, cap: 100, trades: ['sailor', 'docker', 'trader', 'clerk'] },
-  { name: 'Harrowgate Keep', races: { human: 1 }, cap: 60, trades: ['guard', 'farmer', 'servant'] },
+  { name: 'Kharn Dolum', kind: 'seat', races: { dwarf: 1 }, cap: 140, trades: ['miner', 'smith', 'mason', 'brewer', 'guard'] },
+  { name: "Anvil's Rest", kind: 'village', races: { dwarf: .5, human: .5 }, cap: 60, trades: ['miner', 'smith', 'carter', 'innkeeper', 'woodcutter', 'hunter'], essential: ['woodcutter', 'hunter'] },
+  { name: 'Aelith Vara', kind: 'seat', races: { elf: 1 }, cap: 90, trades: ['warden', 'weaver', 'herbalist', 'carver', 'singer'] },
+  { name: 'Mistwater', kind: 'village', races: { elf: .8, human: .2 }, cap: 40, trades: ['fisher', 'herbalist', 'healer', 'woodcutter', 'hunter'], essential: ['woodcutter', 'hunter'] },
+  { name: 'Thornwick', kind: 'village', races: { human: .7, elf: .3 }, cap: 70, trades: ['trader', 'woodcutter', 'hunter', 'guard'], essential: ['woodcutter', 'hunter'] },
+  { name: 'Gor Marakh', kind: 'seat', races: { orc: 1 }, cap: 140, trades: ['warrior', 'smith', 'tanner', 'herder'] },
+  { name: 'Ashen Camp', kind: 'village', races: { orc: 1 }, cap: 60, trades: ['herder', 'tanner', 'woodcutter', 'hunter'], essential: ['woodcutter', 'hunter'] },
+  { name: 'Dust Wells', kind: 'village', races: { human: .5, orc: .3, dwarf: .2 }, cap: 60, trades: ['trader', 'stablehand', 'innkeeper', 'well-keeper', 'woodcutter', 'hunter'], essential: ['woodcutter', 'hunter'] },
+  { name: 'Kelford', kind: 'village', races: { human: 1 }, cap: 110, trades: ['baker', 'miller', 'farmer', 'farmer', 'trader', 'mason', 'carter', 'guard'], essential: ['miller', 'baker'] },
+  { name: 'Millbrook', kind: 'village', races: { human: 1 }, cap: 70, trades: ['baker', 'miller', 'farmer', 'farmer'], essential: ['miller', 'baker'] },
+  { name: "Hollin's Ferry", kind: 'village', races: { human: 1 }, cap: 50, trades: ['ferryman', 'innkeeper', 'boatwright', 'woodcutter', 'hunter'], essential: ['woodcutter', 'hunter'] },
+  { name: 'Castle Aldermere', kind: 'seat', races: { human: 1 }, cap: 90, trades: ['guard', 'farmer', 'smith', 'servant'] },
+  { name: 'Concord Landing', kind: 'village', races: { human: .4, elf: .2, dwarf: .2, orc: .2 }, cap: 70, trades: ['carpenter', 'trader', 'healer', 'farmer', 'woodcutter', 'hunter'], essential: ['woodcutter', 'hunter'] },
+  { name: 'Port Cassel', kind: 'village', races: { human: .9, elf: .1 }, cap: 100, trades: ['sailor', 'docker', 'trader', 'clerk', 'woodcutter', 'hunter'], essential: ['woodcutter', 'hunter'] },
+  { name: 'Harrowgate Keep', kind: 'seat', races: { human: 1 }, cap: 60, trades: ['guard', 'farmer', 'servant'] },
+  { name: 'Greycrest', kind: 'village', races: { human: .8, dwarf: .2 }, cap: 50, trades: ['woodcutter', 'hunter', 'charcoal-burner', 'shepherd'], essential: ['woodcutter', 'hunter'] },
+  { name: 'Scarrow Hovel', kind: 'village', races: { human: 1 }, cap: 30, trades: ['woodcutter', 'hunter', 'trapper'], essential: ['woodcutter', 'hunter'] },
+  { name: 'Gullcove', kind: 'village', races: { human: 1 }, cap: 60, trades: ['fisher', 'boatwright', 'woodcutter', 'hunter', 'smuggler'], essential: ['woodcutter', 'hunter'] },
+  { name: 'Fort Greyhold', kind: 'garrison', races: { human: 1 }, cap: 40, trades: ['guard', 'guard', 'guard', 'smith', 'servant'] },
+  { name: 'Wreck Point', kind: 'garrison', races: { human: 1 }, cap: 8, trades: ['guard'] },
 ];
 
 // A few founders known for their part in the war. Placeholders, not canon: they show that a famous
@@ -373,7 +383,7 @@ function found(H) {
       for (const p of [husband, wife]) {
         setConstitution(seed, p, null, null);
         p.name = firstName(p.race, p.sex, p.id);
-        p.trade = pl.trades[rand(seed, T.foundTrade, p.id) * pl.trades.length | 0];
+        p.trade = p === husband && hh < (pl.essential || []).length ? pl.essential[hh] : pl.trades[rand(seed, T.foundTrade, p.id) * pl.trades.length | 0];   // the first households take the place's essential trades
         H.events.push({ y: 0, t: 'found', p: p.id, place: pl.name });
       }
       if (nb) { nb.used = true; (nb.sex === 'f' ? wife : husband).notable = nb.title; }
@@ -698,7 +708,7 @@ function officeList(H) {
   for (const pl of H.rules.places) if (!O.seats[pl.name]) {
     const race = Object.entries(pl.races).sort((a, b) => b[1] - a[1])[0][0];
     const seat = race === 'human' ? (PR.westPlaces.includes(pl.name) ? PR.west : PR.rest) : Object.keys(O.seats).find(s => O.seats[s].race === race);
-    for (const office of O.villages[race]) out.push(item(pl.name, office, 'village', seat, race));
+    for (const office of O.placePosts?.[pl.name] || O.villages[race]) out.push(item(pl.name, office, 'village', seat, race));
   }
   return H._officeList = out;
 }
@@ -928,6 +938,7 @@ function simulate(H, to) {
     // Deaths
     // Deaths: illness, injury and old age each have a yearly chance; one roll decides whether and which
     for (const p of living) {
+      if (p.death !== null) continue;                                           // hanged already this year
       const R = RACES[TEMP_RULES.lifespanRace(p)], a = age(p, y);
       const ill = (a < R.adult / 3 ? R.childIllness : R.illness * (1 + Math.max(0, a / R.life - .5))) * (p.jail ? RULES.prisonIllness : 1);   // the old, and prisoners, sicken more easily
       const hurt = a < R.adult / 2 ? R.injury * .3 : R.injury * (RISKY[p.trade] || 1);
@@ -948,7 +959,9 @@ function simulate(H, to) {
       if (age(p, y) !== R.adult) continue;
       const pl = PLACES[placeIndex[p.place]], f = p.father !== null ? H.people[p.father] : null, m = p.mother !== null ? H.people[p.mother] : null;
       const r = rand(seed, T.trade, y, p.id);
-      p.trade = r < RULES.tradeFromFather && f?.trade ? f.trade : r < RULES.tradeFromFather + RULES.tradeFromMother && m?.trade ? m.trade
+      // A trade the place has no one for comes first; otherwise a parent's, or one of the place's
+      const missing = (pl.essential || []).find(t => !alive.some(q => q !== p && q.place === p.place && !q.jail && q.death === null && q.trade === t && age(q, y) >= RACES[q.race].adult));
+      p.trade = missing && rand(seed, T.tradePick, y, p.id + 1) < .8 ? missing : r < RULES.tradeFromFather && f?.trade ? f.trade : r < RULES.tradeFromFather + RULES.tradeFromMother && m?.trade ? m.trade
         : pl.trades[rand(seed, T.tradePick, y, p.id) * pl.trades.length | 0];
       H.events.push({ y, t: 'trade', p: p.id, trade: p.trade });
       const crowded = (pop[key(p.place, p.race)] || 0) / Math.max(1, room(p.place, p.race));
@@ -1106,6 +1119,72 @@ function prisoners(H) {
   for (const id of H._living) { const p = H.people[id]; if (p.jail) (out[p.jail.at] ||= []).push(p.id); }
   return out;
 }
+// ---- Where everyone lives now ----
+// Every living person has one home. Families keep house together: a married couple with their unmarried
+// children, and a widowed parent grown old with a married child; anyone else alone. Where they live depends
+// on the place: a village has houses (a hunter's family has a shack in the woods); at a seat the ruler's
+// family lives in the keep (or the hold's hall, the Elder's hall, the chief's longhouse), office-holders'
+// families in rooms there, and everyone else in its quarters; soldiers (guards, warriors, elf wardens) at a seat or a
+// garrison sleep in the garrison, apart from their families. Prisoners are in the cells.
+// Returns { households: [{ id, place, kind, members, head }], of: { personId: householdId }, cells: [ids] }.
+const HOME_KINDS = {
+  ruler: { human: 'the keep', dwarf: "the thane's hall", elf: "the Elder's hall", orc: "the chief's longhouse" },
+  office: { human: 'rooms in the keep', dwarf: 'chambers off the great hall', elf: 'a tree hall', orc: 'a longhouse' },
+  quarters: { human: 'the castle quarters', dwarf: 'the hold chambers', elf: 'a tree hall', orc: 'a hut' },
+};
+function homes(H) {
+  const P = H.people, R = H.rules, O = R.offices, races = R.races, y = H.year;
+  const kindOf = name => R.places.find(q => q.name === name)?.kind || (O.seats[name] ? 'seat' : 'village');
+  const grown = p => y - p.birth >= races[p.race].adult;
+  const out = { households: [], of: {}, cells: [] }, live = [];
+  for (const id of H._living) { const p = P[id]; if (p.jail) out.cells.push(id); else live.push(p); }
+  const add = (place, members) => { const h = { id: out.households.length, place, kind: null, members, head: members[0] }; out.households.push(h); for (const m of members) out.of[m] = h.id; return h; };
+  // Couples first, then the unmarried, eldest first, joining a parent's household (or an old widowed
+  // parent joining a married child's), or keeping house alone
+  for (const p of live) { const s = spouseNow(H, p); if (s && !s.jail && s.place === p.place && p.id < s.id && out.of[p.id] === undefined) add(p.place, p.sex === 'm' ? [p.id, s.id] : [s.id, p.id]); }
+  const single = live.filter(p => out.of[p.id] === undefined).sort((a, b) => a.birth - b.birth || a.id - b.id);
+  const lateBirths = [];
+  for (const p of single) {
+    const par = [p.mother, p.father].filter(x => x !== null).map(x => P[x]).find(q => q.death === null && !q.jail && q.place === p.place && out.of[q.id] !== undefined);
+    if (par) { out.households[out.of[par.id]].members.push(p.id); out.of[p.id] = out.of[par.id]; continue; }
+    const old = y - p.birth > races[p.race].life * .6 && p.spouses.length;
+    const kid = old && H._children[p.id].map(c => P[c]).find(c => c.death === null && !c.jail && c.place === p.place && out.of[c.id] !== undefined && spouseNow(H, c));
+    if (kid) { out.households[out.of[kid.id]].members.push(p.id); out.of[p.id] = out.of[kid.id]; continue; }
+    if (!grown(p)) { lateBirths.push(p); continue; }                       // a child whose family isn't settled yet
+    add(p.place, [p.id]);
+  }
+  // Children left over (an orphan, or one whose parents live elsewhere) live with the nearest kin here, else alone
+  for (const p of lateBirths) {
+    const kin = [...new Set([p.mother, p.father].filter(x => x !== null).flatMap(x => [...H._children[x], P[x].mother, P[x].father]))]
+      .filter(x => x !== null && x !== p.id).map(x => P[x]).find(q => q.death === null && !q.jail && q.place === p.place && out.of[q.id] !== undefined);
+    if (kin) { out.households[out.of[kin.id]].members.push(p.id); out.of[p.id] = out.of[kin.id]; }
+    else add(p.place, [p.id]);
+  }
+  // Soldiers at a seat or a garrison sleep in its garrison
+  const garrison = {}, rules = p => (H._holds[p.id] || []).some(key => O.seats[key.split('|')[0]]?.ruler === key.split('|')[1]);
+  for (const p of live) if (!rules(p) && (kindOf(p.place) === 'seat' || kindOf(p.place) === 'garrison') && ['guard', 'warrior', 'warden'].includes(p.trade) && grown(p)) {
+    const hh = out.households[out.of[p.id]];
+    hh.members = hh.members.filter(m => m !== p.id);
+    if (hh.head === p.id) hh.head = hh.members[0] ?? null;
+    (garrison[p.place] ||= add(p.place, [])).members.push(p.id); out.of[p.id] = garrison[p.place].id;
+    garrison[p.place].kind = 'the garrison';
+  }
+  // What kind of home each household has
+  const rulerAt = {}; for (const [seat, S] of Object.entries(O.seats)) { const h = H._held[seat + '|' + S.ruler]; if (h) rulerAt[seat] = h.p; }
+  for (const h of out.households) {
+    if (h.kind) continue;
+    if (!h.members.length) { h.kind = 'empty'; continue; }
+    const k = kindOf(h.place), race = O.seats[h.place]?.race || P[h.head].race;
+    if (k === 'village') h.kind = h.members.some(m => P[m].trade === 'hunter' && grown(P[m])) && P[h.head].trade === 'hunter' ? 'a shack in the woods' : 'a house';
+    else if (k === 'garrison') h.kind = 'the garrison';
+    else if (h.members.includes(rulerAt[h.place])) h.kind = HOME_KINDS.ruler[race];
+    else if (h.members.some(m => (H._holds[m] || []).some(key => key.startsWith(h.place + '|')))) h.kind = HOME_KINDS.office[race];
+    else h.kind = HOME_KINDS.quarters[race];
+  }
+  out.households = out.households.filter(h => h.members.length);
+  out.households.forEach((h, i) => { h.id = i; for (const m of h.members) out.of[m] = i; });
+  return out;
+}
 // Every holding of an office, oldest first: { place, office, p, from, to (null while held), how, why, by?, for?, after? }
 function holdings(H) {
   const open = {}, out = [];
@@ -1146,6 +1225,14 @@ const life = p => `${p.birth}–${p.death ?? ''}`;
 // A title, as a link to the office's own page (everyone who has held it, and how)
 const officeLink = (place, office) => `<a class="office" data-office="${place}|${office}">${office} of ${place}</a>`;
 const brief = (id, withTitles = true) => { const p = H.people[id], t = p.death === null && withTitles ? H._holds[id] || [] : []; return `${link(id)} <span class="dim">${p.race}${p.heritage.length > 1 ? '*' : ''} ${life(p)}${p.trade ? ' · ' + p.trade : ''}</span>${t.length ? ' ' + t.map(k => officeLink(...k.split('|'))).join(', ') : ''}`; };
+// Where someone lives now (their household's home, from homes()), or where they lived
+const homeText = id => {
+  const p = H.people[id];
+  if (p.death !== null) return `lived in ${p.place}`;
+  if (p.jail) return `in the cells beneath ${p.jail.at}`;
+  const hm = H._homeCache ||= homes(H), h = hm.households[hm.of[id]];
+  return h ? `lives in ${h.kind === 'a house' || h.kind === 'a shack in the woods' ? h.kind + ' at' : h.kind + ' of'} ${h.place}${h.members.length > 1 && h.kind !== 'the garrison' ? ` (a household of ${h.members.length})` : ''}` : `lives in ${p.place}`;
+};
 const died = p => ['murder', 'execution', 'challenge'].includes(p.deathKind) ? p.cause : 'of ' + p.cause;
 
 function stats() {
@@ -1210,7 +1297,7 @@ function show(id) {
   $('card').innerHTML = `
     <h2>${name(id)} <span class="dim">#${id}</span>${p.notable ? ` <span class="star">★ ${p.notable}</span>` : ''}</h2>
     <div>${p.race}${p.heritage.length > 1 ? ` <span class="temp">(family of ${p.heritage.join(', ')}; race chosen by a temporary rule)</span>` : ''}, ${p.sex === 'f' ? 'female' : 'male'}, born ${p.birth} in ${p.birthPlace}${p.death !== null ? `, died ${p.death} aged ${p.death - p.birth}, ${died(p)}` : `, alive, aged ${H.year - p.birth}`} · constitution ${p.constitution.toFixed(2)}</div>
-    <div>${p.trade || 'no trade yet'} · lives in ${p.place} · generation ${p.gen}</div>
+    <div>${p.trade || 'no trade yet'} · ${homeText(id)} · generation ${p.gen}</div>
     ${deathPart}${killsPart}${crimePart}
     ${offs.length ? `<h3>Offices</h3><div>${offs.map(h => `${h.from}–${h.to ?? ''}: ${officeLink(h.place, h.office)} <span class="dim">${h.how}${h.after !== undefined ? ' from ' + link(h.after) : ''}${h.by !== undefined ? ' by ' + link(h.by) : ''}${h.for !== undefined ? ' for ' + link(h.for) : ''}${h.why ? '; ' + h.why : ''}</span>`).join('<br>')}</div>` : ''}
     ${myVerdicts.length ? `<h3>Verdicts given (${myVerdicts.length}, ${myVerdicts.filter(v => v.wrongful).length} wrongful)</h3><div class="dim">${myVerdicts.slice(0, 40).map(v => `${v.y}: ${link(v.p)}, ${v.crime}: ${v.sentence}${v.wrongful ? ' <span class="temp">(innocent)</span>' : ''}`).join('<br>')}${myVerdicts.length > 40 ? '<br>…' : ''}</div>` : ''}

@@ -143,3 +143,20 @@ only adds to them, and a saved history carries on the same. All the posts and ti
   offices and the verdicts they gave. Every title is a link to that office's page: everyone who has held it in
   turn, how each came to it (inherited from whom, and how they were related; next in rank; appointed by whom;
   won in a fight), why each held it no longer, the vacancies between and why, and the other offices at that place.
+
+## Where everyone lives
+`homes(H)` gives every living person one home at the history's year, which the game uses to put everyone in
+the world:
+- **Households:** a married couple with their unmarried children; an old widowed parent with a married child;
+  anyone else alone (a child whose family isn't there lives with kin, or alone).
+- **Homes by place** (`kind` in `PLACES`): in a village, a house, or a shack in the woods for a hunter's family.
+  At a seat, the ruler's family in the keep (the thane's hall, the Elder's hall, the chief's longhouse),
+  office-holders' families in rooms there, everyone else in the quarters (the hold chambers, a tree hall, a hut);
+  soldiers (guards, warriors, elf wardens) at a seat or garrison sleep in the garrison. Prisoners are in the cells.
+- **Places:** every settlement in the game is a place, including Greycrest, Scarrow Hovel, Gullcove, Fort Greyhold
+  (a garrison with a Commander and a Sergeant) and the Wreck Point watch (a Keeper of the Watch). Each place's
+  trades include the game's work for it, and its `essential` trades (miller and baker where it farms, woodcutter
+  and hunter elsewhere) are taken up first by someone coming of age whenever no one there has them.
+- The tests check that everyone has exactly one home in the place they live, that families keep house together,
+  and how often a village lacks an essential trade (rarely, mostly tiny Scarrow Hovel).
+

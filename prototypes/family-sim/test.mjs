@@ -1,6 +1,6 @@
 // Runs the six checks for the family simulation prototype and measures generation time.
 // Usage: node test.mjs   (prints a report; also writes results.txt next to this file)
-import { newHistory, simulate, save, load, ancestors, sharedAncestors, relationship, describe, fullName, cases, prisoners, revealedIn, solved, courtSits, holdings, officeHolders, titles, verdicts, RACES, TEMP_RULES, RULES, MURDER } from './family-sim.mjs';
+import { newHistory, simulate, save, load, ancestors, sharedAncestors, relationship, describe, fullName, cases, prisoners, revealedIn, solved, courtSits, holdings, officeHolders, titles, verdicts, homes, PLACES, RACES, TEMP_RULES, RULES, MURDER } from './family-sim.mjs';
 import { createHash } from 'node:crypto';
 import { buildViewer } from './build-viewer.mjs';
 buildViewer();                                   // keep viewer.html's copy of the simulation up to date
@@ -173,6 +173,9 @@ function sanity(H) {
   const state = new Uint8Array(P.length);
   const visit = id => { if (state[id] === 2) return; if (state[id] === 1) { bad.push(`#${id} is its own ancestor`); return; } state[id] = 1; for (const par of [P[id].mother, P[id].father]) if (par !== null) visit(par); state[id] = 2; };
   P.forEach(p => visit(p.id));
+  // One death each
+  const deaths = new Set();
+  for (const e of H.events) if (e.t === 'death') { if (deaths.has(e.p)) bad.push(`#${e.p} died twice`); deaths.add(e.p); }
   // Events in order, and none about a person outside their lifetime
   for (let i = 1; i < H.events.length; i++) if (H.events[i].y < H.events[i - 1].y) { bad.push('events out of order'); break; }
   for (const e of H.events) for (const k of ['p', 'a', 'b']) {
@@ -191,7 +194,7 @@ log('  (both adults at the birth, founders included, the mother in her child-bea
 log('  or descendant at any depth, a sibling, half sibling or first cousin;');
 log('  and before either died, to a mother in her child-bearing years; marriages are of adults, while both');
 log('  live, recorded on both sides, one at a time; no one is their own ancestor; events are in order and');
-log('  none concerns someone before birth or after death.');
+log('  none concerns someone before birth or after death; no one dies twice.');
 
 // ---------------------------------------------------------------------------------------------
 log('\nLifespans and causes of death (seed 1337, 2,000 years, everyone who died after year 0)');
@@ -532,6 +535,50 @@ log('  verdict came from the judge, ruler or regent of the convicted person\'s p
   }
   for (const [k, label] of [['lost', 'A ruler convicted'], ['reg', 'A regency'], ['rev', 'Revenge'], ['wrong', 'A wrongful verdict'], ['delayed', 'A court delayed'], ['lodged', 'The travelling hangman']])
     log(`  ${label}: ${found[k] || 'none found in the seeds tried'}`);
+}
+
+log('\n12. Where everyone lives (the game puts each household in its home)');
+function homeProblems(X) {
+  const bad = [], P = X.people, R = X.rules, hm = homes(X), O = R.offices, seen = new Map();
+  const kindOf = n => R.places.find(q => q.name === n)?.kind;
+  for (const h of hm.households) for (const m of h.members) { if (seen.has(m)) bad.push(`#${m} has two homes`); seen.set(m, h); }
+  for (const id of X._living) {
+    const p = P[id], h = seen.get(id);
+    if (p.jail) { if (h || !hm.cells.includes(id)) bad.push(`prisoner #${id} isn't (only) in the cells`); continue; }
+    if (!h) { bad.push(`#${id} has no home`); continue; }
+    if (h.place !== p.place) bad.push(`#${id} lives in ${p.place} but has a home in ${h.place}`);
+    const soldier = h.kind === 'the garrison';
+    if (soldier && !(kindOf(p.place) === 'garrison' || kindOf(p.place) === 'seat')) bad.push(`#${id} is in a garrison at ${p.place}, which has none`);
+    if (soldier && !['guard', 'warrior', 'warden'].includes(p.trade) && kindOf(p.place) === 'seat') bad.push(`#${id} (a ${p.trade}) sleeps in the garrison`);
+    // Husband and wife keep house together (unless one sleeps in the garrison)
+    const s = p.spouses.at(-1), sp = s && P[s.id];
+    if (sp && sp.death === null && !sp.jail && sp.place === p.place && !soldier && seen.get(sp.id)?.kind !== 'the garrison' && seen.get(sp.id) !== h) bad.push(`#${id} and their spouse #${sp.id} keep separate houses`);
+    // A child lives with a parent who lives here (one not in the garrison)
+    const grown = X.year - p.birth >= R.races[p.race].adult;
+    const par = [p.mother, p.father].filter(x => x !== null).map(x => P[x]).filter(q => q.death === null && !q.jail && q.place === p.place && seen.get(q.id)?.kind !== 'the garrison');
+    if (!grown && par.length && !par.some(q => seen.get(q.id) === h)) bad.push(`child #${id} doesn't live with a parent who lives here`);
+  }
+  for (const [seat, S] of Object.entries(O.seats)) { const r = X._held[seat + '|' + S.ruler]; if (r && P[r.p].place === seat && !P[r.p].jail && !Object.values(HOME_RULER).includes(seen.get(r.p)?.kind)) bad.push(`the ${S.ruler} of ${seat} doesn't live in ${HOME_RULER[S.race]}`); }
+  return bad;
+}
+const HOME_RULER = { human: 'the keep', dwarf: "the thane's hall", elf: "the Elder's hall", orc: "the chief's longhouse" };
+for (const [seed, yrs] of [[1337, 1], [1337, 200], [1837, 500], [42, 1000]]) {
+  const X = run(seed, yrs), hm = homes(X), bad = homeProblems(X), kinds = {};
+  for (const h of hm.households) kinds[h.kind] = (kinds[h.kind] || 0) + 1;
+  check(bad.length === 0, `seed ${seed}, ${yrs} years: ${X._living.length} living, ${hm.households.length} households, ${hm.cells.length} in the cells; ${bad.length} problems${bad.length ? ': ' + bad.slice(0, 5).join('; ') : ''}`);
+  if (yrs === 200) log(`  Homes at year 200: ${Object.entries(kinds).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${n}`).join(', ')}`);
+}
+log('  Checked: every living person has exactly one home, in the place they live (prisoners in the cells instead);');
+log('  husband and wife keep house together, and a child lives with a parent who lives there, unless that one');
+log('  sleeps in a garrison; soldiers sleep in a garrison only at a seat or garrison; each ruler lives in their hall.');
+{
+  // Whether each village has the people its work in the game needs, at many starts
+  let n = 0; const missing = {};
+  for (const seed of [1337, 1837, 42, 7, 2024, 99]) { const X = newHistory(seed);
+    for (let y = 1; y <= 400; y += 7) { simulate(X, y); n++;
+      for (const pl of X.rules.places) for (const t of pl.essential || []) if (!X._living.some(id => { const p = X.people[id]; return p.place === pl.name && !p.jail && p.trade === t && y - p.birth >= X.rules.races[p.race].adult; })) (missing[`${pl.name} ${t}`] = (missing[`${pl.name} ${t}`] || 0) + 1); } }
+  const worst = Object.entries(missing).sort((a, b) => b[1] - a[1]).slice(0, 6);
+  log(`  A village's essential trades (miller and baker where it farms, woodcutter and hunter elsewhere), over ${n} starts: ${worst.length ? 'most often missing: ' + worst.map(([k, c]) => `${k} ${(c / n * 100).toFixed(0)}%`).join(', ') : 'never missing'}`);
 }
 
 log('\n7. A saved history keeps its own rules');

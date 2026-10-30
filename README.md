@@ -81,6 +81,8 @@ The places come from the world gazetteer (draft 1) and are set by hand on the pa
 
 Villages on a road have the road meeting at a village square with a stone well (a village off the roads gets a street of its own), and cottages line each road on alternating sides, turned to face the street at any angle.
 
+- **Sized to their people:** each village has homes enough for its families in nine in ten of the histories the simulation makes for it (`homes` and `shacks` in `PLACES`), so it grows with them: straight lanes run across the village, broken where a road or the square is in the way, each with a row of cottages and their plots on either side. Kelford, the biggest, has 35 cottages. Hunters' families live in shacks out in the woods beyond the village. In a bigger history than the village has homes for, families share. (A first layout: each village is to be laid out by hand.)
+
 - **Cottages** are built as 3D models, not blocks:
   - **Outside:** a stone plinth, plaster walls with dark timber framing, framed windows with coloured shutters, an open door with a lantern beside it, and a pitched tiled roof with overhangs and a chimney with a pot.
   - **Single-storey:** a living room and a bedroom, split by an inner wall with a doorway.
@@ -90,7 +92,7 @@ Villages on a road have the road meeting at a village square with a stone well (
 - **Fires:** most houses light the fire in the evening, through the night and early morning, and some cook at midday. A lit fire flickers and lights the room. At night its windows glow, and smoke drifts up from the chimney. When the fire's out there's no flame and no smoke.
 - **Solid:** walls, the plinth, floors, stairs and furniture are all solid. You go in through the door and climb the stairs, and you can't walk through tables or into the fire.
 - **Windmills:** farming villages have one, a tapered tower mill with a stone base, a door facing the square with a lantern, small windows, a pointed cap and turning sails.
-- **Villagers have homes, names and jobs:** each cottage houses a family of one to three, e.g. *Ulric Hollins*.
+- **Villagers are the history's people:** every family the history has living in the village keeps house in one of its cottages, with their own names, races, ages and trades: a married couple with their unmarried children, an old widowed parent with a married child. Whoever's trade is the village's work does it (one baker runs the bakery, one miller the mill, the farmers farm, the woodcutters and hunters go out), and everyone else keeps house and goes about the village. Children are smaller, dwarves short and broad, elves tall with long pale hair, orcs green with tusks. *Who are you?* tells you their trade and who they live with (*my wife Fern, my daughter Ada*). Merchants are traders from the village they come from, and the bakery's carter is from the baker's household.
   - **Jobs:** in a village with a windmill, the miller lives in the house nearest it. The head of about half the other households farms, and the rest keep house.
 - **Daily routine** (times vary a little per person):
   1. Asleep in bed overnight.
@@ -316,8 +318,25 @@ page by its `build-viewer.mjs`).
   their death (and what people believe about it), their killings, their crimes and punishments, and the
   offices they held. Every title opens that office's full history, and A/B compares how two people are related.
   Esc or CLOSE returns to the pause screen.
-- **Not yet in the world:** the game's townsfolk, guards and lords aren't the simulation's people yet; that
-  comes next.
+- **Everyone is somewhere:** every living person in the history is in the world: villagers in their village's
+  cottages and shacks (see Villages), and at the castles, the dwarves' hold, the elf city, the orc town and the
+  forts, their people (see below). Prisoners are in the cells.
+
+## The castles, holds and forts
+
+Castle Aldermere, Harrowgate Keep, Kharn Dolum, Aelith Vara, Gor Marakh, Fort Greyhold and the Wreck Point watch
+are home to everyone the history has living there: the ruler's family in the keep (or the thane's hall, the
+Elder's hall, the chief's longhouse), office-holders' families in rooms there, everyone else in the castle
+quarters, the hold chambers, the tree halls or the huts, and soldiers (guards, warriors and elf wardens) in the
+garrison.
+
+- **The watch:** soldiers man the guard posts, half of them by day and the other half by night. A garrison too
+  small for every post leaves some unmanned.
+- **By day** the ruler, the office-holders and a share of everyone else are out about the place; the rest are
+  indoors. At night only the watch is out.
+- **Talking:** each tells you who they are from the history: *I'm Aldric Thatcher, Lord of Castle Aldermere. I've
+  held it since 183, after Gwen Stone. I live in the keep with my father-in-law Bram and my son Wat.*
+- (A first version: the castles' rooms and where people go inside them are still to be designed.)
 
 ## Saving
 
@@ -330,6 +349,7 @@ The game saves to this browser's local storage, automatically every 10 seconds a
 - **Limits:** saves stay on this device and browser. A private window, or a browser that blocks storage, simply won't remember; the game still runs.
 - If a newer version of the world generator puts a block where you saved, you're placed on top of it.
 - Saves from before the hand-made world are ignored, so those worlds start again at Fort Greyhold.
+- Villages remembered from before the world had a history are forgotten (you keep your place, time and purse); they're filled again with the history's families.
 
 ## Day and night
 

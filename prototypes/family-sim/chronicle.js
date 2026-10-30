@@ -10,6 +10,14 @@ const life = p => `${p.birth}–${p.death ?? ''}`;
 // A title, as a link to the office's own page (everyone who has held it, and how)
 const officeLink = (place, office) => `<a class="office" data-office="${place}|${office}">${office} of ${place}</a>`;
 const brief = (id, withTitles = true) => { const p = H.people[id], t = p.death === null && withTitles ? H._holds[id] || [] : []; return `${link(id)} <span class="dim">${p.race}${p.heritage.length > 1 ? '*' : ''} ${life(p)}${p.trade ? ' · ' + p.trade : ''}</span>${t.length ? ' ' + t.map(k => officeLink(...k.split('|'))).join(', ') : ''}`; };
+// Where someone lives now (their household's home, from homes()), or where they lived
+const homeText = id => {
+  const p = H.people[id];
+  if (p.death !== null) return `lived in ${p.place}`;
+  if (p.jail) return `in the cells beneath ${p.jail.at}`;
+  const hm = H._homeCache ||= homes(H), h = hm.households[hm.of[id]];
+  return h ? `lives in ${h.kind === 'a house' || h.kind === 'a shack in the woods' ? h.kind + ' at' : h.kind + ' of'} ${h.place}${h.members.length > 1 && h.kind !== 'the garrison' ? ` (a household of ${h.members.length})` : ''}` : `lives in ${p.place}`;
+};
 const died = p => ['murder', 'execution', 'challenge'].includes(p.deathKind) ? p.cause : 'of ' + p.cause;
 
 function stats() {
@@ -74,7 +82,7 @@ function show(id) {
   $('card').innerHTML = `
     <h2>${name(id)} <span class="dim">#${id}</span>${p.notable ? ` <span class="star">★ ${p.notable}</span>` : ''}</h2>
     <div>${p.race}${p.heritage.length > 1 ? ` <span class="temp">(family of ${p.heritage.join(', ')}; race chosen by a temporary rule)</span>` : ''}, ${p.sex === 'f' ? 'female' : 'male'}, born ${p.birth} in ${p.birthPlace}${p.death !== null ? `, died ${p.death} aged ${p.death - p.birth}, ${died(p)}` : `, alive, aged ${H.year - p.birth}`} · constitution ${p.constitution.toFixed(2)}</div>
-    <div>${p.trade || 'no trade yet'} · lives in ${p.place} · generation ${p.gen}</div>
+    <div>${p.trade || 'no trade yet'} · ${homeText(id)} · generation ${p.gen}</div>
     ${deathPart}${killsPart}${crimePart}
     ${offs.length ? `<h3>Offices</h3><div>${offs.map(h => `${h.from}–${h.to ?? ''}: ${officeLink(h.place, h.office)} <span class="dim">${h.how}${h.after !== undefined ? ' from ' + link(h.after) : ''}${h.by !== undefined ? ' by ' + link(h.by) : ''}${h.for !== undefined ? ' for ' + link(h.for) : ''}${h.why ? '; ' + h.why : ''}</span>`).join('<br>')}</div>` : ''}
     ${myVerdicts.length ? `<h3>Verdicts given (${myVerdicts.length}, ${myVerdicts.filter(v => v.wrongful).length} wrongful)</h3><div class="dim">${myVerdicts.slice(0, 40).map(v => `${v.y}: ${link(v.p)}, ${v.crime}: ${v.sentence}${v.wrongful ? ' <span class="temp">(innocent)</span>' : ''}`).join('<br>')}${myVerdicts.length > 40 ? '<br>…' : ''}</div>` : ''}
