@@ -2291,7 +2291,7 @@ function buildFort({ N, wall, mat, keep = true, crates = [], dungeon = false }) 
   const torches = [[N / 3, 3.4, 3.3], [2 * N / 3, 3.4, 3.3], [3.3, 3.4, C - 2], [N - 3.3, 3.4, C - 2],
     [C - 2.5, 3.4, N + .3], [C + 2.5, 3.4, N + .3]];
   if (keep) torches.push([C, 3.4, C - 3.7]);
-  if (keep && dungeon) torches.push([C - 3, -1.6, C - 12.7], [C + 2, -1.6, C - 12.7]);   // the cells' corridor
+  if (keep && dungeon) torches.push([C - 3.6, -1.6, C - 12.7], [C + 2, -1.6, C - 12.7], [C - .3, -1.5, C - 13.9]);   // the cells' corridor; the jailer's room
   const guards = [
     { a: [6, wall, 1.5], b: [N - 6, wall, 1.5], speed: 1.3 },
     { a: [8, 0, C + 6], b: [N - 8, 0, C + 6], speed: 1.2 },
@@ -4067,6 +4067,22 @@ function colliderTop(x, y, z) {
 // ---- Cottages ----
 // Local frame: x across the front, z front-to-back (+z is the front, facing the road), y = 0 at ground
 const cottages = new Set();
+// Doors that open: every cottage's, and the jailer's room under Castle Aldermere's keep. hangDoor hangs one in a
+// model's own frame: hinged at (hx, hy, hz), the leaf running along +x, swinging half a turn towards -z.
+const doors = new Set();
+function hangDoor(group, m, hx, hy, hz, w, ht, wood = '#4a3020') {
+  const pivot = new THREE.Group(); pivot.position.set(hx, hy, hz);
+  const leaf = new THREE.Mesh(scaledBox(w - .02, ht, .07), buildingMat(wood)); leaf.position.set(w / 2, ht / 2 + .005, 0); pivot.add(leaf);
+  const knob = new THREE.Mesh(scaledBox(.07, .07, .16), buildingMat('#2a2a2e')); knob.position.set(w - .14, ht / 2, 0); pivot.add(knob);
+  group.add(pivot);
+  const DK = new Kit(); DK.solid(hx, hy, hz - .07, hx + w, hy + ht + .05, hz + .07);
+  const c = Math.cos(m.angle), s = Math.sin(m.angle), lx = hx + w / 2, lz = hz + .045;
+  const door = { pivot, leaf, col: DK.build(m.pos[0], m.pos[1], m.pos[2], m.angle).colliders, colOn: true, angle: 0, manual: null,
+    at: [m.pos[0] + lx * c + lz * s, m.pos[1] + hy, m.pos[2] - lx * s + lz * c] };
+  addColliders(door.col); doors.add(door);
+  return door;
+}
+function unhangDoor(door) { if (door.colOn) removeColliders(door.col); doors.delete(door); }
 function makeCottage(m) {
   const rnd = mulberry32(m.seed), K = new Kit(), W = m.w, D = m.d, two = m.storeys === 2;
   const t = .25, floorY = .3, H1 = 2.8, H2 = 2.5, slab = .2;
@@ -4267,15 +4283,7 @@ function makeCottage(m) {
   }
   // The door: a leaf hung on the inside of the doorway from its left jamb, shut until someone opens it (E, or a
   // villager coming through), when it swings inwards right round, half a turn, to lie against the wall
-  const hingeX = doorX - .5, hingeZ = D / 2 - t - .045, pivot = new THREE.Group();
-  pivot.position.set(hingeX, floorY, hingeZ);
-  const leaf = new THREE.Mesh(scaledBox(.98, 2.05, .07), buildingMat('#4a3020')); leaf.position.set(.5, 1.03, 0); pivot.add(leaf);
-  const knob = new THREE.Mesh(scaledBox(.07, .07, .16), buildingMat('#2a2a2e')); knob.position.set(.86, 1.05, 0); pivot.add(knob);
-  built.group.add(pivot);
-  const DK = new Kit(); DK.solid(hingeX, floorY, hingeZ - .07, hingeX + 1, floorY + 2.1, hingeZ + .07);
-  const door = { pivot, leaf, col: DK.build(m.pos[0], m.pos[1], m.pos[2], m.angle).colliders, colOn: true, angle: 0, manual: null,
-    at: built.toWorld(doorX, floorY, D / 2 - t) };
-  addColliders(door.col);
+  const door = hangDoor(built.group, m, doorX - .5, floorY, D / 2 - t - .045, 1, 2.05);
   const obj = { g: built.group, spec: m, doorX, door, colliders: built.colliders, torches: torchList, fire, loaves, ovenFire, ovenLit: false, glass: built.meshes.glass,
     seed: m.seed, chimney: built.toWorld(cx, chimTop + .45, 0), smokeT: 0, on: null };   // null: first update sets the fire
   cottages.add(obj);
@@ -4539,7 +4547,10 @@ function makeFort(m) {
     if (m.dungeon) buildDungeon(K, tools, stone, C); else blk('floor:in', x0 + 1, 0, z0 + 1, x1 - 1, .05, z1 - 1, false);
   }
   for (const [x, y, z] of m.crates || []) blk('crate', x + .04, y, z + .04, x + .96, y + .92, z + .96);
-  return placeModel(K, m);
+  const obj = placeModel(K, m);
+  // The jailer's room door, in the corridor's west wall, swinging into the room
+  if (keep && m.dungeon) obj.door = hangDoor(obj.g, m, -2.2, -DUNGEON.depth, -13.045, 1.2, 2.2);
+  return obj;
 }
 
 // The cells beneath a keep (Castle Aldermere's): the ground inside the keep is sunk DUNGEON.depth (see dungeonAt),
@@ -4559,7 +4570,9 @@ function buildDungeon(K, { blk }, stone, C) {
   for (let i = 1; i <= 8; i++) blk(stone, SX, -D, Z1 - 1.6 - run * i, X1, -.5 * i, Z1 - 1.6 - run * (i - 1));
   // Stone lining the sunken room, and the walls between the cells (and between the cells and the stair)
   blk(stone, X0, -D, Z0, X0 + .3, -.3, Z1); blk(stone, X1 - .3, -D, Z0, X1, -.3, Z1);
-  blk(stone, X0, -D, Z0, X1, -.3, Z0 + .3); blk(stone, X0, -D, Z1 - .3, X1, -.3, Z1);
+  // (the corridor's west wall has the doorway to the jailer's room, at x C-2.2..C-1)
+  blk(stone, X0, -D, Z0, ox - 2.2, -.3, Z0 + .3); blk(stone, ox - 1, -D, Z0, X1, -.3, Z0 + .3); blk(stone, ox - 2.2, -D + 2.25, Z0, ox - 1, -.3, Z0 + .3);
+  blk(stone, X0, -D, Z1 - .3, X1, -.3, Z1);
   for (const x of [ox - 2.2, ox + .6]) blk(stone, x - .15, -D, FZ, x + .15, -.3, Z1);
   blk(stone, SX - .3, -D, FZ, SX, -.3, Z1);
   blk('floor:in', X0, -D, Z0, X1, -D + .05, Z1, false);
@@ -4572,6 +4585,60 @@ function buildDungeon(K, { blk }, stone, C) {
       K.aabb(iron, p - C, -D, FZ - .06 - C, q - C, -.65, FZ + .06 - C, false); K.solid(p - C, -D, FZ - .08 - C, q - C, -.3, FZ + .08 - C);
     }
   });
+  furnishDungeon(K, blk, stone, C);
+}
+// The jailer's room, dug out west of the corridor under the courtyard (paved over), and the furniture of the
+// room, the cells and the corridor. In the fort's centred coordinates: lx north, lz east (B takes those).
+const CELL_SPOTS = DUNGEON.cells.map(([a, b], i) => {
+  const x0 = a + (i === 0 ? .3 : .15), x1 = b - (i === 2 ? .3 : .15);
+  return { bed: [x0 + .2, -6.35, x0 + 2.1, -5.4], stool: [x1 - .45, -7.9], table: [x1 - .62, -7.05, x1 - .12, -6.55] };
+});
+const JAILER_ROOM = { bed: [-.95, -16.9, -.05, -14.9], chest: [-.75, -14.75, -.1, -14.1], table: [-2.65, -16, -1.55, -15], chair: [-2.1, -14.55],
+  rack: [-4, -15.6, -3.62, -14.2], shelves: [-3.7, -17, -1.8, -16.6], corridorTable: [-4.6, -11.6, -3.4, -10.4], corridorChairs: [[-4, -12.05, 1], [-4, -9.95, -1]] };
+function furnishDungeon(K, blk, stone, C) {
+  const F = -DUNGEON.depth;
+  const B = (key, a0, y0, b0, a1, y1, b1, solid = false) => blk(key, C + Math.min(a0, a1), y0, C + Math.min(b0, b1), C + Math.max(a0, a1), y1, C + Math.max(b0, b1), solid);
+  const S = (a0, y0, b0, a1, y1, b1) => K.solid(Math.min(a0, a1), y0, Math.min(b0, b1), Math.max(a0, a1), y1, Math.max(b0, b1));
+  const wood = '#6b4a2e', dark = '#4a3220', hay = '#c8a860', linen = '#d9d4c4', wool = '#7a6450', iron = '#2a2a2e', steel = '#9a9ca2';
+  const legs = (a0, b0, a1, b1, h, w = .06) => { for (const [a, b] of [[a0, b0], [a1 - w, b0], [a0, b1 - w], [a1 - w, b1 - w]]) B(dark, a, F, b, a + w, F + h, b + w); };
+  const table = (a0, b0, a1, b1, h = .74) => { B(wood, a0, F + h - .06, b0, a1, F + h, b1); legs(a0 + .05, b0 + .05, a1 - .05, b1 - .05, h - .06); S(a0, F, b0, a1, F + h, b1); };
+  const chair = (a, b, db) => {                                               // facing along lz (db = +1 or -1), its back behind
+    B(wood, a - .22, F + .4, b - .22, a + .22, F + .46, b + .22); legs(a - .2, b - .2, a + .2, b + .2, .4, .05);
+    const bb = b - db * .2; B(dark, a - .22, F + .46, bb - .03, a + .22, F + 1.02, bb + .03);
+  };
+  const stool = (a, b) => { B(wood, a - .17, F + .38, b - .17, a + .17, F + .43, b + .17); legs(a - .14, b - .14, a + .14, b + .14, .38, .05); };
+  const bedding = ([a0, b0, a1, b1]) => {                                     // a hay pallet with a sheet, a rolled blanket at the head
+    B(hay, a0, F, b0, a1, F + .12, b1); B(linen, a0 + .07, F + .12, b0 + .06, a1 - .07, F + .15, b1 - .06);
+    B(wool, a0 + .1, F + .15, b0 + .1, a0 + .4, F + .32, b1 - .1);
+  };
+  // The jailer's room: walls, floor, and the courtyard paving over it
+  const R = JAILER_ROOM;
+  B(stone, -4.3, F, -17.3, -4, -.3, -13, true); B(stone, 0, F, -17.3, .3, -.3, -13, true); B(stone, -4.3, F, -17.3, .3, -.3, -17, true);
+  B('floor:in', -4.3, F, -17.3, .3, F + .05, -13);
+  B(stone, -5.3, -.3, -18.3, 1.3, 0, -13, true);
+  { const [a0, b0, a1, b1] = R.bed;                                            // a bed with a headboard to the west
+    B(dark, a0, F, b0, a1, F + .3, b1, true); B(hay, a0 + .05, F + .3, b0 + .05, a1 - .05, F + .42, b1 - .05); B(linen, a0 + .08, F + .42, b0 + .35, a1 - .08, F + .46, b1 - .08);
+    B(wool, a0 + .08, F + .42, b0 + .55, a1 - .08, F + .5, b1 - .3); B(linen, a0 + .15, F + .42, b0 + .08, a1 - .15, F + .56, b0 + .4); B(dark, a0, F, b0 - .06, a1, F + .95, b0); }
+  { const [a0, b0, a1, b1] = R.chest;                                          // a chest at its foot, iron-bound
+    B(dark, a0, F, b0, a1, F + .45, b1, true); B(wood, a0 - .02, F + .45, b0 - .02, a1 + .02, F + .56, b1 + .02);
+    for (const t of [.2, .8]) { const a = a0 + (a1 - a0) * t; B(iron, a - .03, F, b0 - .03, a + .03, F + .57, b1 + .03); } }
+  table(...R.table); chair(...R.chair, -1);
+  { const [a0, b0, a1, b1] = R.rack;                                           // a weapon rack against the south wall: spears and swords
+    for (const b of [b0, b1 - .1]) B(dark, a0, F, b, a1, F + 1.7, b + .1); for (const y of [.35, 1.35]) B(wood, a0 + .05, F + y, b0, a1 - .05, F + y + .1, b1);
+    for (let i = 0; i < 4; i++) { const b = b0 + .3 + i * .27; B(wood, a0 + .14, F + .05, b - .025, a0 + .2, F + 1.85, b + .025); B(steel, a0 + .13, F + 1.85, b - .035, a0 + .21, F + 2.05, b + .035); }
+    for (const b of [b1 - .32, b1 - .5]) { B(steel, a0 + .2, F + .45, b - .02, a0 + .24, F + 1.3, b + .02); B(dark, a0 + .17, F + 1.3, b - .08, a0 + .27, F + 1.36, b + .08); B(dark, a0 + .2, F + 1.36, b - .02, a0 + .24, F + 1.55, b + .02); }
+    S(a0, F, b0, a1, F + 1.8, b1); }
+  { const [a0, b0, a1, b1] = R.shelves;                                        // shelves against the west wall: the jailer's food
+    for (const a of [a0, a1 - .06]) B(dark, a, F, b0, a + .06, F + 1.75, b1); for (const y of [.42, 1, 1.58]) B(wood, a0, F + y, b0, a1, F + y + .04, b1);
+    for (let i = 0; i < 3; i++) B('#a08060', a0 + .15 + i * .55, F + .46, b0 + .05, a0 + .55 + i * .55, F + .9, b1 - .05);          // sacks of flour and oats
+    for (let i = 0; i < 5; i++) B('#7a5a40', a0 + .15 + i * .33, F + 1.04, b0 + .1, a0 + .32 + i * .33, F + 1.3, b0 + .27);           // jars
+    for (let i = 0; i < 2; i++) B('#d8b048', a0 + .2 + i * .45, F + 1.62, b0 + .06, a0 + .55 + i * .45, F + 1.74, b1 - .06);          // cheeses
+    B('#b07a3a', a1 - .7, F + 1.62, b0 + .08, a1 - .4, F + 1.76, b1 - .08); B('#8a3a2a', a1 - .35, F + 1.62, b0 + .08, a1 - .12, F + 1.82, b1 - .1);   // a loaf and a ham
+    S(a0, F, b0, a1, F + 1.8, b1); }
+  // The corridor: a table and two chairs
+  table(...R.corridorTable); for (const [a, b, db] of R.corridorChairs) chair(a, b, db);
+  // Each cell: bedding on the floor, a stool and a little table
+  for (const c of CELL_SPOTS) { bedding(c.bed); stool(...c.stool); table(...c.table, .55); }
 }
 // How deep the ground is sunk at a point (inside the dungeon keep's walls), or null. (var: the land can be
 // asked about before this line runs; until the places are laid out there's no dungeon.)
@@ -4579,9 +4646,10 @@ var dungeonPlan = null;
 function dungeonAt(x, z) {
   if (!dungeonPlan) { if (!placesLaid) return null; dungeonPlan = PLACES.find(p => p.dungeon).plan; }
   const pl = dungeonPlan, dx = x - pl.cx, dz = z - pl.cz;
-  if (dx * dx + dz * dz > 200) return null;                                // (the keep reaches 14 blocks from the castle's centre)
+  if (dx * dx + dz * dz > 400) return null;                                // (the jailer's room reaches 18 blocks from the castle's centre)
   const a = -pl.rot * Math.PI / 2, c = Math.cos(a), s = Math.sin(a), lx = dx * c - dz * s, lz = dx * s + dz * c;   // the fort's frame, centred
-  return lx >= -5 && lx <= 5 && lz >= -13 && lz <= -5 ? pl.base - DUNGEON.depth : null;
+  const inKeep = lx >= -5 && lx <= 5 && lz >= -13 && lz <= -5, inRoom = lx >= -4.3 && lx <= .3 && lz >= -17.3 && lz <= -13;
+  return inKeep || inRoom ? pl.base - DUNGEON.depth : null;
 }
 // A point in the dungeon fort's own coordinates (relative to the keep's dungeon origin (C, C - 11)) in the world, and the fort's facing
 function dungeonWorld(lx, ly, lz) {
@@ -5044,7 +5112,7 @@ const MODEL_MAKERS = { cottage: makeCottage, stall: makeStall, windmill: makeTow
 
 function removeBuilding(obj) {
   scene.remove(obj.g);
-  if (obj.door?.colOn) removeColliders(obj.door.col);
+  if (obj.door) unhangDoor(obj.door);
   for (const e of obj.extra || []) scene.remove(e);
   removeColliders(obj.colliders);
   for (const t of obj.torches) removeTorch(t);
@@ -5068,8 +5136,8 @@ const DOOR_SPEED = 3.2;
 function updateDoors(dt) {
   const walkers = [];
   for (const V of villages) for (const p of V.people) walkers.push(p.gd.g.position);
-  for (const h of cottages) {
-    const d = h.door; if (!d) continue;
+  for (const gd of cellFolk.all()) walkers.push(gd.g.position);
+  for (const d of doors) {
     const [x, y, z] = d.at;
     if (Math.abs(x - P.pos.x) > 60 || Math.abs(z - P.pos.z) > 60) continue;
     const busy = walkers.some(q => Math.abs(q.x - x) < 1.8 && Math.abs(q.z - z) < 1.8 && Math.abs(q.y - y) < 2.5);
@@ -5373,8 +5441,8 @@ function updateSeat(S) {
   const watch = S.soldiers.filter((p, i) => S.soldiers.length < 2 ? day : i % 2 === (day ? 0 : 1));
   posts.forEach((post, i) => { const p = watch[i]; if (p) want.set(p.id, { p, post }); });
   if (day && S.points?.length) {
-    const others = S.people.filter(p => !want.has(p.id) && !p.ruler && !p.office && p.id !== INTRO.jailerId), share = Math.min(1, 16 / Math.max(1, others.length));
-    const out = [...S.people.filter(p => (p.ruler || p.office) && p.id !== INTRO.jailerId), ...others.filter(p => hash2(p.id * 7 + env.day, Math.floor(h / 2) * 13) < share)].slice(0, 24);
+    const others = S.people.filter(p => !want.has(p.id) && !p.ruler && !p.office && !belowStairs(p.id)), share = Math.min(1, 16 / Math.max(1, others.length));
+    const out = [...S.people.filter(p => (p.ruler || p.office) && !belowStairs(p.id)), ...others.filter(p => hash2(p.id * 7 + env.day, Math.floor(h / 2) * 13) < share)].slice(0, 24);
     for (const p of out) {
       const r = mulberry32((p.id * 9973 + env.day * 31 + Math.floor(h / 2)) >>> 0), a = S.points[r() * S.points.length | 0];
       const near = S.points.filter(q => q !== a && Math.hypot(q[0] - a[0], q[2] - a[2]) < 9 && clearWalk(a, q)), b = near.length && r() < .6 ? near[r() * near.length | 0] : null;
@@ -7473,7 +7541,7 @@ function updateGuards(dt) {
       gd.losT -= dt;
       if (gd.losT <= 0) { gd.losT = .2; gd.seeing = dist < 2.5 || canSee(pos.x, pos.y + 1.65, pos.z, P.pos.x, P.pos.y + 1.6, P.pos.z); }
     } else gd.seeing = false;
-    const sees = gd.seeing && dist < range && !gd.agent?.asleep;   // sleepers don't notice you
+    const sees = gd.seeing && dist < range && !gd.agent?.asleep && !gd.asleep;   // sleepers don't notice you
     gd.lostT = sees ? 0 : gd.lostT + dt;
 
     // Greet once per encounter when you come near; forget you a few seconds after you've gone
@@ -7493,7 +7561,8 @@ function updateGuards(dt) {
 
     // Stop and face the player while they're close and in view, otherwise carry on
     // (villagers going about their day only stop for you when you're right next to them)
-    const attending = dlg.gd === gd || sees && dist < (gd.agent ? 3.5 : 7);
+    const attending = (dlg.gd === gd || sees && dist < (gd.agent || gd.drive ? 3.5 : 7)) && !gd.sitting && !gd.lying;
+    if (gd.drive && !attending) { gd.drive(dt); continue; }
     if (attending) {
       turnTowards(gd, Math.atan2(dx, dz), Math.max(dt, .016));
       gd.legs[0].rotation.x = gd.legs[1].rotation.x = 0;
@@ -7522,8 +7591,7 @@ function updateInteract() {
   const facing = (x, z) => { const dx = x - P.pos.x, dz = z - P.pos.z, d = Math.hypot(dx, dz) || 1; return (dx * fx + dz * fz) / d; };
   if (talkTarget) { const f = facing(talkTarget.gd.g.position.x, talkTarget.gd.g.position.z);
     if (f > .3 || talkTarget.dist < 1.5) cands.push({ kind: 'talk', gd: talkTarget.gd, obj: talkTarget.gd.g, face: f - talkTarget.dist * .04 }); }
-  for (const h of cottages) {
-    const d = h.door; if (!d) continue;
+  for (const d of doors) {
     const [x, y, z] = d.at, dist = Math.hypot(x - P.pos.x, z - P.pos.z);
     if (dist > 2.6 || Math.abs(y - P.pos.y) > 2) continue;
     const f = facing(x, z);
@@ -7609,6 +7677,7 @@ function whatDoing(gd) {
   if (!p) return night ? 'Keeping my eyes open. Nights are long out here.' : 'Keeping watch.';
   if (p.job === 'merchant') return merchantNews(p);
   if (p.job === 'carter') return carterAbout(p);
+  if (p.cellAct) return p.cellAct();
   if (p.prisoner) return pick(['Counting the days.', 'Sitting. Waiting. What else is there?', 'Listening to the guards argue over dice.']);
   if (p.resident) return gd.post ? (night ? 'Night watch. Someone has to.' : 'On watch till the change of the guard.')
     : p.ruler ? `Seeing to ${p.plan.title}'s business. There's always some.` : p.office ? `About my duties as ${p.role.split(' of ')[0]}.` : !p.grown ? 'Playing. Mostly.' : 'Going about my day.';
@@ -8007,6 +8076,7 @@ function update(dt, t) {
   updateVillages();
   updateSeats();
   updateIntro(dt);
+  updateCellFolk(dt);
   processRuns(dt);
   updateModels(dt);
   updateAnimals(dt);
@@ -8222,7 +8292,7 @@ document.getElementById('btnMenu').addEventListener('click', e => { e.stopPropag
 // ---------------------------------------------------------------------------
 const INTRO = { freed: saved ? (saved.intro ? !!saved.intro.freed : true) : false, jailer: null, jailerId: null, door: null, back: 0, step: 0, score: 0, tries: 0, prisoners: [] };
 if (!INTRO.freed && !saved) {                                         // a new game: in the middle cell, facing the bars, in the morning
-  const [x, y, z] = dungeonWorld(-.8, -DUNGEON.depth, 4.6);
+  const [x, y, z] = dungeonWorld(-.8, -DUNGEON.depth, 3.4);
   P.pos.set(x, y, z); P.yaw = P.homeYaw = dungeonYaw(); P.pitch = 0;
   if (!params.has('time')) env.time = 7.5;
 }
@@ -8327,7 +8397,7 @@ function updateIntro(dt) {
     if (!chunks.get(chunkKey(Math.floor(P.pos.x) >> 4, Math.floor(P.pos.z) >> 4))?.decor) return;
     INTRO.ready = true;
     introDoor(INTRO.freed);
-    if (!INTRO.freed) { introPrisoners(); INTRO.back = 4; }
+    if (!INTRO.freed) INTRO.back = 4;
     return;
   }
   if (!INTRO.freed && !INTRO.jailer && !dlg.open && everStarted && (INTRO.back -= dt) <= 0) introJailerIn();
@@ -8335,6 +8405,144 @@ function updateIntro(dt) {
   if (INTRO.freed && (INTRO.jailer || INTRO.prisoners.length) && P.pos.y > dungeonPlan.base - .5) {
     introJailerOut(); for (const gd of INTRO.prisoners) removeGuard(gd); INTRO.prisoners = []; INTRO.jailerId = null;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Below the castle: the jailer, the servant who brings his food, and the prisoners. The jailer lives in his room
+// off the corridor: he sleeps there (21:30 to 6:30) and eats at its table (breakfast, midday and supper), and
+// through the day walks the corridor, sits at the corridor table, or sits in his room with the door open. Each
+// morning at nine a castle servant brings his food down to the shelves in his room and goes back up. The
+// history's prisoners sit, lie and stand in the two outer cells. (During the opening the jailer is the opening's.)
+// ---------------------------------------------------------------------------
+const cellFolk = { jailer: null, servant: null, prisoners: [], ids: new Set(), all() { return [this.jailer, this.servant, ...this.prisoners].filter(Boolean); } };
+const belowStairs = id => id === INTRO.jailerId || cellFolk.ids.has(id);
+const dw = (lx, y, lz) => dungeonWorld(lx, y, lz + 11);                            // the fort's centred coordinates in the world
+const towards = (a0, b0, a1, b1) => { const p = dw(a0, 0, b0), q = dw(a1, 0, b1); return Math.atan2(q[0] - p[0], q[2] - p[2]); };
+const FLOOR = () => -DUNGEON.depth;
+// Places the jailer goes, each reached from the corridor's middle (HUB) by its path, and what he does there
+const HUB = [-1.6, -11.2], DOOR_OUT = [-1.6, -12.3], DOOR_IN = [-1.6, -13.7];
+const JAILER_SPOTS = {
+  bed: { path: [HUB, DOOR_OUT, DOOR_IN, [-1.4, -15.6]], lie: [[-.5, -14.95], [-.5, -16.8], .46], say: ['Asleep.'] },
+  roomChair: { path: [HUB, DOOR_OUT, DOOR_IN, [-2.1, -14.1], JAILER_ROOM.chair], sit: towards(...JAILER_ROOM.chair, -2.1, -15.5) },
+  corrChair: { path: [HUB, [-3, -9.95], JAILER_ROOM.corridorChairs[1].slice(0, 2)], sit: towards(-4, -9.95, -4, -11) },
+  corrA: { path: [HUB, [-.8, -10.1]], face: towards(-.8, -10.1, -.8, -8) },
+  corrB: { path: [HUB, [2.4, -10.4]], face: towards(2.4, -10.4, 2, -8) },
+  corrC: { path: [HUB, [-3, -9.75]], face: towards(-3, -9.75, -3.6, -8) },
+};
+function jailerPlan(h, day) {
+  if (h < 6.5 || h >= 21.5) return ['bed', 'Asleep'];
+  if (h < 7.3 || h >= 12 && h < 12.7 || h >= 18 && h < 18.8) return ['roomChair', h < 8 ? 'Having my breakfast.' : h < 13 ? 'Eating. A man has to eat.' : 'My supper. Bread and a bit of that cheese.'];
+  const slot = Math.floor(h * 1.5), r = hash2(day * 37 + slot, 911);
+  if (r < .3) return ['corrChair', 'Sitting a while. Nothing gets past me from here.'];
+  if (r < .55) return ['roomChair', "Sitting in my room. Door's open; I can hear if anyone tries anything."];
+  return [['corrA', 'corrB', 'corrC'][Math.floor(hash2(slot, day * 13 + 5) * 3)], 'Walking the cells. Keeping an eye on this lot.'];
+}
+const sitPose = (gd, on) => { gd.legs[0].rotation.x = gd.legs[1].rotation.x = on ? -1.45 : 0; gd.sitting = on; };
+const standUp = gd => { sitPose(gd, false); gd.g.rotation.x = 0; gd.lying = false; gd.asleep = false; };
+// Settle someone at a spot: sitting (on a seat .43 high), lying (feet to head, at a height), or standing facing a way
+function settle(gd, spot) {
+  standUp(gd);
+  const F = FLOOR(), end = spot.path ? spot.path.at(-1) : spot.at;
+  if (spot.lie) {
+    const [[fa, fb], [ha, hb], y] = spot.lie, feet = dw(fa, F + y, fb), head = dw(ha, F + y, hb);
+    gd.g.position.set(...feet); gd.g.rotation.order = 'YXZ'; gd.g.rotation.y = Math.atan2(feet[0] - head[0], feet[2] - head[2]); gd.g.rotation.x = -Math.PI / 2;
+    gd.lying = true; gd.asleep = !!spot.sleep; gd.face = gd.g.rotation.y;
+  } else {
+    gd.g.position.set(...dw(end[0], F - (spot.sit !== undefined ? .37 : 0), end[1]));
+    gd.g.rotation.y = gd.face = spot.sit ?? spot.face ?? gd.g.rotation.y;
+    if (spot.sit !== undefined) sitPose(gd, true);
+  }
+}
+// Walk a list of points in the fort's centred coordinates (each [lx, lz] at the cells' floor, or [lx, y, lz]),
+// then settle at the spot
+function walkTo(gd, pts, spot) {
+  standUp(gd);
+  const F = FLOOR();
+  gd.route = pts.map(p => p.length === 3 ? dw(p[0], p[1], p[2]) : dw(p[0], F, p[1]));
+  gd.spot = spot;
+  gd.drive = dt => {
+    const r = gd.route, pos = gd.g.position;
+    if (!r.length) return;
+    const [tx, ty, tz] = r[0], dx = tx - pos.x, dz = tz - pos.z, d = Math.hypot(dx, dz), step = 1.3 * dt;
+    if (d <= step) { pos.set(tx, ty, tz); r.shift(); if (!r.length && gd.spot) settle(gd, gd.spot); return; }
+    pos.x += dx / d * step; pos.z += dz / d * step; pos.y += (ty - pos.y) * Math.min(1, step / d);
+    turnTowards(gd, Math.atan2(dx, dz), dt * 3);
+    const swing = Math.sin(clock.elapsedTime * 7) * .5; gd.legs[0].rotation.x = swing; gd.legs[1].rotation.x = -swing;
+  };
+}
+const routeBetween = (a, b) => [...[...(a ? JAILER_SPOTS[a].path : [HUB])].reverse(), ...JAILER_SPOTS[b].path].filter((p, i, l) => !i || p !== l[i - 1]);
+// The servant's way down: in at the keep's door, across to the stair, down, along the corridor and into the room
+const SERVANT_WAY = [[0, 0, -3.4], [0, 0, -5.6], [2.6, 0, -5.9], [4.2, 0, -6.2], [4.2, -4, -12], [2.4, -4, -11.6], [HUB[0], -4, HUB[1]], [DOOR_OUT[0], -4, DOOR_OUT[1]], [DOOR_IN[0], -4, DOOR_IN[1]], [-3.2, -4, -16.1]];
+const SERVANT_AT_SHELVES = { at: [-3.2, -16.1], face: towards(-3.2, -16.1, -3.2, -17) };
+function residentOf(id, role) {
+  const H = FOLK.H, hp = H.people[id], hh = (FOLK.byPlace.get('Castle Aldermere') || []).find(x => x.members.includes(id)) || { kind: 'the castle quarters', members: [id] };
+  return { id, name: `${hp.name} ${hp.surname}`, resident: true, role, plan: dungeonPlan, home: hh, ruler: false, office: role.includes(' of '), soldier: hh.kind === 'the garrison', grown: true };
+}
+function cellFolkIn() {
+  const H = FOLK.H, F = FLOOR();
+  // The jailer (the castle's, failing that one of its guards)
+  if (INTRO.freed && !INTRO.jailer) {
+    const p = introJailer();
+    if (p.id !== undefined) {
+      const gd = cellFolk.jailer = addGuard(dw(HUB[0], F, HUB[1]), null, 0, 0, { title: 'Castle Aldermere', plan: dungeonPlan, kind: 'guard', person: p });
+      cellFolk.ids.add(p.id);
+      const [where] = jailerPlan(env.time, env.day); gd.plan = where;
+      walkTo(gd, [], null); settle(gd, { ...JAILER_SPOTS[where], sleep: where === 'bed' });
+    }
+  }
+  // The prisoners, in the two outer cells: one on the stool, one on the bedding, one at the bars
+  const ids = H._living.filter(id => H.people[id].jail?.at === 'Castle Aldermere').slice(0, 6);
+  ids.forEach((id, i) => {
+    const hp = H.people[id], c = CELL_SPOTS[i % 2 ? 2 : 0], k = Math.floor(i / 2);
+    const p = { id, name: `${hp.name} ${hp.surname}`, prisoner: true, resident: true, role: 'prisoner', jail: hp.jail, plan: dungeonPlan };
+    const gd = addGuard(dw(c.stool[0], F, c.stool[1]), null, 0, 0, { title: 'Castle Aldermere', plan: dungeonPlan, kind: 'villager', color: 0x5a5048, person: p });
+    const [a0, b0, a1, b1] = c.bed;
+    settle(gd, k === 0 ? { at: c.stool, sit: towards(c.stool[0], c.stool[1], c.stool[0], -9) }
+      : k === 1 ? { lie: [[a1 - .1, (b0 + b1) / 2], [a0 + .3, (b0 + b1) / 2], .15], sleep: hash2(id, env.day) < .5 }
+      : { at: [(a0 + a1) / 2, -8.4], face: towards(0, -8.4, 0, -10) });
+    cellFolk.prisoners.push(gd); cellFolk.ids.add(id);
+  });
+  cellFolk.on = true;
+}
+function cellFolkOut() {
+  for (const gd of cellFolk.all()) removeGuard(gd);
+  Object.assign(cellFolk, { jailer: null, servant: null, prisoners: [], on: false }); cellFolk.ids.clear();
+}
+// The day's servant: one of the castle's servants (failing that, anyone grown who isn't a soldier), by the day
+function todaysServant() {
+  const H = FOLK.H, folk = (FOLK.byPlace.get('Castle Aldermere') || []).filter(h => h.kind !== 'the garrison').flatMap(h => h.members)
+    .filter(id => H.year - H.people[id].birth >= H.rules.races[H.people[id].race].adult && !cellFolk.ids.has(id) && id !== INTRO.jailerId);
+  const servants = folk.filter(id => H.people[id].trade === 'servant'), pool = servants.length ? servants : folk;
+  return pool.length ? pool[Math.floor(hash2(env.day, 77) * pool.length)] : undefined;
+}
+function updateCellFolk(dt) {
+  if (!FOLK || !dungeonPlan || !everStarted) return;
+  const near = Math.hypot(P.pos.x - dungeonPlan.cx, P.pos.z - dungeonPlan.cz) < 90 && chunks.get(chunkKey(Math.floor(dungeonPlan.cx) >> 4, Math.floor(dungeonPlan.cz) >> 4))?.decor;
+  if (!near) { if (cellFolk.on) cellFolkOut(); return; }
+  if (!cellFolk.on) cellFolkIn();
+  if (!cellFolk.jailer && INTRO.freed && !INTRO.jailer && !cellFolk.askedJailer) { cellFolk.askedJailer = true; cellFolkOut(); cellFolkIn(); }   // the opening's over: the jailer's back to his life
+  const h = env.time, J = cellFolk.jailer;
+  // The jailer goes where the hour takes him
+  if (J) {
+    const [where, line] = jailerPlan(h, env.day);
+    J.home.person.cellAct = () => line;
+    if (where !== J.plan) { walkTo(J, routeBetween(J.plan, where), { ...JAILER_SPOTS[where], sleep: where === 'bed' }); J.plan = where; }
+  }
+  // The servant brings the day's food at nine
+  const S = cellFolk.servant;
+  if (!S && h >= 9 && h < 9.5 && cellFolk.servedDay !== env.day) {
+    const id = todaysServant();
+    cellFolk.servedDay = env.day;
+    if (id !== undefined) {
+      const p = residentOf(id, 'servant'); p.cellAct = () => cellFolk.servant?.leaving ? 'Back up to the kitchens.' : "Bringing the jailer his food for the day. Bread, cheese, a bit of ham if he's lucky.";
+      const gd = cellFolk.servant = addGuard(dw(0, 0, -3.4), null, 0, 0, { title: 'Castle Aldermere', plan: dungeonPlan, kind: 'villager', color: 0x8a7a5a, person: p });
+      gd.home.person = p; cellFolk.ids.add(id);
+      gd.g.rotation.order = 'YXZ';
+      walkTo(gd, SERVANT_WAY, SERVANT_AT_SHELVES);
+    }
+  }
+  if (S && !S.leaving && !S.route.length && h >= 9.7) { S.leaving = true; walkTo(S, [...SERVANT_WAY].reverse(), null); }
+  if (S && S.leaving && !S.route.length) { cellFolk.ids.delete(S.home.person.id); removeGuard(S); cellFolk.servant = null; }
 }
 
 // Playing: build the history, then the start screen lets you in. Otherwise: the main menu.
