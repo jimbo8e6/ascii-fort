@@ -7418,6 +7418,7 @@ function showDialogue(text) {
     ['Who are you?', () => showDialogue(whoAreYou(dlg.gd))],
     ['What are you doing?', () => showDialogue(whatDoing(dlg.gd))],
     ['What can you tell me about this area?', () => showDialogue(dlg.area ??= describeArea(dlg.gd))],
+    ...(p && !p.resident ? [["Let's trade.", () => showTrade(p)]] : []),          // villagers, merchants and carters
     ['Can you tell me about…', () => askBox()],
     ['Goodbye.', () => closeDialogue()],
   ]);

@@ -135,7 +135,7 @@ Villages on a road have the road meeting at a village square with a stone well (
   - A village with no mill starts its bakery with flour, and the baker says a merchant brings it from the nearest village with a mill.
 - **More to ask** (typed): the baker about *bread* or *business* (stock, sales today, where the flour comes from), the miller about *flour* (who buys it), and anyone else about *bread* (where theirs comes from).
 - **Your purse and pack:** you start with 30 coins. What you carry shows in the bottom-right corner, and it's saved with your world.
-- **Trading:** ask any villager, merchant or carter about *trade* (or *buy*, *sell*, *goods*) under *Can you tell me about…*. Prices rise when stock runs short, and people pay a little under value for what they buy.
+- **Trading:** *Let's trade.* is a conversation option with every villager, merchant and carter (asking about *trade* works too). Prices rise when stock runs short, and people pay a little under value for what they buy.
   - **Bakers:** sell bread; buy flour.
   - **Millers:** sell flour and spare seed; buy wheat.
   - **Farmers:** sell spare seed, buy seed when they're short, and buy bread.
@@ -300,7 +300,7 @@ Guards patrol the walls and courtyards and stand at the gates. They're friendly.
 - **Noticing you:** a guard sees you within about 16 blocks by day and 9 at night, as long as no blocks are in the way.
 - **Greeting:** once you're within about 7 blocks, they stop, turn to face you and greet you ("Good day, traveller.", "Evening. Keep to the torchlight.").
 - **Carrying on:** walk off and they go back to their rounds, forgetting you after a few seconds.
-- **Talking:** within about 4 blocks, press **E** (or tap **TALK**) to open a conversation with anyone. The game pauses and the mouse is freed. Pick an option with the mouse or the number keys; **Esc** leaves. Everyone has the same four questions:
+- **Talking:** within about 4 blocks, press **E** (or tap **TALK**) to open a conversation with anyone. The game pauses and the mouse is freed. Pick an option with the mouse or the number keys; **Esc** leaves. Everyone has the same questions:
   1. **Who are you?** Their name, trade or office, and who they live with, from the history.
   2. **What are you doing?** Whatever they're doing right now.
   3. **What can you tell me about this area?** They answer from the world itself:
@@ -309,8 +309,9 @@ Guards patrol the walls and courtyards and stand at the gates. They're friendly.
      - which way the land changes (desert, snowfields, pine woods, grassland, the sea, the lake, a mountain tarn, the marshes);
      - the nearest river, by name if it has one (*The Vael runs just to the north-east.*), or a stream;
      - a warning at night.
-  4. **Can you tell me about…** Type anything and press Enter (see below).
-  5. **Goodbye.**
+  4. **Let's trade.** With villagers, merchants and carters (not castle folk or guards).
+  5. **Can you tell me about…** Type anything and press Enter (see below).
+  6. **Goodbye.**
 - **Asking about people:** type a name, whole or just a first name or surname, and they answer from what they would know, which is what's believed, not always the truth:
   - **Family** they know well: who it is to them (*my grandmother*, *my wife*, a cousin), their age, trade, offices and home, their marriage and children, or how they died. If a relative was blamed for a murder, the family swear they never did it.
   - **Neighbours** (anyone who has lived in their place in their lifetime) they know of: trade, home, offices, or how they died, as it's believed. A poisoning taken for a fever is still a fever to them, until the killer is caught.
@@ -318,7 +319,7 @@ Guards patrol the walls and courtyards and stand at the gates. They're friendly.
   - **Rulers and officers** over them they know by title, and a caught killer is known everywhere.
   - A first name shared by several neighbours gets *Which one? There's…*; someone they wouldn't know gets *Never heard of them*.
 - **Asking about titles and places:** *the Lord*, *the magistrate*, *the reeve* and so on tell you who holds that office over them; a place's name tells you how far and which way it is, how many live there and who holds it. *Avarren* gets *Avarren the Silencer, you mean*, and how long ago the war ended.
-- **Asking about work:** the old questions are now subjects to type: *trade* (opens trading), *crops*, *mill* or *flour*, *bread* or *business*, *seed*, *cart*, *lumber* or *meat*, and *news*.
+- **Asking about work:** the old questions are now subjects to type: *crops*, *mill* or *flour*, *bread* or *business*, *seed*, *cart*, *lumber* or *meat*, and *news*.
 - **Place names:** every place has its name from the gazetteer, e.g. *Fort Greyhold*, *Kelford*, *the Sunken Throne*.
 - **Speech bubbles** are drawn over the 3D view rather than inside it, so they stay readable in ASCII mode.
 - **Solid:** guards block your way, but you can always step away from one.
