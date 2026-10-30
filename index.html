@@ -2286,18 +2286,26 @@ function generateChunk(cx, cz) {
 // ---------------------------------------------------------------------------
 
 // A square fort, N blocks across, gate in the middle of the +z wall. Its layout: where its torches and guards go, and the fort model itself (makeFort)
-function buildFort({ N, wall, mat, keep = true, crates = [], dungeon = false }) {
+function buildFort({ N, wall, mat, keep = true, crates = [], dungeon = false, castle = false }) {
   const C = N / 2;
-  const torches = [[N / 3, 3.4, 3.3], [2 * N / 3, 3.4, 3.3], [3.3, 3.4, C - 2], [N - 3.3, 3.4, C - 2],
+  const torches = castle ? [[3.3, 3.4, C + 12], [N - 3.3, 3.4, C + 12], [C - 2.6, 3, C + 4.45], [C + 2.6, 3, C + 4.45], [C + 11.6, 2.6, C + 4.3],
+    [C - 2.5, 3.4, N + .3], [C + 2.5, 3.4, N + .3]] : [[N / 3, 3.4, 3.3], [2 * N / 3, 3.4, 3.3], [3.3, 3.4, C - 2], [N - 3.3, 3.4, C - 2],
     [C - 2.5, 3.4, N + .3], [C + 2.5, 3.4, N + .3]];
   if (keep) torches.push([C, 3.4, C - 3.7]);
+  // Inside Castle Aldermere (in the fort's own frame, so C + the castle's centred coordinates): the great hall's walls
+  // and hearths, the guardroom, barracks, kitchen and servants' rooms; the landing, solar, bedchamber, corridor and
+  // bedrooms; the upper landing and its two rooms
+  if (castle) torches.push([C - 18.7, 3.4, C - 15], [C - 18.7, 3.4, C - 2], [C - 7.3, 3.4, C - 8], [C - 18.5, .55, C - 12], [C - 18.5, .55, C - 5.5],
+    [C - 4.7, 3.2, C - 7], [C + 5.7, 3.2, C - 16], [C + 18.3, .55, C - 2.5], [C + 7.3, 3.2, C - 2], [C + 18.7, 3.2, C - 9], [C + 18.7, 3.2, C - 15.5],
+    [C, 8.2, C - 3.7], [C + 5.7, 8.2, C - 8.5], [C + 5.7, 8.2, C - 14], [C - 5.6, 5.55, C - 8.3], [C + 7.3, 8.2, C - 6], [C + 7.3, 8.2, C - 16],
+    ...[-16.3, -10.75, -5.25, .3].map(z => [C + 18.7, 8.2, C + z]), [C - 5.7, 13.2, C - 12], [C + 5.7, 13.2, C - 12], [C + 5.7, 13.2, C - 2]);
   if (keep && dungeon) torches.push([C - 3.6, -1.6, C - 12.7], [C + 2, -1.6, C - 12.7], [C - .3, -1.5, C - 13.9]);   // the cells' corridor; the jailer's room
   const guards = [
     { a: [6, wall, 1.5], b: [N - 6, wall, 1.5], speed: 1.3 },
-    { a: [8, 0, C + 6], b: [N - 8, 0, C + 6], speed: 1.2 },
+    { a: [8, 0, C + (castle ? 9 : 6)], b: [N - 8, 0, C + (castle ? 9 : 6)], speed: 1.2 },
     { a: [C - 3.2, 0, N + 2], face: [0, 1] }, { a: [C + 3.2, 0, N + 2], face: [0, 1] },
   ];
-  return { torches, guards, models: [{ kind: 'fort', x: C, y: 0, z: C, N, wall, mat, keep, crates, dungeon, angle: 0 }] };
+  return { torches, guards, models: [{ kind: 'fort', x: C, y: 0, z: C, N, wall, mat, keep, crates, dungeon, castle, angle: 0 }] };
 }
 
 // The watchtower, ruins and standing stones: where their torches and guards go, and the model to
@@ -2480,7 +2488,7 @@ const PLACES = [
   { name: "Hollin's Ferry", type: VILLAGE, at: [706, 563], mill: false, homes: 14, shacks: 4 },
   { name: 'Kelford', type: VILLAGE, at: [681, 641], mill: true, homes: 32, shacks: 1 },
   { name: 'Millbrook', type: VILLAGE, at: [671, 670], mill: true, homes: 21, shacks: 3 },
-  { name: 'Castle Aldermere', type: FORT, at: [620, 708], N: 48, gate: 'E', dungeon: true },   // cells under the keep: where every game begins
+  { name: 'Castle Aldermere', type: FORT, at: [620, 708], N: 48, gate: 'E', dungeon: true, castle: true },   // the castle, with the cells where every game begins
   { name: 'Greycrest', type: VILLAGE, at: [830, 610], mill: false, homes: 15, shacks: 5 },
   { name: 'Harrowgate Keep', type: FORT, at: [547, 703], N: 44, gate: 'E' },
   { name: 'Scarrow Hovel', type: VILLAGE, at: [600, 690], mill: false, homes: 8, shacks: 4 },
@@ -2517,7 +2525,7 @@ for (const p of PLACES) {
   const base = Math.max(SEA + 2, Math.min(H - 24, Math.round(sum / n))), rnd = mulberry32(hash2(ox, oz) * 1e9 | 0);
   const plan = {
     type, N, ox, oz, base, pad, blend, rot: GATE_ROT[type]?.[p.gate] ?? 0, seed: rnd() * 1e9 | 0,
-    mat: climate(cx, cz).desert > .5 ? SANDSTONE : BRICK, towerH: 11 + (rnd() * 4 | 0), mill: p.mill, stones: p.stones, style: p.style, dungeon: p.dungeon, homes: p.homes || 0, shacks: p.shacks || 0,
+    mat: climate(cx, cz).desert > .5 ? SANDSTONE : BRICK, towerH: 11 + (rnd() * 4 | 0), mill: p.mill, stones: p.stones, style: p.style, dungeon: p.dungeon, castle: p.castle, homes: p.homes || 0, shacks: p.shacks || 0,
     name: STRUCT_NAMES[type], title: p.name, cx: ox + S / 2, cz: oz + S / 2, rx: regionOf(ox), rz: regionOf(oz),
     _edits: null, decor: null, edits() { return this._edits || buildPlan(this); },
   };
@@ -2554,8 +2562,9 @@ function buildPlan(plan) {
   const extra = plan.style === 'hold' ? buildHold(plan)
     : plan.style === 'orc' ? buildOrcHold(plan)
     : plan.style === 'throne' ? buildThrone(plan)
-    : plan.type === FORT ? buildFort({ N: plan.N, wall: 6 + (rnd() * 2 | 0), mat: plan.mat, keep: plan.N >= 44, dungeon: plan.dungeon,
-      crates: [[6, 0, 6], [7, 0, 6], [6, 1, 6], [plan.N - 8, 0, plan.N / 2], [plan.N - 8, 0, plan.N / 2 + 1]] })
+    : plan.type === FORT ? buildFort({ N: plan.N, wall: 6 + (rnd() * 2 | 0), mat: plan.mat, keep: plan.N >= 44, dungeon: plan.dungeon, castle: plan.castle,
+      crates: plan.castle ? [[4, 0, 30], [5, 0, 30], [4, 1, 30], [plan.N - 6, 0, 35], [plan.N - 6, 0, 36]]
+        : [[6, 0, 6], [7, 0, 6], [6, 1, 6], [plan.N - 8, 0, plan.N / 2], [plan.N - 8, 0, plan.N / 2 + 1]] })
     : plan.type === TOWER ? buildTower({ mat: plan.mat, h: plan.towerH })
     : plan.style === 'elf' ? buildElfCity(plan)
     : plan.type === VILLAGE ? buildVillage(set, plan, rnd)
@@ -4068,16 +4077,18 @@ function colliderTop(x, y, z) {
 // Local frame: x across the front, z front-to-back (+z is the front, facing the road), y = 0 at ground
 const cottages = new Set();
 // Doors that open: every cottage's, and the jailer's room under Castle Aldermere's keep. hangDoor hangs one in a
-// model's own frame: hinged at (hx, hy, hz), the leaf running along +x, swinging half a turn towards -z.
+// model's own frame: hinged at (hx, hy, hz), the leaf running along +x, swinging half a turn towards -z. Turned
+// by `turn` (as a rotation about y): -PI/2 runs the leaf along +z, swinging towards +x; PI/2 along -z, towards -x.
 const doors = new Set();
-function hangDoor(group, m, hx, hy, hz, w, ht, wood = '#4a3020') {
-  const pivot = new THREE.Group(); pivot.position.set(hx, hy, hz);
+function hangDoor(group, m, hx, hy, hz, w, ht, wood = '#4a3020', turn = 0) {
+  const pivot = new THREE.Group(); pivot.position.set(hx, hy, hz); pivot.rotation.y = turn;
   const leaf = new THREE.Mesh(scaledBox(w - .02, ht, .07), buildingMat(wood)); leaf.position.set(w / 2, ht / 2 + .005, 0); pivot.add(leaf);
   const knob = new THREE.Mesh(scaledBox(.07, .07, .16), buildingMat('#2a2a2e')); knob.position.set(w - .14, ht / 2, 0); pivot.add(knob);
   group.add(pivot);
-  const DK = new Kit(); DK.solid(hx, hy, hz - .07, hx + w, hy + ht + .05, hz + .07);
-  const c = Math.cos(m.angle), s = Math.sin(m.angle), lx = hx + w / 2, lz = hz + .045;
-  const door = { pivot, leaf, col: DK.build(m.pos[0], m.pos[1], m.pos[2], m.angle).colliders, colOn: true, angle: 0, manual: null,
+  const DK = new Kit(), mx = hx + w / 2 * Math.cos(turn), mz = hz - w / 2 * Math.sin(turn);
+  DK.solidRot(mx, mz, w / 2, .07, hy, hy + ht + .05, turn);
+  const c = Math.cos(m.angle), s = Math.sin(m.angle), lx = mx, lz = mz + (turn ? 0 : .045);
+  const door = { pivot, leaf, turn, col: DK.build(m.pos[0], m.pos[1], m.pos[2], m.angle).colliders, colOn: true, angle: 0, manual: null,
     at: [m.pos[0] + lx * c + lz * s, m.pos[1] + hy, m.pos[2] - lx * s + lz * c] };
   addColliders(door.col); doors.add(door);
   return door;
@@ -4534,8 +4545,15 @@ function makeFort(m) {
     blk(stone, 5.5 + j * .5, 0, N - 5, 6 + j * .5, j * .5, N - 3);
     blk(stone, N - 6 - j * .5, 0, N - 5, N - 5.5 - j * .5, j * .5, N - 3);
   }
+  // Castle Aldermere: a great castle from the keep back to the west wall (see buildCastle), spires on the corner towers
+  let castleDoors = [];
+  if (keep && m.castle) {
+    castleDoors = buildCastle(K, tools, stone, C, m);
+    for (const s of [-1, 1]) for (const t of [-1, 1]) spire(K, stone, s * 22.5, TOP, t * 22.5, 2.1, 5, 7);
+    if (m.dungeon) buildDungeon(K, tools, stone, C);
+  }
   // The keep: hollow, with a doorway on the courtyard side and window slits
-  if (keep) {
+  else if (keep) {
     const x0 = C - 6, x1 = C + 6, z0 = C - 14, z1 = C - 4;
     blk(stone, x0 - .2, 0, z0 - .2, x1 + .2, .6, z1 + .2, false);
     holed(stone, x0, z1 - 1, x1, z1, 0, 7, [[C - 1, C + 1, 0, 3]]);
@@ -4548,9 +4566,284 @@ function makeFort(m) {
   }
   for (const [x, y, z] of m.crates || []) blk('crate', x + .04, y, z + .04, x + .96, y + .92, z + .96);
   const obj = placeModel(K, m);
-  // The jailer's room door, in the corridor's west wall, swinging into the room
+  // The jailer's room door, in the corridor's west wall, swinging into the room; the castle's doors
   if (keep && m.dungeon) obj.door = hangDoor(obj.g, m, -2.2, -DUNGEON.depth, -13.045, 1.2, 2.2);
+  obj.doors = castleDoors.map(([hx, hy, hz, w, turn]) => hangDoor(obj.g, m, hx, hy, hz, w, 2.2, '#4a3020', turn));
   return obj;
+}
+
+// A round turret: a stone body from y to y + body (corbelled out below if corbel), a band, then a slate spire
+// to a gilded finial. In a model's own (centred) frame.
+const SLATE = '#3e4654', GILT = '#c8a040';
+function spire(K, stone, x, y, z, r, body, high, corbel = 0) {
+  if (corbel) K.cyl(stone, r, r * .25, corbel, x, y - corbel, z, 12);
+  K.cyl(stone, r, r, body, x, y, z, 12);
+  K.cyl(stone, r + .22, r + .22, .45, x, y + body, z, 12);
+  for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2 + .4; K.aabb('#1a1a1e', x + Math.cos(a) * (r - .02) - .12, y + body * .45, z + Math.sin(a) * (r - .02) - .12, x + Math.cos(a) * (r - .02) + .12, y + body * .45 + 1.1, z + Math.sin(a) * (r - .02) + .12); }
+  const g = new THREE.ConeGeometry(r + .4, high, 12); g.translate(x, y + body + .45 + high / 2, z); K.add(SLATE, g);
+  const f = new THREE.SphereGeometry(.18, 6, 4); f.translate(x, y + body + .45 + high + .1, z); K.add(GILT, f);
+}
+
+// Castle Aldermere: from column H back to the west wall, a castle of three storeys in the middle and two in the
+// wings, behind the courtyard. In the fort's centred frame (x north, z east, the gate at z = +24):
+//  - ground: the entrance hall (z -4..3) with the great stair; behind it the guardroom over the cells (the old
+//    keep's walls, x -5..5, z -13..-5) and the garrison's barracks (z -19..-14); the great hall filling the south
+//    wing (x -19..-7), two storeys high, with the throne at its west end; in the north wing (x 7..19) the
+//    kitchen (its own door to the courtyard), the servants' hall and their dormitory
+//  - first floor: a landing over the entrance hall, the lord's solar and bedchamber behind it; a corridor and
+//    four bedrooms in the north wing
+//  - second floor (the middle block only): a landing and two bedrooms
+//  - outside: battlements all round, a round turret with a spire at every corner, and a great square tower
+//    with a tall spire rising from the middle
+// Returns the doors to hang: [hx, hy, hz, width, turn] (see hangDoor).
+function buildCastle(K, { blk }, stone, C, m) {
+  const IN = stone + ':in', FL = 'floor:in', FS = 'stone:in', wood = '#6b4a2e', dark = '#4a3220', iron = '#2a2a2e';
+  const red = '#7a1a1a', gold = GILT, linen = '#d9d4c4', wool = '#7a6450', hay = '#c8a860';
+  const B = (key, x0, y0, z0, x1, y1, z1, solid = true) => blk(key, C + Math.min(x0, x1), y0, C + Math.min(z0, z1), C + Math.max(x0, x1), y1, C + Math.max(z0, z1), solid);
+  const D = (key, x0, y0, z0, x1, y1, z1) => B(key, x0, y0, z0, x1, y1, z1, false);
+  const S = (x0, y0, z0, x1, y1, z1) => K.solid(Math.min(x0, x1), y0, Math.min(z0, z1), Math.max(x0, x1), y1, Math.max(z0, z1));
+  // A wall from (x0, z0) to (x1, z1), y0..y1, with openings [a0, a1, v0, v1] along its length and height (they
+  // may stand one above another): cut into columns at every opening's edges, each filled round its openings
+  const wall = (key, x0, z0, x1, z1, y0, y1, holes = [], solid = true) => {
+    const alongX = x1 - x0 > z1 - z0, a0 = alongX ? x0 : z0, a1 = alongX ? x1 : z1;
+    const piece = (p0, p1, q0, q1) => { if (p1 > p0 + 1e-6 && q1 > q0 + 1e-6) alongX ? B(key, p0, q0, z0, p1, q1, z1, solid) : B(key, x0, q0, p0, x1, q1, p1, solid); };
+    const cuts = [...new Set([a0, a1, ...holes.flatMap(h => [h[0], h[1]])])].filter(e => e >= a0 && e <= a1).sort((a, b) => a - b);
+    for (let i = 0; i + 1 < cuts.length; i++) {
+      const p = cuts[i], q = cuts[i + 1];
+      let y = y0;
+      for (const [, , v0, v1] of holes.filter(h => h[0] <= p + 1e-6 && h[1] >= q - 1e-6).sort((a, b) => a[2] - b[2])) { piece(p, q, y, v0); y = Math.max(y, v1); }
+      piece(p, q, y, y1);
+    }
+  };
+  // An outside wall: the stone face, a darker lining on the inside face (side: 'x0', 'x1', 'z0' or 'z1'), and
+  // glass in the windows (openings that don't reach the floor)
+  const outer = (x0, z0, x1, z1, y0, y1, holes, side) => {
+    wall(stone, x0, z0, x1, z1, y0, y1, holes);
+    const t = .03, [a0, b0, a1, b1] = side === 'x0' ? [x0 - t, z0, x0, z1] : side === 'x1' ? [x1, z0, x1 + t, z1] : side === 'z0' ? [x0, z0 - t, x1, z0] : [x0, z1, x1, z1 + t];
+    wall(IN, a0, b0, a1, b1, y0, y1, holes, false);
+    const alongX = x1 - x0 > z1 - z0, mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
+    for (const [h0, h1, v0, v1] of holes) if (v0 > y0 + .5) {
+      if (alongX) { B('glass', h0, v0, mz - .04, h1, v1, mz + .04); D(stone, h0 - .1, v0 - .15, z0 - .12, h1 + .1, v0, z1 + .12); }
+      else { B('glass', mx - .04, v0, h0, mx + .04, v1, h1); D(stone, x0 - .12, v0 - .15, h0 - .1, x1 + .12, v0, h1 + .1); }
+    }
+  };
+  const merl = (x0, z0, x1, z1, y) => {                                         // a parapet with merlons along an edge
+    B(stone, x0, y, z0, x1, y + .6, z1);
+    const alongX = x1 - x0 > z1 - z0;
+    for (let i = Math.ceil(alongX ? x0 : z0); i < (alongX ? x1 : z1); i++) if (((i % 2) + 2) % 2 === 0)
+      alongX ? B(stone, i + .05, y + .6, z0, i + .95, y + 1.5, z1) : B(stone, x0, y + .6, i + .05, x1, y + 1.5, i + .95);
+  };
+  const doors = [];
+  const door = (hx, hy, hz, turn = 0) => doors.push([hx, hy, hz, 1.2, turn]);
+  const win = (a, y0 = 6, y1 = 8.6, w = 1.2) => [a - w / 2, a + w / 2, y0, y1];
+
+  // ---- Outside walls ----
+  // The front, facing the courtyard: the great hall's tall windows, the doors, the kitchen's windows
+  outer(-21, 3, -7, 4, 0, 10, [-16, -13, -10].map(a => win(a, 1.8, 8.2)), 'z0');
+  outer(-7, 3, 7, 4, 0, 15, [[-1.5, 1.5, 0, 3.6], win(-4, 1.4, 3.4), win(3, 1.4, 3.4), win(-4), win(0, 6.2), win(3), win(-3.5, 11, 13.4, 1), win(0, 11, 13.4, 1), win(3.5, 11, 13.4, 1)], 'z0');
+  outer(7, 3, 21, 4, 0, 10, [[12, 13.2, 0, 2.3], win(9.8, 1.4, 3.4), win(16, 1.4, 3.4), win(8, 6, 8.4), win(14, 6, 8.4), win(17.2, 6, 8.4)], 'z0');
+  door(12, 0, 2.955);
+  // The sides, along the north and south curtain walls (the wall walks pass outside); the back, along the west wall
+  outer(-21, -21, -19, 4, 0, 10, [-15.5, -9, -2].map(a => win(a, 7.2, 9.2)), 'x1');
+  outer(19, -21, 21, 4, 0, 10, [-14.8, -9.25, -3.75].map(a => win(a, 7.2, 9)), 'x0');
+  outer(-19, -21, -7, -19, 0, 10, [], 'z1');
+  outer(7, -21, 19, -19, 0, 10, [], 'z1');
+  outer(-7, -21, 7, -19, 0, 15, [win(-2, 7.2, 9), win(2, 7.2, 9), win(-3, 11.2, 13.4), win(3, 11.2, 13.4)], 'z1');
+  // The middle block's sides above the wings' roofs
+  outer(-7, -19, -6, 3, 10, 15, [win(-16, 11.2, 13.4), win(-10, 11.2, 13.4)], 'x1');
+  outer(6, -19, 7, 3, 10, 15, [win(-16, 11.2, 13.4), win(-10, 11.2, 13.4)], 'x0');
+  // Roofs: planked ceilings under stone, and battlements round every edge
+  for (const [x0, x1] of [[-19, -7], [7, 19]]) { B(FL, x0, 9.7, -19, x1, 9.85, 3); B(stone, x0, 9.85, -19, x1, 10, 3); }
+  B(FL, -6, 14.7, -19, 6, 14.85, 3); B(stone, -6, 14.85, -19, 6, 15, 3);
+  for (const [x0, x1] of [[-21, -7], [7, 21]]) { merl(x0, 3.5, x1, 4, 10); merl(x0, -21, x1, -20.5, 10); }
+  merl(-21, -21, -20.5, 4, 10); merl(20.5, -21, 21, 4, 10);
+  merl(-7, 3.5, 7, 4, 15); merl(-7, -21, 7, -20.5, 15); merl(-7, -21, -6.5, 4, 15); merl(6.5, -21, 7, 4, 15);
+  // Details on the front: a plinth, string courses, the doorway's surround and a shield over it, banners
+  for (const [a, b] of [[-21.2, -2.1], [2.1, 11.9], [13.3, 21.2]]) D(stone, a, 0, 4, b, .5, 4.22);
+  for (const y of [4.85, 9.85]) D(stone, -21, y, 4, 21, y + .2, 4.14);
+  for (const s of [-1, 1]) B(stone, s * 1.5, 0, 4, s * 2.15, 4.3, 4.4);
+  B(stone, -2.15, 3.6, 4, 2.15, 4.5, 4.4); D(stone, -1.6, 4.5, 4, 1.6, 4.8, 4.3);
+  D(red, -.55, 4.9, 4.14, .55, 6.1, 4.26); D(gold, -.12, 5.05, 4.26, .12, 5.95, 4.3); D(gold, -.42, 5.4, 4.26, .42, 5.6, 4.3);
+  for (const s of [-1, 1]) { D(red, s * 5.2, 5.4, 4, s * 6.2, 9.4, 4.06); D(gold, s * 5.6, 5.6, 4.06, s * 5.8, 9.2, 4.09); D(gold, s * 5.2, 5.4, 4.06, s * 6.2, 5.6, 4.09); }
+  for (const s of [-1, 1]) { const x = s < 0 ? -1.62 : 1.5; B('#4a3220', x, 0, 1.5, x + .12, 3.5, 3); }   // the great doors, standing open
+  // Turrets at every corner of the wings and of the middle block, and the great tower with its spire
+  for (const s of [-1, 1]) { spire(K, stone, s * 20, 10, 3, 2, 7, 7.5, 2.5); spire(K, stone, s * 7, 15, 3.6, 1.5, 5, 6, 2); spire(K, stone, s * 7, 15, -20.6, 1.5, 5, 6, 2); }
+  B(stone, -3, 15, -14, 3, 23, -8, false);
+  D(stone, -3.15, 22.4, -14.15, 3.15, 22.7, -7.85);
+  for (const [a, b] of [[-3.02, -11.6], [3.02, -11.6]]) for (const y of [16.5, 19.5]) D('#1a1a1e', a - .03, y, b - .2, a + .03, y + 1.6, b + .2);
+  for (const [a, b] of [[-.2, -14.02], [-.2, -7.98]]) for (const y of [16.5, 19.5]) D('#1a1a1e', a, y, b - .03, a + .4, y + 1.6, b + .03);
+  { const g = new THREE.ConeGeometry(4.6, 11, 4); g.rotateY(Math.PI / 4); g.translate(0, 23 + 5.5, -11); K.add(SLATE, g);
+    const f = new THREE.SphereGeometry(.28, 6, 4); f.translate(0, 34.2, -11); K.add(GILT, f);
+    D(dark, -.05, 34.3, -11.05, .05, 37, -10.95); D(red, -.04, 35.6, -10.95, .04, 36.8, -9.3); }
+  for (const [a, b] of [[-3, -14], [3, -14], [-3, -8], [3, -8]]) { const g = new THREE.ConeGeometry(.55, 2.6, 4); g.rotateY(Math.PI / 4); g.translate(a, 24.3, b); K.add(SLATE, g); }
+
+  // ---- Inside walls ----
+  // Between the middle block and the wings: the great hall's doorway, and the north wing's door from the landing
+  wall(IN, -7, -19, -6, 3, 0, 10, [[-1.2, 1.2, 0, 3.2]]);
+  wall(IN, 6, -19, 7, 3, 0, 10, [[-3.8, -2.6, 5, 7.3]]);
+  door(7.045, 5, -3.8, -Math.PI / 2);
+  // The guardroom: the old keep's walls round the cells, its doorway to the entrance hall and a door to the barracks
+  B(IN, -6, 0, -14, -5, 4.7, -4); B(IN, 5, 0, -14, 6, 4.7, -4);
+  wall(IN, -6, -5, 6, -4, 0, 4.7, [[-1, 1, 0, 3]]);
+  wall(IN, -6, -14, 6, -13, 0, 4.7, [[-3.2, -2, 0, 2.3]]);
+  door(-3.2, 0, -14.045);
+  // The north wing's ground floor: kitchen, servants' hall, dormitory
+  wall(IN, 7, -6.5, 19, -6, 0, 4.7, [[8, 9.2, 0, 2.3]]); door(8, 0, -6.545);
+  wall(IN, 7, -12.5, 19, -12, 0, 4.7, [[8, 9.2, 0, 2.3]]); door(8, 0, -12.545);
+  // First floor: the solar and bedchamber behind the landing
+  wall(IN, -6, -5, 6, -4, 5, 9.7, [[-.6, .6, 5, 7.3]]); door(-.6, 5, -5.045);
+  wall(IN, -6, -12, 6, -11.6, 5, 9.7, [[2, 3.2, 5, 7.3]]); door(2, 5, -12.045);
+  // The north wing's corridor and four bedrooms
+  const ROOMS = [[-19, -13.65], [-13.35, -8.15], [-7.85, -2.65], [-2.35, 3]];
+  wall(IN, 9, -19, 9.3, 3, 5, 9.7, ROOMS.map(([a]) => [a + .5, a + 1.7, 5, 7.3]));
+  for (const [a] of ROOMS) door(9.345, 5, a + .5, -Math.PI / 2);
+  for (const z of [-13.5, -8, -2.5]) B(IN, 9.3, 5, z - .15, 19, 9.7, z + .15);
+  // Second floor: two bedrooms off the upper landing
+  wall(IN, -6, -5, 6, -4, 10, 14.7, [[-3, -1.8, 10, 12.3], [1.8, 3, 10, 12.3]]); door(-3, 10, -5.045); door(1.8, 10, -5.045);
+  B(IN, -.15, 10, -19, .15, 14.7, -5);
+
+  // ---- Floors and stairs ----
+  for (const [x0, z0, x1, z1] of [[-6, -4, 6, 3], [-19, -19, -7, 3], [-6, -19, 6, -14], [7, -19, 19, 3]]) D(FS, x0, 0, z0, x1, .04, z1);
+  B(FL, -6, 4.7, -19, 4.5, 5, 3); B(FL, 4.5, 4.7, -19, 6, 5, -3); B(FL, 7, 4.7, -19, 19, 5, 3);
+  B(FL, -4.5, 9.7, -19, 6, 10, 3); B(FL, -6, 9.7, -19, -4.5, 10, -3); B(FL, -6, 9.7, 2, -4.5, 10, 3);
+  // The great stair, up the north side of the entrance hall towards the back; the stair to the second floor up
+  // the south side of the landing towards the front; rails round both stairwells
+  for (let i = 1; i <= 10; i++) B(IN, 4.5, 0, 2 - .5 * i, 6, .5 * i, 2.5 - .5 * i);
+  for (let i = 1; i <= 10; i++) B(IN, -6, 5, -3.5 + .5 * i, -4.5, 5 + .5 * i, -3 + .5 * i);
+  const rail = (x0, z0, x1, z1, y) => { B(dark, x0, y + 1, z0, x1, y + 1.12, z1); const alongX = x1 - x0 > z1 - z0;
+    for (let a = alongX ? x0 : z0; a <= (alongX ? x1 : z1) + 1e-6; a += .5) alongX ? D(dark, a - .03, y, z0, a + .03, y + 1, z1) : D(dark, x0, y, a - .03, x1, y + 1, a + .03);
+    S(x0, y, z0, x1, y + 1.15, z1); };
+  rail(4.45, -3, 4.55, 3, 5); rail(-4.55, -3, -4.45, 1.5, 10); rail(-6, -3.05, -4.5, -2.95, 10);
+
+  // ---- Furniture ----
+  const legs = (x0, z0, x1, z1, y, h, w = .06) => { for (const [a, b] of [[x0, z0], [x1 - w, z0], [x0, z1 - w], [x1 - w, z1 - w]]) D(dark, a, y, b, a + w, y + h, b + w); };
+  const table = (x0, z0, x1, z1, y, h = .76) => { D(wood, x0, y + h - .06, z0, x1, y + h, z1); legs(x0 + .05, z0 + .05, x1 - .05, z1 - .05, y, h - .06); S(x0, y, z0, x1, y + h, z1); };
+  const bench = (x0, z0, x1, z1, y) => { D(wood, x0, y + .4, z0, x1, y + .46, z1); legs(x0 + .04, z0 + .04, x1 - .04, z1 - .04, y, .4, .05); S(x0, y, z0, x1, y + .46, z1); };
+  const stool = (x, z, y) => { D(wood, x - .17, y + .38, z - .17, x + .17, y + .43, z + .17); legs(x - .14, z - .14, x + .14, z + .14, y, .38, .05); };
+  const chair = (x, z, y, face, key = dark) => {                      // face: the way the sitter looks, [dx, dz]
+    D(wood, x - .22, y + .42, z - .22, x + .22, y + .48, z + .22); legs(x - .2, z - .2, x + .2, z + .2, y, .42, .05);
+    const bx = x - face[0] * .2, bz = z - face[1] * .2;
+    face[0] ? D(key, bx - .03, y + .48, z - .22, bx + .03, y + 1.08, z + .22) : D(key, x - .22, y + .48, bz - .03, x + .22, y + 1.08, bz + .03);
+  };
+  const bed = (x0, z0, x1, z1, y, head, cover = wool) => {            // head: which end the pillow is ('x0', 'x1', 'z0', 'z1')
+    D(dark, x0, y, z0, x1, y + .32, z1); S(x0, y, z0, x1, y + .5, z1);
+    D(hay, x0 + .05, y + .32, z0 + .05, x1 - .05, y + .44, z1 - .05);
+    const [p0, p1] = head[0] === 'x' ? [x0, x1] : [z0, z1], at = head[1] === '0' ? p0 : p1, dir = head[1] === '0' ? 1 : -1;
+    const pil = [at + dir * .08, at + dir * .42].sort((a, b) => a - b), cov = [at + dir * .5, head[1] === '0' ? p1 - .06 : p0 + .06].sort((a, b) => a - b);
+    if (head[0] === 'x') { D(linen, pil[0], y + .44, z0 + .12, pil[1], y + .58, z1 - .12); D(cover, cov[0], y + .44, z0 + .06, cov[1], y + .52, z1 - .06);
+      D(dark, head[1] === '0' ? x0 : x1 - .07, y, z0, head[1] === '0' ? x0 + .07 : x1, y + 1, z1); }
+    else { D(linen, x0 + .12, y + .44, pil[0], x1 - .12, y + .58, pil[1]); D(cover, x0 + .06, y + .44, cov[0], x1 - .06, y + .52, cov[1]);
+      D(dark, x0, y, head[1] === '0' ? z0 : z1 - .07, x1, y + 1, head[1] === '0' ? z0 + .07 : z1); }
+  };
+  const chest = (x0, z0, x1, z1, y) => { D(dark, x0, y, z0, x1, y + .45, z1); D(wood, x0 - .02, y + .45, z0 - .02, x1 + .02, y + .56, z1 + .02); S(x0, y, z0, x1, y + .56, z1); };
+  const shelves = (x0, z0, x1, z1, y, h = 1.8) => {
+    const alongX = x1 - x0 > z1 - z0;
+    for (const e of alongX ? [x0, x1 - .06] : [z0, z1 - .06]) alongX ? D(dark, e, y, z0, e + .06, y + h, z1) : D(dark, x0, y, e, x1, y + h, e + .06);
+    for (const k of [.05, .6, 1.15, h - .05]) D(wood, x0, y + k, z0, x1, y + k + .04, z1);
+    S(x0, y, z0, x1, y + h, z1); return alongX;
+  };
+  const rug = (x0, z0, x1, z1, y, key = red) => D(key, x0, y + .04, z0, x1, y + .06, z1);
+  const fire = (x, y, z) => { D('#2a1a10', x - .3, y + .06, z - .3, x + .3, y + .16, z + .3); D('#3a2414', x - .15, y + .12, z - .4, x + .15, y + .22, z + .4); };
+  // A hearth against a wall at x = wx (facing dir, +1 or -1), its opening centred on z, from floor y up to top
+  const hearth = (wx, dir, z, y, top, w = 1.4) => {
+    const x1 = wx + dir * .8, [a, b] = [wx, x1].sort((p, q) => p - q);
+    B(FS, a, y, z - w, b, top, z - w + .5); B(FS, a, y, z + w - .5, b, top, z + w);
+    B(FS, a, y + 1.6, z - w + .5, b, top, z + w - .5); D(FS, a - .1, y + 1.6, z - w - .1, b + .1, y + 1.72, z + w + .1);
+    const [h0, h1] = [x1, x1 + dir * .6].sort((p, q) => p - q); D(FS, h0, y, z - w, h1, y + .06, z + w);
+    fire(wx + dir * .4, y, z);
+  };
+
+  // The entrance hall: a runner from the doors, banners either side of the guardroom's doorway
+  rug(-1, -3.9, 1, 2.9, 0);
+  for (const s of [-1, 1]) { D(red, s * 1.6, 1.2, -4.03, s * 2.6, 4, -4); D(gold, s * 1.6, 1.2, -4.06, s * 2.6, 1.4, -4.03); }
+  // The great hall: the dais and throne at the west end, the high table, two long tables with benches, two
+  // hearths, iron candle-rings hanging from the roof, banners and a tapestry behind the throne
+  B(FS, -16.5, 0, -19, -9.5, .5, -15.8); B(FS, -16.5, 0, -15.8, -9.5, .25, -15.3);
+  D(red, -13.65, .5, -18.75, -12.35, 1, -17.7); D(gold, -13.75, .5, -18.95, -12.25, 2.9, -18.75); D(red, -13.5, 1.1, -18.75, -12.5, 2.6, -18.7);
+  for (const s of [-1, 1]) D(gold, -13 + s * .7 - .1, .5, -18.75, -13 + s * .7 + .1, 1.45, -17.7);
+  S(-13.75, .5, -18.95, -12.25, 2.9, -17.7);
+  chair(-15.3, -17.6, .5, [0, 1], red); chair(-10.7, -17.6, .5, [0, 1], red);
+  table(-15.8, -17.1, -10.2, -16.3, .5);
+  for (const x of [-16, -10]) { table(x - .6, -13, x + .6, .5, 0, .78); bench(x - 1.3, -13, x - .9, .5, 0); bench(x + .9, -13, x + 1.3, .5, 0);
+    for (let z = -12; z < 0; z += 2.2) { D('#b8b8b0', x - .45, .78, z - .15, x - .15, .8, z + .15); D('#b8b8b0', x + .15, .78, z + .85, x + .45, .8, z + 1.15); D('#8a6a3a', x - .06, .78, z + .4, x + .06, .98, z + .52); } }
+  rug(-14, -15.3, -12, 2.6, 0);
+  hearth(-19, 1, -12, 0, 9.7); hearth(-19, 1, -5.5, 0, 9.7);
+  for (const z of [-10, -3]) { D(iron, -13.03, 7, z - .03, -12.97, 9.7, z + .03);
+    for (const [a, b, c, d] of [[-13.8, z - .8, -12.2, z - .74], [-13.8, z + .74, -12.2, z + .8], [-13.8, z - .8, -13.74, z + .8], [-12.26, z - .8, -12.2, z + .8]]) D(iron, a, 6.95, b, c, 7.05, d);
+    for (const [a, b] of [[-13.77, z], [-12.23, z], [-13, z - .77], [-13, z + .77]]) D('#e8e0c0', a - .04, 7.05, b - .04, a + .04, 7.3, b + .04); }
+  for (const x of [-15.5, -10.5]) { D(red, x - .55, 2.5, -19, x + .55, 7.8, -18.95); D(gold, x - .55, 2.5, -18.95, x + .55, 2.7, -18.92); }
+  D('#5a4a2a', -14.3, 3.4, -19, -11.7, 6.4, -18.97); D('#3a5a3a', -13.9, 3.8, -18.97, -12.1, 6, -18.95);
+  // The guardroom over the cells: a table with stools, a weapon rack
+  table(-2.6, -10.6, -1, -9.4, 0); stool(-3.05, -10, 0); stool(-.55, -10, 0); stool(-1.8, -11.05, 0);
+  const rack = (x0, z0, x1, z1, y) => {                              // a weapon rack against a wall along z: spears and swords
+    for (const z of [z0, z1 - .1]) D(dark, x0, y, z, x1, y + 1.7, z + .1); for (const h of [.35, 1.35]) D(wood, x0 + .05, y + h, z0, x1 - .05, y + h + .1, z1);
+    for (let z = z0 + .3; z < z1 - .25; z += .27) { D(wood, x0 + .14, y + .05, z - .025, x0 + .2, y + 1.85, z + .025); D('#9a9ca2', x0 + .13, y + 1.85, z - .035, x0 + .21, y + 2.05, z + .035); }
+    S(x0, y, z0, x1, y + 1.8, z1);
+  };
+  rack(-4.98, -12.6, -4.6, -10.8, 0);
+  // The barracks: seven bunks along the back wall, a locker at the foot of each, a weapon rack
+  for (let i = 0; i < 7; i++) {
+    const x0 = -5.8 + i * 1.6, x1 = x0 + 1;
+    for (const [a, b] of [[x0, -19], [x1 - .08, -19], [x0, -17.08], [x1 - .08, -17.08]]) D(dark, a, 0, b, a + .08, 2.6, b + .08);
+    for (const y of [.3, 1.6]) { D(dark, x0, y, -19, x1, y + .08, -17); D(hay, x0 + .06, y + .08, -18.95, x1 - .06, y + .2, -17.05);
+      D(wool, x0 + .06, y + .2, -18.4, x1 - .06, y + .27, -17.08); D(linen, x0 + .12, y + .2, -18.92, x1 - .12, y + .32, -18.6); }
+    S(x0, 0, -19, x1, 2.6, -17);
+    chest(x0 + .1, -16.95, x1 - .1, -16.55, 0);
+  }
+  rack(5.55, -16.6, 5.95, -14.6, 0);
+  // The kitchen: the great hearth with a pot over the fire, a worktable, barrels, shelves of food
+  hearth(19, -1, -2.5, 0, 4.7, 2);
+  K.cyl(iron, .36, .3, .45, 18.45, .25, -2.5, 10);
+  D(iron, 18.4, 1.3, -3.3, 18.5, 1.38, -1.7);
+  table(11, -3, 15, -1.6, 0, .86);
+  D('#b07a3a', 11.4, .86, -2.6, 11.9, 1, -2.2); D('#b07a3a', 12.2, .86, -2.5, 12.7, 1, -2.1); D('#8a3a2a', 13.4, .86, -2.7, 13.9, 1.05, -2); D('#9a9ca2', 14.2, .86, -2.4, 14.7, .89, -2.3);
+  for (const [x, z] of [[7.55, 2.4], [8.4, 2.4], [7.55, 1.55]]) K.cyl(wood, .38, .38, .9, x, 0, z, 10, true);
+  shelves(13, -6, 17, -5.6, 0);
+  for (let i = 0; i < 6; i++) D('#7a5a40', 13.2 + i * .62, .65, -5.95, 13.5 + i * .62, .95, -5.7);
+  for (let i = 0; i < 4; i++) D('#d8b048', 13.3 + i * .9, 1.2, -5.95, 13.8 + i * .9, 1.34, -5.65);
+  for (let i = 0; i < 5; i++) D('#a08060', 13.2 + i * .75, .1, -5.95, 13.8 + i * .75, .55, -5.65);
+  // The servants' hall: a long table and benches, a cupboard
+  table(10.5, -9.9, 17.5, -8.7, 0); bench(10.5, -10.6, 17.5, -10.2, 0); bench(10.5, -8.4, 17.5, -8, 0);
+  B(dark, 18.4, 0, -11.4, 19, 2, -9.6); D(wood, 18.38, .9, -11.3, 18.4, 1.9, -9.7);
+  // The servants' dormitory: six beds along the back wall and two along the north wall, a chest for each
+  for (let i = 0; i < 6; i++) { const x0 = 9.6 + i * 1.6; bed(x0, -19, x0 + 1, -17, 0, 'z0'); chest(x0 + .1, -16.9, x0 + .9, -16.5, 0); }
+  bed(17, -15.6, 19, -14.6, 0, 'x1'); bed(17, -14.2, 19, -13.2, 0, 'x1');
+
+  // First floor. The landing: a rug and a bench under the front windows
+  rug(-3.5, -3.6, 3.5, 2, 5); bench(-2.6, 2.4, -.8, 2.8, 5);
+  // The lord's solar: a desk and chair, shelves of books, a hearth with two chairs before it, a rug
+  table(1.5, -6.6, 3.5, -5.8, 5); chair(2.5, -7.1, 5, [0, 1], red);
+  shelves(5.6, -10.2, 6, -6.8, 5, 2.2);
+  for (let j = 0; j < 3; j++) for (let i = 0; i < 9; i++) D(['#6a2a2a', '#2a4a6a', '#5a4a2a', '#3a5a3a'][(i + j) % 4], 5.65, 5.66 + j * .55, -10.1 + i * .36, 5.95, 6.1 + j * .55, -9.85 + i * .36);
+  hearth(-6, 1, -8.3, 5, 9.7, 1.3);
+  chair(-4.1, -9.3, 5, [-1, 0], red); chair(-4.1, -7.3, 5, [-1, 0], red);
+  rug(-3.4, -10.4, 1.6, -6, 5, '#3a4a6a');
+  // The lord's bedchamber: a great bed with posts and a canopy between the windows, a chest at its foot, a
+  // wardrobe, a washstand, a rug
+  { const [x0, z0, x1, z1] = [-1.3, -19, 1.3, -16.3];
+    bed(x0, z0, x1, z1, 5, 'z0', red);
+    for (const [a, b] of [[x0, z0], [x1 - .12, z0], [x0, z1 - .12], [x1 - .12, z1 - .12]]) B(dark, a, 5, b, a + .12, 7.6, b + .12);
+    D(red, x0, 7.5, z0, x1, 7.7, z1); D(gold, x0 - .02, 7.5, z1 - .02, x1 + .02, 7.6, z1);
+    chest(-.8, -16.15, .8, -15.55, 5); }
+  B(dark, 4.8, 5, -18.6, 6, 7.4, -16.6); D(wood, 4.78, 5.3, -18.4, 4.8, 7.1, -16.8);
+  table(-5.7, -14.2, -4.9, -13.4, 5, .82); D('#c8c8c0', -5.5, 5.82, -14, -5.1, 5.92, -13.6);
+  rug(-3, -15.2, 3, -12.6, 5);
+  // The corridor and the four bedrooms: in each a bed against the north wall, a chest at its foot, a table and a stool
+  rug(7.4, -18.6, 8.6, 2.6, 5);
+  for (const [a, b] of ROOMS) {
+    const c = (a + b) / 2;
+    bed(17, c - .55, 19, c + .55, 5, 'x1', ['#3a4a6a', '#5a3a2a', '#3a5a3a', '#6a5a2a'][ROOMS.findIndex(r => r[0] === a)]);
+    chest(16.35, c - .45, 16.9, c + .45, 5);
+    table(11, b - 1.3, 12, b - .5, 5); stool(12.4, b - .9, 5);
+    rug(12.5, c - 1, 15.5, c + 1, 5, '#5a3a2a');
+  }
+
+  // Second floor. Two beds in the south room, one great bed in the north room, a chest and a table in each
+  bed(-5.5, -19, -4.4, -17, 10, 'z0', '#3a4a6a'); bed(-2.5, -19, -1.4, -17, 10, 'z0', '#3a5a3a');
+  chest(-5.4, -16.9, -4.5, -16.5, 10); chest(-2.4, -16.9, -1.5, -16.5, 10); table(-5.6, -9, -4.6, -8, 10); stool(-4.2, -8.5, 10);
+  bed(2, -19, 4.2, -16.8, 10, 'z0', '#6a2a3a'); chest(2.3, -16.65, 3.9, -16.15, 10); table(4.8, -9, 5.8, -8, 10); stool(4.4, -8.5, 10);
+  rug(-4.6, -14, -1.4, -11, 10, '#5a3a2a'); rug(1.4, -14, 4.6, -11, 10, '#3a4a6a'); rug(-3, -3.6, 3, 2, 10);
+  return doors;
 }
 
 // The cells beneath a keep (Castle Aldermere's): the ground inside the keep is sunk DUNGEON.depth (see dungeonAt),
@@ -5113,6 +5406,7 @@ const MODEL_MAKERS = { cottage: makeCottage, stall: makeStall, windmill: makeTow
 function removeBuilding(obj) {
   scene.remove(obj.g);
   if (obj.door) unhangDoor(obj.door);
+  for (const d of obj.doors || []) unhangDoor(d);
   for (const e of obj.extra || []) scene.remove(e);
   removeColliders(obj.colliders);
   for (const t of obj.torches) removeTorch(t);
@@ -5145,7 +5439,7 @@ function updateDoors(dt) {
     const target = d.manual === true || busy || inWay && d.angle > .01 ? Math.PI : 0;
     if (d.angle !== target) {
       d.angle += Math.sign(target - d.angle) * Math.min(Math.abs(target - d.angle), dt * DOOR_SPEED);
-      d.pivot.rotation.y = d.angle;
+      d.pivot.rotation.y = d.turn + d.angle;
     }
     if (d.angle < .15 && !d.colOn) { addColliders(d.col); d.colOn = true; }
     else if (d.angle >= .15 && d.colOn) { removeColliders(d.col); d.colOn = false; }
@@ -8387,7 +8681,7 @@ function introFree(gd, before) {
   const [x, y, z] = dungeonWorld(-2.6, -DUNGEON.depth, -1.1);
   gd.a.set(x, y, z); gd.g.position.set(x, y, z); gd.face = dungeonYaw() + Math.PI;
   const H = FOLK.H, lord = H._held['Castle Aldermere|Lord'], L = lord ? H.people[lord.p] : null;
-  renderDialogue(before + `Good enough for me, and for the magistrate. *The lock grinds and the door swings open.* Up the stair and out through the keep. This is Castle Aldermere, ${L ? `the seat of ${L.sex === 'f' ? 'Lady' : 'Lord'} ${L.name} ${L.surname}` : 'the lord’s seat'}. Keep out of trouble and you'll not see the inside of this cell again. And if you want to know who you are, ask around. Someone may know your face.`,
+  renderDialogue(before + `Good enough for me, and for the magistrate. *The lock grinds and the door swings open.* Up the stair, through the guardroom and the hall, and out the great doors. This is Castle Aldermere, ${L ? `the seat of ${L.sex === 'f' ? 'Lady' : 'Lord'} ${L.name} ${L.surname}` : 'the lord’s seat'}. Keep out of trouble and you'll not see the inside of this cell again. And if you want to know who you are, ask around. Someone may know your face.`,
     [['Thank you.', () => { closeDialogue(); saveGame(); }]]);
 }
 // Each frame: the scene comes together once the history and the castle are ready, and ends once you're out
@@ -8471,8 +8765,9 @@ function walkTo(gd, pts, spot) {
   };
 }
 const routeBetween = (a, b) => [...[...(a ? JAILER_SPOTS[a].path : [HUB])].reverse(), ...JAILER_SPOTS[b].path].filter((p, i, l) => !i || p !== l[i - 1]);
-// The servant's way down: in at the keep's door, across to the stair, down, along the corridor and into the room
-const SERVANT_WAY = [[0, 0, -3.4], [0, 0, -5.6], [2.6, 0, -5.9], [4.2, 0, -6.2], [4.2, -4, -12], [2.4, -4, -11.6], [HUB[0], -4, HUB[1]], [DOOR_OUT[0], -4, DOOR_OUT[1]], [DOOR_IN[0], -4, DOOR_IN[1]], [-3.2, -4, -16.1]];
+// The servant's way down: out of the kitchen into the courtyard, in at the great doors, through the guardroom's
+// doorway, across to the stair, down, along the corridor and into the room
+const SERVANT_WAY = [[12.6, 0, .5], [12.6, 0, 5.4], [0, 0, 5.4], [0, 0, -3.4], [0, 0, -5.6], [2.6, 0, -5.9], [4.2, 0, -6.2], [4.2, -4, -12], [2.4, -4, -11.6], [HUB[0], -4, HUB[1]], [DOOR_OUT[0], -4, DOOR_OUT[1]], [DOOR_IN[0], -4, DOOR_IN[1]], [-3.2, -4, -16.1]];
 const SERVANT_AT_SHELVES = { at: [-3.2, -16.1], face: towards(-3.2, -16.1, -3.2, -17) };
 function residentOf(id, role) {
   const H = FOLK.H, hp = H.people[id], hh = (FOLK.byPlace.get('Castle Aldermere') || []).find(x => x.members.includes(id)) || { kind: 'the castle quarters', members: [id] };
@@ -8535,7 +8830,7 @@ function updateCellFolk(dt) {
     cellFolk.servedDay = env.day;
     if (id !== undefined) {
       const p = residentOf(id, 'servant'); p.cellAct = () => cellFolk.servant?.leaving ? 'Back up to the kitchens.' : "Bringing the jailer his food for the day. Bread, cheese, a bit of ham if he's lucky.";
-      const gd = cellFolk.servant = addGuard(dw(0, 0, -3.4), null, 0, 0, { title: 'Castle Aldermere', plan: dungeonPlan, kind: 'villager', color: 0x8a7a5a, person: p });
+      const gd = cellFolk.servant = addGuard(dw(...SERVANT_WAY[0]), null, 0, 0, { title: 'Castle Aldermere', plan: dungeonPlan, kind: 'villager', color: 0x8a7a5a, person: p });
       gd.home.person = p; cellFolk.ids.add(id);
       gd.g.rotation.order = 'YXZ';
       walkTo(gd, SERVANT_WAY, SERVANT_AT_SHELVES);

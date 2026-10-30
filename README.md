@@ -14,16 +14,16 @@ npx serve .        # or: python3 -m http.server
 
 ## The opening
 
-Every new game begins in the cells beneath the keep of Castle Aldermere. Fishermen found you on the shore below Port Cassel, half drowned and remembering nothing, and the guard carried you here.
+Every new game begins in the cells beneath Castle Aldermere. Fishermen found you on the shore below Port Cassel, half drowned and remembering nothing, and the guard carried you here.
 
 - **Waking:** you wake on the cell's stone floor in the morning, facing the bars. A torch gutters in the corridor, and footsteps come down the stair.
 - **The jailer** comes to the bars: Castle Aldermere's Jailer from the history (or, without one, one of its guards). Talk to them (E) and they ask who you are, how you came to be in the sea, and whether you'll give any trouble if they open the door. Calm, honest answers get you let go. A threat, or too many lies, and they leave you to think on it and come back a little later to ask again.
-- **Let go:** the lock turns and the door swings open, the jailer steps aside and tells you where you are and whose seat this is, and you climb the stair and walk out through the keep into the castle and the world. After that the jailer is one of the castle's people like any other.
+- **Let go:** the lock turns and the door swings open, the jailer steps aside and tells you where you are and whose seat this is, and you climb the stair, cross the guardroom and the entrance hall, and walk out through the great doors into the courtyard and the world. After that the jailer is one of the castle's people like any other.
 - **The other cells** hold the history's real prisoners at Castle Aldermere (the thief, the poacher, someone waiting for the lord's court to hang them, perhaps an innocent), and you can talk to them through the bars.
-- **The cells:** under the keep a stone floor covers a sunken room: a stair down its east side, a corridor lit by torches, and barred cells. Each cell has bedding on the floor (a bed of hay with a linen sheet and a rolled wool blanket), a stool and a small table. Halfway along, the corridor has a table with two chairs. (`buildDungeon`, `furnishDungeon`; the ground inside the keep is sunk by `dungeonAt`.)
+- **The cells:** under the castle's guardroom a stone floor covers a sunken room: a stair down its north side, a corridor lit by torches, and barred cells. Each cell has bedding on the floor (a bed of hay with a linen sheet and a rolled wool blanket), a stool and a small table. Halfway along, the corridor has a table with two chairs. (`buildDungeon`, `furnishDungeon`; the ground under the guardroom is sunk by `dungeonAt`.)
 - **The jailer's room** opens off the corridor's west wall through a wooden door you open and close with E. Inside are the jailer's bed, a chest at its foot, a table and chair, a weapon rack of spears and swords, and shelves of food: sacks of flour and oats, jars, cheeses, a loaf and a ham.
 - **The jailer's day:** once you're let go, the jailer lives down here. They sleep in their bed from about 9:30 at night to 6:30 in the morning with the door shut, and eat breakfast, dinner and supper at the table in their room. The rest of the day they move between sitting at the corridor table, sitting in their room with the door open, and walking up and down the corridor past the cells. Ask what they're doing and they'll tell you.
-- **Supplies:** every morning at about nine a servant from the castle comes down the stair with the jailer's food, stocks the shelves in their room, and goes back up.
+- **Supplies:** every morning at about nine a servant comes out of the castle kitchen with the jailer's food, crosses the courtyard, goes in at the great doors and down the stair, stocks the shelves in the jailer's room, and goes back the same way.
 - **Prisoners** sit on their stools, lie on their bedding, or stand at the bars.
 - **Saved:** until you're let go, the game remembers that you're still a prisoner; a save made in the cell loads in the cell.
 
@@ -250,8 +250,30 @@ Forts are stone models rather than blocks: brick, or sandstone in the desert.
 - **Corner towers:** square, with a plinth at the foot and a band of stone at walkway height. At the top is a chamber the walkways run through by doorways, then a roof and battlements.
 - **The gatehouse:** two towers either side of an arched gateway, with heavy iron-banded gates standing open.
 - **Stairs:** two flights of stone half steps either side of the gate, up to the walkway.
-- **The keep:** a hollow keep in the courtyard with a doorway, window slits and battlements. Stacks of crates stand about.
+- **The keep:** a hollow keep in the courtyard with a doorway, window slits and battlements. Stacks of crates stand about. (Castle Aldermere has a whole castle instead: see below.)
 - **Solid:** walls, towers, stairs, gates and crates are all solid. You walk the wall walks and climb the stairs, and guards patrol the walls. Walls block arrows and line of sight.
+
+## Castle Aldermere
+
+Castle Aldermere is a fort like the others on the outside (the same curtain walls, towers and gatehouse), but behind its courtyard stands a great castle. The courtyard runs from the gate back to column I of the castle plans; from column H to the west wall, and from the north wall to the south, is the castle. (`buildCastle`.)
+
+- **Outside:** brick to match the walls. The wings are two storeys high and the middle block three, all with battlements. A round turret with a slate spire and a gilded finial is corbelled out from each front corner of the wings, and stands at each corner of the middle block. A great square tower rises from the middle with a tall four-sided spire and a red pennant. The four corner towers of the curtain walls have spired turrets too. The front has tall windows for the great hall, a plinth, string courses at each floor, two red and gold banners, and an arched doorway with a shield over it. The wall walks still run all the way round, outside the castle's walls.
+- **Ground floor:**
+  - **The entrance hall**, through the great doors (they stand open): a red runner, banners, and the great stair up its north side.
+  - **The great hall** fills the south wing, two storeys high. The lord's throne stands on a dais at the west end, with two chairs beside it, a high table before it, banners and a tapestry behind. Two long tables with benches run down the hall, set with plates and candles. There are two great hearths in the south wall, two iron candle rings hanging from the roof, and a red carpet from the doorway to the dais.
+  - **The guardroom**, behind the entrance hall (the old keep's walls): a table and stools, a weapon rack, and the stair down to the cells.
+  - **The barracks**, behind the guardroom through a door: seven bunks, so fourteen beds, along the back wall, a locker at the foot of each, and a weapon rack. This is where the garrison sleeps.
+  - **The kitchen**, in the north wing, with its own door onto the courtyard: a great hearth with a pot over the fire, a worktable with bread and a ham, barrels, and shelves of jars, cheeses and sacks.
+  - **The servants' hall** behind it (a long table and benches, a cupboard), and behind that the **servants' dormitory**, with eight beds and a chest for each.
+- **First floor**, up the great stair:
+  - **The landing**, over the entrance hall, with a rug and a bench under the front windows, and the stair up to the second floor.
+  - **The lord's solar**: a desk and chair, shelves of books, a hearth with two chairs before it, and a rug.
+  - **The lord's bedchamber**, behind the solar: a great bed with posts and a red canopy between two windows, a chest at its foot, a wardrobe, a washstand and a rug.
+  - **The north wing**: a corridor along the inside wall and four bedrooms off it, each with a bed, a chest, a table and a stool, and a rug.
+- **Second floor**, the middle block only: an upper landing and two bedrooms, one with two beds and one with a great bed.
+- **Doors:** every door inside the castle, and the kitchen's door to the courtyard, opens and closes with E like a cottage door. The great doors and the doorways into the great hall and the guardroom are always open.
+- **Light:** torches on the walls of every room, and fires in the hearths.
+- **People:** by day the castle's people walk about the ground-floor rooms as well as the courtyard.
 
 ## Kharn Dolum
 
