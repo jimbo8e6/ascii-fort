@@ -45,7 +45,7 @@ The world is hand-made: one continent, translated from a painted map (`map/paint
 - **The Rustwaste:** a red plateau in the east, cut into flat-topped mesas with sheer banded cliffs of red rock.
 - **The south:** a sand desert, and big red dunes along the south coast.
 - **The marshes:** low ground in the south-west, pocked with pools and channels.
-- **Fort Greyhold** stands at Greyhold Pass, on the west bank of the Vael where it leaves the Greyspine. That's where every world starts.
+- **Fort Greyhold** stands at Greyhold Pass, on the west bank of the Vael where it leaves the Greyspine. That's where every world starts. The road out of its gate climbs steadily through a broad cut in the pass to meet the River Road.
 
 ## Places
 
@@ -367,6 +367,7 @@ garrison.
 The game saves to this browser's local storage: the game you're playing autosaves every 10 seconds and whenever you leave the page, and you can save it into one of eight slots from the pause screen (see The main menu).
 
 - **What a save holds:** the seed, the year after the war the game began (the history is rebuilt from these, not stored), where you are, which way you're facing, the time and day, your purse and pack, and the villages as you left them.
+- **Older saves** load on the same map; villages remembered in a save from before the map was fixed (on any seed but 1337) are forgotten and fill again from the history.
 - **Autosaves** are kept for the 8 most recently played seeds; LOAD GAME offers the latest. Starting a NEW GAME on a seed replaces that seed's autosave.
 - **Settings** are saved too: ASCII on or off, style, character size, minimap and time speed.
 - **Limits:** saves stay on this device and browser. A private window, or a browser that blocks storage, simply won't remember; the game still runs.
@@ -386,7 +387,7 @@ A full day lasts an hour of real time, or 3 minutes at 20× fast-forward (K). Th
 
 ## World seed and map
 
-The shape of the land, the places and the roads come from the painted map and the gazetteer, and are the same in every world. The seed, chosen in NEW GAME, decides the history (every family and what has happened to them) and the small-scale detail (hills, trees, wildlife). A game can also be started from the address: `index.html?play=new&seed=42&years=200`.
+The map is the same in every game: the land, places and roads from the painted map and the gazetteer, and the small hills, trees, wildlife and village layouts from one fixed map seed (`MAP_SEED`), so it can all be tested once. The seed chosen in NEW GAME decides only the history: every family and what has happened to them. A game can also be started from the address: `index.html?play=new&seed=42&years=200`.
 
 The world map (M) shows biomes, water depth and hill shading, with the fort and your position and facing marked. Drag to pan, scroll or use +/− to zoom, from 256 to about 10,000 blocks across (the whole continent). Structure markers thin out when zoomed far out, and an N marker shows north, and CENTRE ON ME to jump back to yourself. A minimap in the top-left corner (N) follows you and shows the biome (or, in water, the sea, lake, tarn, river or marsh) and coordinates you're at. Both are drawn from the same climate and height functions as the 3D world, a few rows per frame so the game never stalls. If drawing a map ever fails, that view is dropped and the error logged, and the game carries on; any other error in a frame is logged once and the next frame still runs.
 

@@ -1554,12 +1554,15 @@ function makeNoise2D(seed) {
                  corner(x0 - 1 + 2 * G2, y0 - 1 + 2 * G2, p[ii + 1 + p[jj + 1]]));
   };
 }
-const noiseA = makeNoise2D(SEED), noiseB = makeNoise2D(SEED + 1), noiseC = makeNoise2D(SEED + 2);
+// The map is the same in every game: its small hills, trees and wildlife come from this fixed seed, not the
+// game's, which only decides the history
+const MAP_SEED = 1337;
+const noiseA = makeNoise2D(MAP_SEED), noiseB = makeNoise2D(MAP_SEED + 1), noiseC = makeNoise2D(MAP_SEED + 2);
 
 
 // Deterministic per-column random number in [0, 1)
 function hash2(x, z) {
-  let h = Math.imul(x, 374761393) ^ Math.imul(z, 668265263) ^ Math.imul(SEED, 1442695041);
+  let h = Math.imul(x, 374761393) ^ Math.imul(z, 668265263) ^ Math.imul(MAP_SEED, 1442695041);
   h = Math.imul(h ^ (h >>> 13), 1274126177);
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
@@ -1833,12 +1836,19 @@ function faceMaterial(type, face) {
   return 0;
 }
 
-// How strongly terrain is flattened to ground level G (1 = fully flat): the fort and the start of the road
+// How strongly terrain is flattened (1 = fully): the fort, to ground level G, and the start road out of
+// its gate, which climbs steadily from G up to the land where it meets the roads (see flatHeight)
 function flatness(x, z) {
   const dx = Math.max(2 - x, 0, x - 62), dz = Math.max(2 - z, 0, z - 62);
   const fort = 1 - smoothstep(0, 18, Math.hypot(dx, dz));
-  const road = (1 - smoothstep(3, 10, Math.abs(x + .5 - CX))) * (1 - smoothstep(20, 60, z - 62)) * (z > 50 ? 1 : 0);
+  const road = (1 - smoothstep(5, 26, Math.abs(x + .5 - CX))) * (1 - smoothstep(ROAD_END - 8, ROAD_END + 6, z)) * (z > 50 ? 1 : 0);   // a broad cut, its sides easing up into the hills
   return Math.max(fort, road);
+}
+// The height the flattening takes the land to: G in the fort, then up the start road at an even grade
+let startTop = null;
+function flatHeight(z) {
+  startTop ??= (() => { const x = CX + .5, z1 = ROAD_END, cl = climate(x, z1); let h = landHeight(x, z1, cl); if (cl.coast >= 0) h = carveWater(x, z1, h, cl); return h; })();
+  return G + (Math.max(G, startTop) - G) * smoothstep(F1 + 4, ROAD_END - 2, z);
 }
 
 const ROAD_END = F1 + 90;   // the road from the gate fades out after this
@@ -1860,7 +1870,7 @@ const MAP_ORIGIN = [707.7, 290.7];              // image pixel at world (0, 0): 
 const MAP_SIZE = [1448, 1086];                  // the painting, in pixels
 const mapToWorld = (px, py) => [(px - MAP_ORIGIN[0]) * MAP_SCALE, (py - MAP_ORIGIN[1]) * MAP_SCALE];
 const WORLD = { x0: mapToWorld(0, 0)[0], z0: mapToWorld(0, 0)[1], x1: mapToWorld(...MAP_SIZE)[0], z1: mapToWorld(...MAP_SIZE)[1] };
-const noiseW1 = makeNoise2D(SEED + 6), noiseW2 = makeNoise2D(SEED + 7);
+const noiseW1 = makeNoise2D(MAP_SEED + 6), noiseW2 = makeNoise2D(MAP_SEED + 7);
 
 const MAP_FIELDS = await (async () => {
   const el = document.getElementById('mapData'), meta = JSON.parse(el.dataset.grid);
@@ -2080,7 +2090,8 @@ const rawHeight = (x, z, cl) => Math.round(rawHeightF(x, z, cl));
 function rawHeightF(x, z, cl = climate(x, z)) {
   let h = landHeight(x, z, cl);
   if (cl.coast >= 0) h = carveWater(x, z, h, cl);
-  h += (G - h) * flatness(x, z);
+  const f = flatness(x, z);
+  if (f > 0) h += (flatHeight(z) - h) * f;
   return Math.max(2, Math.min(H - 12, h));
 }
 // The land's shape from the painted map, before the lakes and rivers are cut into it
@@ -6318,7 +6329,7 @@ function addHawk(x, z) {
 
 // What lives in a chunk, by biome
 function spawnAnimals(c) {
-  const out = [], ox = c.cx * CHUNK, oz = c.cz * CHUNK, r = mulberry32(Math.imul(c.cx, 92821) ^ Math.imul(c.cz, 68917) ^ SEED ^ 0xa11);
+  const out = [], ox = c.cx * CHUNK, oz = c.cz * CHUNK, r = mulberry32(Math.imul(c.cx, 92821) ^ Math.imul(c.cz, 68917) ^ MAP_SEED ^ 0xa11);
   const mx = ox + 8, mz = oz + 8, cl = climate(mx, mz), h = terrainHeight(mx, mz), biome = biomeOf(cl, h);
   if (biome === OCEAN || structureAt(mx, mz) || flatness(mx, mz) > .05) return out;
   const near = (n) => [ox + 2 + r() * 12, oz + 2 + r() * 12];
@@ -7919,7 +7930,7 @@ function saveSettings() {
 // Everything a save holds about this game
 function gameSnapshot() {
   for (const V of villages) villageMemory.set(placeKey(V.plan), snapshotVillage(V));
-  return { v: 3, seed: SEED, x: P.pos.x, y: P.pos.y, z: P.pos.z, yaw: P.yaw, pitch: P.pitch, discovered: [...discovered],
+  return { v: 4, seed: SEED, x: P.pos.x, y: P.pos.y, z: P.pos.z, yaw: P.yaw, pitch: P.pitch, discovered: [...discovered],
     villages: Object.fromEntries(villageMemory), player: { coins: player.coins, inv: { ...player.inv } },
     time: env.time, day: env.day, history: { years: historyYears }, savedAt: Date.now() };
 }
@@ -7954,8 +7965,14 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) saveG
 // Restore this world's save, or start at the fort
 // A new game starts afresh (its seed's old autosave is dropped); a slot or the autosave picks up where it was
 if (PLAY === 'new') store.del('world:' + SEED);
-const saved = PLAY === 'new' ? null : (s => s?.v === 2 || s?.v === 3 ? s : null)(PLAY === 'slot' ? SLOT_SAVE : store.get('world:' + SEED));   // saves from before the hand-made world are dropped
-if (saved?.v === 3 && saved.villages && typeof saved.villages === 'object')        // villages from before the history are forgotten for (const [k, v] of Object.entries(saved.villages)) if (Array.isArray(v?.houses)) villageMemory.set(k, v);
+const saveOK = s => s?.v === 2 || s?.v === 3 || s?.v === 4 ? s : null;
+const saved = PLAY === 'new' ? null : saveOK(PLAY === 'slot' ? SLOT_SAVE : store.get('world:' + SEED));   // saves from before the hand-made world are dropped
+// Villages are remembered only from saves made since every map has been the same (v4), or before then on
+// the map's own seed; older ones (or ones from before the history) are forgotten and fill again from the history
+const villagesKept = saved?.v === 4 || saved?.v === 3 && saved.seed === MAP_SEED;
+if (villagesKept && saved.villages && typeof saved.villages === 'object') {
+  for (const [k, v] of Object.entries(saved.villages)) if (Array.isArray(v?.houses)) villageMemory.set(k, v);
+}
 if (Array.isArray(saved?.discovered)) for (const k of saved.discovered) {
   discovered.add(k);
   const [rx, rz] = String(k).split(',').map(Number);
@@ -8020,7 +8037,7 @@ const SLOTS = 8, menuEl = document.getElementById('menu'), pickerEl = document.g
 const two = n => String(Math.floor(n)).padStart(2, '0');
 const slotText = s => `seed ${s.seed} \u00b7 ${s.history?.years ?? 1} ${(s.history?.years ?? 1) === 1 ? 'year' : 'years'} after the war \u00b7 day ${s.day || 1}, ${two(s.time)}:${two((s.time % 1) * 60)}` +
   (s.savedAt ? ` \u00b7 saved ${new Date(s.savedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}` : '');
-const slotSave = n => (s => s?.v === 3 || s?.v === 2 ? s : null)(store.get('slot:' + n));
+const slotSave = n => saveOK(store.get('slot:' + n));
 function menuPage(id) { for (const p of menuEl.querySelectorAll('.page')) p.hidden = p.id !== id; }
 function slotButton(label, s, onClick) {
   const b = Object.assign(document.createElement('button'), { className: 'btn' });
@@ -8030,7 +8047,7 @@ function slotButton(label, s, onClick) {
 }
 function showLoad() {
   const list = document.getElementById('loadList'); list.innerHTML = '';
-  const last = parseInt(store.get('lastSeed'), 10), auto = Number.isFinite(last) && (s => s?.v === 3 || s?.v === 2 ? s : null)(store.get('world:' + last));
+  const last = parseInt(store.get('lastSeed'), 10), auto = Number.isFinite(last) && saveOK(store.get('world:' + last));
   list.append(slotButton('AUTOSAVE (the last game played)', auto || null, auto ? () => { location.href = `${location.pathname}?play=continue&seed=${last}`; } : null));
   for (let n = 1; n <= SLOTS; n++) { const s = slotSave(n); list.append(slotButton(`SLOT ${n}`, s, s ? () => { location.href = `${location.pathname}?play=slot&slot=${n}`; } : null)); }
   menuPage('menuLoad');
