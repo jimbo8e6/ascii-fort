@@ -2131,7 +2131,9 @@ function carveWater(x, z, h, cl) {
   const rv = riverAt(x, z);
   if (rv.d < RIVER_REACH) {
     const reach = 18 + 7 * rv.w + 60 * mtn + 30 * mesa;
-    const valley = 1 - smoothstep(2, reach, rv.d), channel = 1 - smoothstep(-1.2, .3, rv.d);
+    // (no banks raised across a tarn the river runs through: it stays one pool)
+    const inTarn = TARNS.reduce((m, [tx, tz, r]) => Math.max(m, 1 - smoothstep(r - 4, r + 10, Math.hypot(x - tx, z - tz))), 0);
+    const valley = (1 - smoothstep(2, reach, rv.d)) * (1 - inTarn), channel = 1 - smoothstep(-1.2, .3, rv.d);
     h += (rv.level + 1.55 - h) * valley * .85;
     let bed = rv.level - 1.45 - Math.min(2, rv.w * .3);
     for (const [fx, fz] of FORDS) bed += (rv.level - .85 - bed) * (1 - smoothstep(10, 22, Math.hypot(x - fx, z - fz)));
@@ -2230,7 +2232,7 @@ function generateChunk(cx, cz) {
     const x = ox + tx, z = oz + tz, r0 = hash2(x, z);
     if (r0 > .05) continue;                                                     // cheap early out
     const i = at(tx, tz), h = hm[i], biome = bm[i];
-    if (biome === OCEAN || h <= SEA + 1 || h > G + 24 || flatness(x, z) > .05 || structureAt(x, z) || roadAt(x, z) || isWet(x, z, h - 1)) continue;
+    if (biome === OCEAN || h <= SEA + 1 || h > G + 24 || flatness(x, z) > .05 || structureAt(x, z) || roadAt(x, z) || (roadSurface(x + .5, z + .5)?.d ?? 99) < ROAD_HALF + 1.5 || isWet(x, z, h - 1)) continue;   // (trunks stand clear of the road's edge)
     if (Math.abs(h - hAt(tx + 1, tz)) + Math.abs(h - hAt(tx, tz + 1)) > 2) continue;
     const r = hash2(z, x), r2 = hash2(x * 3 + 7, z * 5 - 11), y = Math.min(hf[i], hf[at(tx + 1, tz)], hf[at(tx, tz + 1)], hf[at(tx + 1, tz + 1)]) - .25;
     const t = { x: x + .5, z: z + .5, y, seed: r2 };
@@ -2416,11 +2418,12 @@ function buildVillage(set, plan, rnd) {
   for (let k = 0; k < 48 && shackAt.length < plan.shacks; k++) {
     const a = k * 2.39996 + 1.3, r = C + 7 + (k % 3) * 3, x = C + Math.cos(a) * r, z = C + Math.sin(a) * r;
     if (nearRoad(x, z, ROAD_HALF + 6) || shackAt.some(([sx, sz]) => Math.hypot(sx - x, sz - z) < 10) || models.some(m => Math.hypot(m.x - x, m.z - z) < 13)) continue;
-    let lo = Infinity;
-    for (const [dx, dz] of [[-3, -3], [3, -3], [-3, 3], [3, 3], [0, 0]]) lo = Math.min(lo, naturalHeightF(plan.ox + x + dx, plan.oz + z + dz));
-    if (lo < SEA + 1) continue;                                             // not in the water
+    let lo = Infinity, hi = -Infinity;
+    for (let dz = -4; dz <= 4; dz += 1) for (let dx = -4; dx <= 4; dx += 1) { const h = terrainHeightF(plan.ox + x + dx, plan.oz + z + dz); lo = Math.min(lo, h); hi = Math.max(hi, h); }
+    if (lo < SEA + 1 || hi - lo > 3) continue;                              // not in the water, nor on a steep slope
     shackAt.push([x, z]);
-    models.push({ kind: 'cottage', shack: true, x, y: Math.floor(lo) - plan.base, z, angle: Math.atan2(C - x, C - z), w: 6, d: 5.5, storeys: 1, seed: rnd() * 1e9 | 0 });
+    // The floor clears the ground at its highest; a stone foundation goes down to it at its lowest
+    models.push({ kind: 'cottage', shack: true, x, y: Math.ceil((hi + .05) * 10) / 10 - plan.base, z, angle: Math.atan2(C - x, C - z), w: 6, d: 5.5, storeys: 1, found: hi - lo + .4, seed: rnd() * 1e9 | 0 });
   }
   return { torches, guards, models, village: { streets, firstLane, radius: C - 3 } };
 }
@@ -2655,6 +2658,26 @@ function layRoads() {
       legsByRegion.get(k).push(leg);
     }
   };
+  // Where two roads cross (away from a place, where they're already held at its ground), both are held at
+  // one height, the average of the two, and graded again from there, so neither stands above the other
+  const joinCrossings = () => {
+    for (const A of roadLegs) for (let i = 0; i < A.pts.length / 2; i++) {
+      const x = A.pts[i * 2], z = A.pts[i * 2 + 1];
+      for (const [B, j] of roadGrid.get(chunkKey(Math.floor(x / ROAD_CELL), Math.floor(z / ROAD_CELL))) || []) {
+        if (B === A || B.road === A.road && (B.a === A.b || B.b === A.a) || roadLegs.indexOf(B) < roadLegs.indexOf(A)) continue;
+        const d = Math.hypot(B.pts[j * 2] - x, B.pts[j * 2 + 1] - z);
+        if (d > 2.5 || structureAt(Math.floor(x), Math.floor(z))?.inside || A.deck[Math.min(i, A.deck.length - 1)] || B.deck[Math.min(j, B.deck.length - 1)]) continue;
+        const key = `${roadLegs.indexOf(B)}:${Math.round(x / 8)},${Math.round(z / 8)}`;
+        (A.cross ||= new Map()); if (A.cross.has(key) && A.cross.get(key).d <= d) continue;
+        A.cross.set(key, { i, B, j, d });
+      }
+    }
+    for (const A of roadLegs) for (const { i, B, j } of (A.cross || new Map()).values()) {
+      const h = (A.prof[i] + B.prof[j]) / 2;
+      (A.pins ||= new Map()).set(i, h); (B.pins ||= new Map()).set(j, h);
+    }
+    for (const L of roadLegs) if (L.pins) gradeLeg(L);
+  };
   for (const road of ROADS) {
     road.stoneAt = (road.stone || []).map(p => mapToWorld(...p));
     let leg = null;
@@ -2671,6 +2694,7 @@ function layRoads() {
     }
     if (leg && leg.ctrl.length > 1 && typeof road.stops.at(-1) !== 'string') finish(leg, null);   // runs out into open country
   }
+  joinCrossings();
   return roadLegs;
 }
 // A leg's height along its length: the land smoothed out, then eased so the road never climbs
@@ -2687,6 +2711,7 @@ function gradeLeg(leg) {
     if (i) len.push(Math.hypot(p[i * 2] - p[i * 2 - 2], p[i * 2 + 1] - p[i * 2 - 1]));
   }
   for (let i = 0; i < n - 1; i++) if (leg.deck[i]) pin[i] = pin[i + 1] = leg.deck[i];
+  for (const [i, h] of leg.pins || []) pin[i] = h;                       // where it crosses another road
   pin[0] ??= g[0]; pin[n - 1] ??= g[n - 1];
   const prof = g.map((_, i) => {
     if (pin[i] !== null) return pin[i];
@@ -2708,14 +2733,22 @@ function roadSurface(x, z) {
   layRoads();
   const list = roadGrid.get(chunkKey(Math.floor(x / ROAD_CELL), Math.floor(z / ROAD_CELL)));
   if (!list) return null;
-  let best = null, bd = ROAD_REACH;
+  // (and the nearest other road, if one is close: where roads cross, their heights are blended)
+  let best = null, next = null;
   for (const [leg, i] of list) {
     const p = leg.pts, ax = p[i * 2], az = p[i * 2 + 1], dx = p[i * 2 + 2] - ax, dz = p[i * 2 + 3] - az;
     const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz || 1)));
     const d = Math.hypot(x - ax - dx * t, z - az - dz * t);
-    if (d < bd) { bd = d; best = { leg, i, t, d }; }
+    if (d >= ROAD_REACH) continue;
+    if (!best || d < best.d) { if (best && best.leg !== leg) next = best; best = { leg, i, t, d }; }
+    else if (leg !== best.leg && (!next || d < next.d)) next = { leg, i, t, d };
   }
-  if (best) { const pr = best.leg.prof; best.p = pr[best.i] + (pr[best.i + 1] - pr[best.i]) * best.t; best.deck = best.leg.deck[best.i]; }
+  for (const r of [best, next]) if (r) { const pr = r.leg.prof; r.p = pr[r.i] + (pr[r.i + 1] - pr[r.i]) * r.t; r.deck = r.leg.deck[r.i]; }
+  if (best && next && next.leg !== best.leg && !best.deck && !next.deck && next.d < ROAD_HALF + 3) {
+    // each weighted by how near it is, the same from either road, so the ground has no seam between them
+    const wa = smoothstep(ROAD_HALF + 3, 0, best.d), wb = smoothstep(ROAD_HALF + 3, 0, next.d);
+    best.p = (best.p * wa + next.p * wb) / (wa + wb);
+  }
   return best;
 }
 
@@ -3456,7 +3489,8 @@ function buildRivers() {
       const sg = r.segs[i], len = Math.hypot(sg.bx - sg.ax, sg.bz - sg.az) || 1;
       if (Math.max(sg.l0, sg.l1) < SEA_LEVEL + .05) continue;
       const mx = (sg.ax + sg.bx) / 2, mz = (sg.az + sg.bz) / 2;
-      if (r.lake && climate(mx, mz).lake < 0 || TARNS.some(([tx, tz, rr]) => Math.hypot(mx - tx, mz - tz) < rr)) continue;
+      // In the lake, or a tarn at the river's own level, the still water is its surface (meshWater)
+      if (r.lake && climate(mx, mz).lake < 0 || TARNS.some(([tx, tz, rr, tl]) => Math.hypot(mx - tx, mz - tz) < rr && Math.max(sg.l0, sg.l1) <= tl + .05)) continue;
       // Square to the course at each end (averaged with the neighbouring segment)
       const across = k => {
         const a = c[Math.max(0, k - 1)], b = c[Math.min(c.length - 1, k + 1)], dx = b[0] - a[0], dz = b[1] - a[1], l = Math.hypot(dx, dz) || 1;
@@ -4027,8 +4061,8 @@ function makeCottage(m) {
   const cloth = ['#8a2a2a', '#2a4a8a', '#3a6a3a', '#7a5a2a'][rnd() * 4 | 0], rug = ['#7a3a2a', '#3a4a6a', '#6a5a3a'][rnd() * 3 | 0];
 
   // Plinth and floors
-  K.aabb('stone', -W / 2 - .15, 0, -D / 2 - .15, W / 2 + .15, floorY - .05, D / 2 + .15);
-  K.solid(-W / 2 - .15, 0, -D / 2 - .15, W / 2 + .15, floorY, D / 2 + .15);
+  K.aabb('stone', -W / 2 - .15, -(m.found || 0), -D / 2 - .15, W / 2 + .15, floorY - .05, D / 2 + .15);   // (deeper on a slope)
+  K.solid(-W / 2 - .15, -(m.found || 0), -D / 2 - .15, W / 2 + .15, floorY, D / 2 + .15);
   K.aabb('floor:in', ix0, floorY - .05, iz0, ix1, floorY, iz1);
 
   // Layout

@@ -70,7 +70,7 @@ The places come from the world gazetteer (draft 1) and are set by hand on the pa
   - **The Vael** rises in a mountain tarn in the Greyspine and runs south through Greyhold Pass and the Hollow, gathering tributaries. One of them flows out of the lake at Mistwater. The Vael splits into a delta above the desert, then runs down rapids to the sea on the south-west coast. It grows from about 5 blocks wide at its source to 13 at its mouth.
   - **The delta's side channels** split off at the Vael's level, fan out south and east and run dry in the sand.
   - **Levels:** a river's level follows the land along it, a little below it and smoothed, but never rises going downstream, so it cuts through any ridge in its way. It never falls faster than 3 blocks in 100. A tributary meets the river it joins at the same level; where it comes in lower, the main river drops to meet it from there on. The Vael meets the sea at sea level.
-  - **The lake at Mistwater** sits a block below the lowest point of its shore, and its outflow starts at that level. The tarns take the level of the river running through them.
+  - **The lake at Mistwater** sits a block below the lowest point of its shore, and its outflow starts at that level. The tarns take the level of the river running through them, and stay one open pool with the river running in and out of it (upstream, where the river runs above the tarn's level, it keeps its own surface).
 - **Roads:** the gazetteer's five roads, laid by hand in `ROADS` through places and waypoints. They wind gently between their stops.
   - **Graded:** each road's height is the land along it smoothed out, then eased so it never climbs steeper than about 1 in 8 (12%). Where it meets a hill it runs through a cutting; across a dip it rides an embankment. The cuttings and embankments blend back into the land within a few blocks, and never fill in water.
   - **A surface of its own:** like the bridges, the road is a mesh rather than blocks. It's a smooth strip of packed earth along the graded height, laid just over the ground, with dirt edges. You walk on it and carts drive on it, so it climbs a hill in one even slope.
@@ -85,7 +85,8 @@ The places come from the world gazetteer (draft 1) and are set by hand on the pa
     - **Stone:** elliptical arches (two or three on longer spans, with piers between), parapet walls with capstones and a paved deck. Iron-posted lanterns stand on the parapets, a pair at each end and then alternating sides every ~9 blocks. They glow steadily, share the torch light pool, and light the bridge at night. Built in sandstone in the desert. Spans up to 40 blocks are stone about 55% of the time. Longer ones are usually wooden trestles, but about 1 in 8 is a long multi-arched stone viaduct.
     - **Collision** follows the real deck, and the rails and parapets stop you walking off the side. Boats fit underneath.
   - **Leaving places:** roads leave fort gates and tower doors straight outwards before turning, so they never cut across a structure's walls.
-  - Trees never grow on them. They show on the map at every zoom level.
+  - Trees never grow on them, nor within a block and a half of their edges. They show on the map at every zoom level.
+  - **Where two roads cross,** both are held at one height there and graded again from it, and the ground blends between them, so neither stands above the other.
   - A guard will tell you when a road leads to a place they mention.
 - **Discovery:** places are hidden on the map until you've been near one. Then a banner announces it (*DISCOVERED — Kelford*) and its marker appears. The starting fort is announced when you first enter a world. Discoveries are saved with each world.
 
@@ -93,7 +94,7 @@ The places come from the world gazetteer (draft 1) and are set by hand on the pa
 
 Villages on a road have the road meeting at a village square with a stone well (a village off the roads gets a street of its own), and cottages line each road on alternating sides, turned to face the street at any angle.
 
-- **Sized to their people:** each village has homes enough for its families in nine in ten of the histories the simulation makes for it (`homes` and `shacks` in `PLACES`), so it grows with them: straight lanes run across the village, broken where a road or the square is in the way, each with a row of cottages and their plots on either side. Kelford, the biggest, has 35 cottages. Hunters' families live in shacks out in the woods beyond the village. In a bigger history than the village has homes for, families share. (A first layout: each village is to be laid out by hand.)
+- **Sized to their people:** each village has homes enough for its families in nine in ten of the histories the simulation makes for it (`homes` and `shacks` in `PLACES`), so it grows with them: straight lanes run across the village, broken where a road or the square is in the way, each with a row of cottages and their plots on either side. Kelford, the biggest, has 35 cottages. Hunters' families live in shacks out in the woods beyond the village, on fairly level ground, with a stone foundation down to the ground where it slopes away. In a bigger history than the village has homes for, families share. (A first layout: each village is to be laid out by hand.)
 
 - **Cottages** are built as 3D models, not blocks:
   - **Outside:** a stone plinth, plaster walls with dark timber framing, framed windows with coloured shutters, an open door with a lantern beside it, and a pitched tiled roof with overhangs and a chimney with a pot.
