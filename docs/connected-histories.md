@@ -1,7 +1,7 @@
 # Connected Histories: design notes
 
 Working notes for the history system. Nothing here is canon until James confirms it. The family
-simulation prototype lives in `prototypes/family-sim/` and is separate from the game.
+simulation lives in `prototypes/family-sim/`; the game builds each world's history with it.
 
 ## The idea
 People, families, places and objects share one connected past. When the player finds something or
@@ -9,6 +9,11 @@ meets someone, there is a history behind it that fits with everything else. Ordi
 of bakers) are as valid as famous ones (a displaced king in the family tree).
 
 ## Decisions so far (from James)
+- **The game's name:** *The Sunken Throne* (formerly ASCII Fort).
+- **The antagonist:** **Avarren**, of the ancient race the four peoples fought. To his followers he is
+  *Avarren the Unifier*; to his enemies, *Avarren the Silencer*. Which is nearer the truth is left open, to come
+  out through texts and conversations (see the setting anchor). He isn't in the generated history yet, which
+  starts at the war's end; he belongs to the set history before it.
 - **Start date:** a number of years after the war. The default start is one year after; before the game
   starts the player may move time forward. A background task then simulates family lines and item
   histories up to that year. A later start may take a while to build.

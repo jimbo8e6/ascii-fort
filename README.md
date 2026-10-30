@@ -1,6 +1,8 @@
-# ASCII Fort
+# The Sunken Throne
 
-A first-person walk around a night-time fort, rendered in real time as coloured ASCII characters. Everything is in one file, `index.html`. The geometry, textures, lighting and ASCII shader are all generated in code; the only external dependency is Three.js, loaded from a CDN.
+*(Formerly ASCII Fort.)*
+
+A first-person game in a hand-made world with a generated past: four peoples who once fought together against an ancient race, and every family, crime and office in the generations since. It's rendered in real time, as coloured ASCII characters or plainly. Everything is in one file, `index.html`. The geometry, textures, lighting and ASCII shader are all generated in code; the only external dependency is Three.js, loaded from a CDN.
 
 ## Run it
 
