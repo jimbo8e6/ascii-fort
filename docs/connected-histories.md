@@ -10,6 +10,9 @@ of bakers) are as valid as famous ones (a displaced king in the family tree).
 
 ## Decisions so far (from James)
 - **The game's name:** *The Sunken Throne* (formerly ASCII Fort).
+- **The opening:** every new game begins in the cells beneath Castle Aldermere's keep. The player washed up
+  on the shore with no memory, was brought there, and is let go once they convince the jailer (the history's
+  own) that they're not dangerous. The history's prisoners are in the other cells.
 - **The antagonist:** **Avarren**, of the ancient race the four peoples fought. To his followers he is
   *Avarren the Unifier*; to his enemies, *Avarren the Silencer*. Which is nearer the truth is left open, to come
   out through texts and conversations (see the setting anchor). He isn't in the generated history yet, which

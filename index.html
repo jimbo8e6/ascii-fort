@@ -2050,6 +2050,7 @@ for (const t of TARNS) t.push(riverAt(t[0], t[1]).level);
 // The water's surface over a spot: a river within its banks, the lake, a tarn, or else the sea's
 // level (which only matters where the ground is below it)
 function waterLevel(x, z, cl = climate(x, z)) {
+  if (dungeonAt(x, z) !== null) return -1e9;                          // the cells are dry, below the sea's level or not
   const rv = riverAt(x, z);
   if (rv.river && rv.d < .3 && rv.level > SEA_LEVEL) return rv.level;
   if (cl.lake < 40) return LAKE_LEVEL;
@@ -2158,6 +2159,7 @@ function carveWater(x, z, h, cl) {
 // The land's height with places flattened in, before roads are graded into it
 function naturalHeightF(x, z, cl = climate(x, z)) {
   const h = rawHeightF(x, z, cl), s = structureAt(x, z);
+  if (s?.inside && s.plan.dungeon) { const d = dungeonAt(x, z); if (d !== null) return d; }   // the cells under the keep
   return s ? h + (s.plan.base - h) * s.w : h;
 }
 const naturalHeight = (x, z, cl) => Math.round(naturalHeightF(x, z, cl));
@@ -2284,17 +2286,18 @@ function generateChunk(cx, cz) {
 // ---------------------------------------------------------------------------
 
 // A square fort, N blocks across, gate in the middle of the +z wall. Its layout: where its torches and guards go, and the fort model itself (makeFort)
-function buildFort({ N, wall, mat, keep = true, crates = [] }) {
+function buildFort({ N, wall, mat, keep = true, crates = [], dungeon = false }) {
   const C = N / 2;
   const torches = [[N / 3, 3.4, 3.3], [2 * N / 3, 3.4, 3.3], [3.3, 3.4, C - 2], [N - 3.3, 3.4, C - 2],
     [C - 2.5, 3.4, N + .3], [C + 2.5, 3.4, N + .3]];
   if (keep) torches.push([C, 3.4, C - 3.7]);
+  if (keep && dungeon) torches.push([C - 3, -1.6, C - 12.7], [C + 2, -1.6, C - 12.7]);   // the cells' corridor
   const guards = [
     { a: [6, wall, 1.5], b: [N - 6, wall, 1.5], speed: 1.3 },
     { a: [8, 0, C + 6], b: [N - 8, 0, C + 6], speed: 1.2 },
     { a: [C - 3.2, 0, N + 2], face: [0, 1] }, { a: [C + 3.2, 0, N + 2], face: [0, 1] },
   ];
-  return { torches, guards, models: [{ kind: 'fort', x: C, y: 0, z: C, N, wall, mat, keep, crates, angle: 0 }] };
+  return { torches, guards, models: [{ kind: 'fort', x: C, y: 0, z: C, N, wall, mat, keep, crates, dungeon, angle: 0 }] };
 }
 
 // The watchtower, ruins and standing stones: where their torches and guards go, and the model to
@@ -2477,7 +2480,7 @@ const PLACES = [
   { name: "Hollin's Ferry", type: VILLAGE, at: [706, 563], mill: false, homes: 14, shacks: 4 },
   { name: 'Kelford', type: VILLAGE, at: [681, 641], mill: true, homes: 32, shacks: 1 },
   { name: 'Millbrook', type: VILLAGE, at: [671, 670], mill: true, homes: 21, shacks: 3 },
-  { name: 'Castle Aldermere', type: FORT, at: [620, 708], N: 48, gate: 'E' },
+  { name: 'Castle Aldermere', type: FORT, at: [620, 708], N: 48, gate: 'E', dungeon: true },   // cells under the keep: where every game begins
   { name: 'Greycrest', type: VILLAGE, at: [830, 610], mill: false, homes: 15, shacks: 5 },
   { name: 'Harrowgate Keep', type: FORT, at: [547, 703], N: 44, gate: 'E' },
   { name: 'Scarrow Hovel', type: VILLAGE, at: [600, 690], mill: false, homes: 8, shacks: 4 },
@@ -2499,6 +2502,7 @@ const PLACES = [
 const PLACE_N = { [FORT]: 44, [TOWER]: 7, [RUINS]: 20, [VILLAGE]: 56, [STONES]: 12 };
 const GATE_ROT = { [FORT]: { S: 0, W: 1, N: 2, E: 3 }, [TOWER]: { W: 0, N: 1, E: 2, S: 3 } };   // matches rotateLocal
 
+var placesLaid = false;
 const plans = new Map(), placeRegions = new Map();   // home region -> plan; region -> plans reaching into it
 const placesIn = (rx, rz) => placeRegions.get(chunkKey(rx, rz)) || [];
 const planFor = (rx, rz) => plans.get(chunkKey(rx, rz)) || null;
@@ -2513,7 +2517,7 @@ for (const p of PLACES) {
   const base = Math.max(SEA + 2, Math.min(H - 24, Math.round(sum / n))), rnd = mulberry32(hash2(ox, oz) * 1e9 | 0);
   const plan = {
     type, N, ox, oz, base, pad, blend, rot: GATE_ROT[type]?.[p.gate] ?? 0, seed: rnd() * 1e9 | 0,
-    mat: climate(cx, cz).desert > .5 ? SANDSTONE : BRICK, towerH: 11 + (rnd() * 4 | 0), mill: p.mill, stones: p.stones, style: p.style, homes: p.homes || 0, shacks: p.shacks || 0,
+    mat: climate(cx, cz).desert > .5 ? SANDSTONE : BRICK, towerH: 11 + (rnd() * 4 | 0), mill: p.mill, stones: p.stones, style: p.style, dungeon: p.dungeon, homes: p.homes || 0, shacks: p.shacks || 0,
     name: STRUCT_NAMES[type], title: p.name, cx: ox + S / 2, cz: oz + S / 2, rx: regionOf(ox), rz: regionOf(oz),
     _edits: null, decor: null, edits() { return this._edits || buildPlan(this); },
   };
@@ -2528,6 +2532,7 @@ for (const p of PLACES) {
     placeRegions.get(k).push(plan);
   }
 }
+placesLaid = true;
 
 // Rotate a local point (in an S x S footprint) by rot quarter turns
 function rotateLocal(x, z, S, rot) {
@@ -2549,7 +2554,7 @@ function buildPlan(plan) {
   const extra = plan.style === 'hold' ? buildHold(plan)
     : plan.style === 'orc' ? buildOrcHold(plan)
     : plan.style === 'throne' ? buildThrone(plan)
-    : plan.type === FORT ? buildFort({ N: plan.N, wall: 6 + (rnd() * 2 | 0), mat: plan.mat, keep: plan.N >= 44,
+    : plan.type === FORT ? buildFort({ N: plan.N, wall: 6 + (rnd() * 2 | 0), mat: plan.mat, keep: plan.N >= 44, dungeon: plan.dungeon,
       crates: [[6, 0, 6], [7, 0, 6], [6, 1, 6], [plan.N - 8, 0, plan.N / 2], [plan.N - 8, 0, plan.N / 2 + 1]] })
     : plan.type === TOWER ? buildTower({ mat: plan.mat, h: plan.towerH })
     : plan.style === 'elf' ? buildElfCity(plan)
@@ -3465,7 +3470,7 @@ function meshWater(c) {
     let y = SEA_LEVEL;
     if (nearLake && climate(X + .5, Z + .5).lake < 40) y = LAKE_LEVEL;
     for (const [tx, tz, r, l] of tarns) if (Math.hypot(X + .5 - tx, Z + .5 - tz) < r + 12) y = l;
-    if (low >= y) continue;
+    if (low >= y || dungeonAt(X + .5, Z + .5) !== null) continue;
     const rv = riverAt(X + .5, Z + .5);
     if (rv.river && rv.d < 1 && rv.level > y + .05) continue;          // a river's own surface covers it
     pos.push(X, y, Z, X + 1, y, Z + 1, X + 1, y, Z, X, y, Z, X, y, Z + 1, X + 1, y, Z + 1);
@@ -4522,11 +4527,60 @@ function makeFort(m) {
     holed(stone, x1 - 1, z0 + 1, x1, z1 - 1, 0, 7, [[C - 10, C - 8, 3, 5]]);
     blk(stone, x0, 7, z0, x1, 8, z1);
     merlons(x0, x1, z0, z1, 8);
-    blk('floor:in', x0 + 1, 0, z0 + 1, x1 - 1, .05, z1 - 1, false);
+    if (m.dungeon) buildDungeon(K, tools, stone, C); else blk('floor:in', x0 + 1, 0, z0 + 1, x1 - 1, .05, z1 - 1, false);
   }
   for (const [x, y, z] of m.crates || []) blk('crate', x + .04, y, z + .04, x + .96, y + .92, z + .96);
   return placeModel(K, m);
 }
+
+// The cells beneath a keep (Castle Aldermere's): the ground inside the keep is sunk DUNGEON.depth (see dungeonAt),
+// and under a new stone floor are a corridor and three barred cells, reached by a stair down the east side.
+// In the fort's own coordinates (the keep's inside is x C-5..C+5, z C-13..C-5; its door is on the south).
+const DUNGEON = { depth: 4, stairX: 3.4, cellZ: 2, cells: [[-5, -2.2], [-2.2, .6], [.6, 3.4]], door: 1.2 };   // x and z relative to (C, C - 11)
+function buildDungeon(K, { blk }, stone, C) {
+  const D = DUNGEON.depth, ox = C, oz = C - 11, X0 = ox - 5, X1 = ox + 5, Z0 = oz - 2, Z1 = oz + 6, SX = ox + DUNGEON.stairX, FZ = oz + DUNGEON.cellZ;
+  const iron = '#2a2a2e';
+  // The ground floor, open over the stair, with a rail along the drop
+  blk('floor:in', X0, -.3, Z0, SX, 0, Z1);
+  blk('floor:in', SX, -.3, Z0, X1, 0, Z0 + 1);
+  blk('floor:in', SX, -.3, Z1 - 1.6, X1, 0, Z1);
+  blk(iron, SX - .12, 0, Z0 + 1, SX, 1.15, Z1 - 1.6);                                   // (too high to step up onto)
+  // The stair, eight half steps down northwards to the corridor
+  const run = (Z1 - 1.6 - (Z0 + 1)) / 8;
+  for (let i = 1; i <= 8; i++) blk(stone, SX, -D, Z1 - 1.6 - run * i, X1, -.5 * i, Z1 - 1.6 - run * (i - 1));
+  // Stone lining the sunken room, and the walls between the cells (and between the cells and the stair)
+  blk(stone, X0, -D, Z0, X0 + .3, -.3, Z1); blk(stone, X1 - .3, -D, Z0, X1, -.3, Z1);
+  blk(stone, X0, -D, Z0, X1, -.3, Z0 + .3); blk(stone, X0, -D, Z1 - .3, X1, -.3, Z1);
+  for (const x of [ox - 2.2, ox + .6]) blk(stone, x - .15, -D, FZ, x + .15, -.3, Z1);
+  blk(stone, SX - .3, -D, FZ, SX, -.3, Z1);
+  blk('floor:in', X0, -D, Z0, X1, -D + .05, Z1, false);
+  // Bars across each cell's front, with a barred door in the middle (the middle cell's is its own piece: see the opening)
+  DUNGEON.cells.forEach(([a, b], i) => {
+    const x0 = ox + a, x1 = ox + b, cx = (x0 + x1) / 2, d0 = cx - DUNGEON.door / 2, d1 = cx + DUNGEON.door / 2;
+    for (const [p, q] of i === 1 ? [[x0, d0], [d1, x1]] : [[x0, x1]]) {
+      blk(iron, p, -D, FZ - .05, q, -D + .1, FZ + .05); blk(iron, p, -.75, FZ - .05, q, -.65, FZ + .05);
+      for (let x = p + .15; x < q - .05; x += .3) blk(iron, x - .035, -D, FZ - .035, x + .035, -.65, FZ + .035, false);
+      K.aabb(iron, p - C, -D, FZ - .06 - C, q - C, -.65, FZ + .06 - C, false); K.solid(p - C, -D, FZ - .08 - C, q - C, -.3, FZ + .08 - C);
+    }
+  });
+}
+// How deep the ground is sunk at a point (inside the dungeon keep's walls), or null. (var: the land can be
+// asked about before this line runs; until the places are laid out there's no dungeon.)
+var dungeonPlan = null;
+function dungeonAt(x, z) {
+  if (!dungeonPlan) { if (!placesLaid) return null; dungeonPlan = PLACES.find(p => p.dungeon).plan; }
+  const pl = dungeonPlan, dx = x - pl.cx, dz = z - pl.cz;
+  if (dx * dx + dz * dz > 200) return null;                                // (the keep reaches 14 blocks from the castle's centre)
+  const a = -pl.rot * Math.PI / 2, c = Math.cos(a), s = Math.sin(a), lx = dx * c - dz * s, lz = dx * s + dz * c;   // the fort's frame, centred
+  return lx >= -5 && lx <= 5 && lz >= -13 && lz <= -5 ? pl.base - DUNGEON.depth : null;
+}
+// A point in the dungeon fort's own coordinates (relative to the keep's dungeon origin (C, C - 11)) in the world, and the fort's facing
+function dungeonWorld(lx, ly, lz) {
+  dungeonPlan ??= PLACES.find(p => p.dungeon).plan;
+  const pl = dungeonPlan, a = -pl.rot * Math.PI / 2, c = Math.cos(a), s = Math.sin(a), z = lz - 11;
+  return [pl.cx + lx * c + z * s, pl.base + ly, pl.cz - lx * s + z * c];
+}
+const dungeonYaw = () => { dungeonPlan ??= PLACES.find(p => p.dungeon).plan; return -dungeonPlan.rot * Math.PI / 2; };
 
 // Kharn Dolum, the dwarves' hold: a great hall carved into a stepped mountain of rock. The one way
 // in is a walled forecourt behind an outer gatehouse, then a great gate in a dressed stone facade,
@@ -5287,8 +5341,8 @@ function updateSeat(S) {
   const watch = S.soldiers.filter((p, i) => S.soldiers.length < 2 ? day : i % 2 === (day ? 0 : 1));
   posts.forEach((post, i) => { const p = watch[i]; if (p) want.set(p.id, { p, post }); });
   if (day && S.points?.length) {
-    const others = S.people.filter(p => !want.has(p.id) && !p.ruler && !p.office), share = Math.min(1, 16 / Math.max(1, others.length));
-    const out = [...S.people.filter(p => p.ruler || p.office), ...others.filter(p => hash2(p.id * 7 + env.day, Math.floor(h / 2) * 13) < share)].slice(0, 24);
+    const others = S.people.filter(p => !want.has(p.id) && !p.ruler && !p.office && p.id !== INTRO.jailerId), share = Math.min(1, 16 / Math.max(1, others.length));
+    const out = [...S.people.filter(p => (p.ruler || p.office) && p.id !== INTRO.jailerId), ...others.filter(p => hash2(p.id * 7 + env.day, Math.floor(h / 2) * 13) < share)].slice(0, 24);
     for (const p of out) {
       const r = mulberry32((p.id * 9973 + env.day * 31 + Math.floor(h / 2)) >>> 0), a = S.points[r() * S.points.length | 0];
       const near = S.points.filter(q => q !== a && Math.hypot(q[0] - a[0], q[2] - a[2]) < 9 && clearWalk(a, q)), b = near.length && r() < .6 ? near[r() * near.length | 0] : null;
@@ -6987,7 +7041,7 @@ startEl.addEventListener('click', e => {
   everStarted = true; document.getElementById('saveNote').textContent = '';
   if (!started) {
     P.yaw = P.homeYaw;
-    if (!saved && !P.welcomed) { P.welcomed = true; setTimeout(() => announce(MAIN_TITLE), 600); }   // first visit to this world
+    if (!saved && !P.welcomed) { P.welcomed = true; setTimeout(() => INTRO.freed ? announce(MAIN_TITLE) : introWake(), 600); }   // first visit to this world: you wake in the cells
   }
   started = true; startEl.style.display = 'none';
   if (!isTouch) renderer.domElement.requestPointerLock?.();
@@ -7451,6 +7505,7 @@ function talk() {
 function openDialogue(gd) {
   dlg.open = true; dlg.gd = gd; dlg.area = null;
   if (document.pointerLockElement) document.exitPointerLock();
+  if (gd.home?.intro && !INTRO.freed) return introTalk(gd);            // the jailer, before you're let go
   const p = gd.home?.person, role = p ? `${p.name} \u00b7 ${p.resident ? p.role : p.job === 'merchant' ? 'merchant from ' + p.from : p.job === 'carter' ? 'carter from ' + p.from : p.job === 'homemaker' && p.trade ? p.trade : JOB_NAMES[p.job]}` : gd.home?.kind === 'villager' ? 'Villager' : gd.home?.kind === 'dwarf' ? 'Dwarf guard' : gd.home?.kind === 'elf' ? 'Elf warden' : gd.home?.kind === 'orc' ? 'Orc warrior' : 'Guard';
   dlgEl.querySelector('.who').textContent = gd.home ? `${role} \u00b7 ${gd.home.title}` : role;
   const night = env.daylight < .35;
@@ -7471,6 +7526,7 @@ function showDialogue(text) {
 function whoAreYou(gd) {
   const p = gd.home?.person;
   if (!p) return `Just keeping watch over ${gd.home?.title || 'the road'}.`;
+  if (p.prisoner) return prisonerAbout(p);
   return p.resident ? residentAbout(p) : p.job === 'merchant' ? merchantAbout(p) : p.job === 'carter' ? carterAbout(p) : villagerAbout(p);
 }
 function whatDoing(gd) {
@@ -7478,6 +7534,7 @@ function whatDoing(gd) {
   if (!p) return night ? 'Keeping my eyes open. Nights are long out here.' : 'Keeping watch.';
   if (p.job === 'merchant') return merchantNews(p);
   if (p.job === 'carter') return carterAbout(p);
+  if (p.prisoner) return pick(['Counting the days.', 'Sitting. Waiting. What else is there?', 'Listening to the guards argue over dice.']);
   if (p.resident) return gd.post ? (night ? 'Night watch. Someone has to.' : 'On watch till the change of the guard.')
     : p.ruler ? `Seeing to ${p.plan.title}'s business. There's always some.` : p.office ? `About my duties as ${p.role.split(' of ')[0]}.` : !p.grown ? 'Playing. Mostly.' : 'Going about my day.';
   return villagerDoing(p);
@@ -7681,7 +7738,7 @@ function closeDialogue(relock = true) {
   const gd = dlg.gd;
   dlg.open = false; dlg.gd = null;
   dlgEl.hidden = true;
-  say(gd, pick(LINES.farewell), 2.5);
+  if (gd && !gd.quiet) say(gd, pick(LINES.farewell), 2.5);
   if (started && !isTouch) {
     if (relock) renderer.domElement.requestPointerLock?.();
     else pauseGame();
@@ -7874,6 +7931,7 @@ function update(dt, t) {
   checkDiscoveries(dt);
   updateVillages();
   updateSeats();
+  updateIntro(dt);
   processRuns(dt);
   updateModels(dt);
   updateAnimals(dt);
@@ -7932,7 +7990,7 @@ function gameSnapshot() {
   for (const V of villages) villageMemory.set(placeKey(V.plan), snapshotVillage(V));
   return { v: 4, seed: SEED, x: P.pos.x, y: P.pos.y, z: P.pos.z, yaw: P.yaw, pitch: P.pitch, discovered: [...discovered],
     villages: Object.fromEntries(villageMemory), player: { coins: player.coins, inv: { ...player.inv } },
-    time: env.time, day: env.day, history: { years: historyYears }, savedAt: Date.now() };
+    time: env.time, day: env.day, history: { years: historyYears }, intro: { freed: INTRO.freed }, savedAt: Date.now() };
 }
 // The autosave: the game being played, every 10 s and on leaving (only once it's begun, never from the menu)
 function saveGame() {
@@ -8079,6 +8137,130 @@ function showSlots(e) {
 document.getElementById('btnSave').addEventListener('click', showSlots);
 document.getElementById('slotCancel').addEventListener('click', () => { pickerEl.hidden = true; });
 document.getElementById('btnMenu').addEventListener('click', e => { e.stopPropagation(); goPlay(); });
+
+// ---------------------------------------------------------------------------
+// The opening: every new game begins in the cells beneath Castle Aldermere's keep. Fishermen found you on the
+// shore, half drowned and remembering nothing, and the guard carried you here. You wake in the morning; the
+// jailer (Castle Aldermere's, from the history) comes to the bars and asks who you are. Calm, honest answers
+// and he lets you go; a threat or a lie and he leaves you to think on it, and comes back to try again. The
+// history's prisoners are in the cells either side. Saved with the game until you're free.
+// ---------------------------------------------------------------------------
+const INTRO = { freed: saved ? (saved.intro ? !!saved.intro.freed : true) : false, jailer: null, jailerId: null, door: null, back: 0, step: 0, score: 0, tries: 0, prisoners: [] };
+if (!INTRO.freed && !saved) {                                         // a new game: in the middle cell, facing the bars, in the morning
+  const [x, y, z] = dungeonWorld(-.8, -DUNGEON.depth, 4.6);
+  P.pos.set(x, y, z); P.yaw = P.homeYaw = dungeonYaw(); P.pitch = 0;
+  if (!params.has('time')) env.time = 7.5;
+}
+// The middle cell's barred door: shut until you're let go, then standing open against the bars
+function introDoor(open) {
+  if (INTRO.door) { scene.remove(INTRO.door.group); removeColliders(INTRO.door.colliders); }
+  const K = new Kit(), w = DUNGEON.door, iron = '#2a2a2e', D = DUNGEON.depth;
+  const cx = -.8, [x, y, z] = dungeonWorld(open ? cx - w / 2 - .08 : cx, -D, DUNGEON.cellZ + (open ? -w / 2 - .1 : 0));
+  const yaw = dungeonYaw() + (open ? Math.PI / 2 : 0);
+  K.aabb(iron, -w / 2, 0, -.05, w / 2, .1, .05); K.aabb(iron, -w / 2, D - .75, -.05, w / 2, D - .65, .05);
+  for (let lx = -w / 2 + .12; lx < w / 2; lx += .3) K.aabb(iron, lx - .035, 0, -.035, lx + .035, D - .65, .035);
+  K.aabb('#6a5a3a', w / 2 - .25, 1.1, -.09, w / 2 - .1, 1.3, .09);                    // the lock
+  K.solid(-w / 2, 0, -.1, w / 2, D - .3, .1);
+  const built = K.build(x, y, z, yaw);
+  scene.add(built.group); addColliders(built.colliders);
+  INTRO.door = built;
+}
+// The narration as you wake
+function introWake() {
+  dlg.open = true; dlg.gd = null;
+  if (document.pointerLockElement) document.exitPointerLock();
+  dlgEl.querySelector('.who').textContent = '';
+  renderDialogue("Cold stone under you. Iron bars, a torch guttering somewhere beyond them, and the smell of the sea still in your clothes. You don't know where you are. You don't know who you are. Footsteps come down the stair.",
+    [['Get up.', () => closeDialogue()]]);
+}
+// Who comes to the bars: the castle's jailer, failing them one of its guards
+function introJailer() {
+  const H = FOLK.H, h = H._held['Castle Aldermere|Jailer'], id = h && !H.people[h.p].jail && H.people[h.p].death === null ? h.p
+    : (FOLK.byPlace.get('Castle Aldermere') || []).find(x => x.kind === 'the garrison')?.members[0];
+  const hp = id !== undefined ? H.people[id] : null;
+  return { id, name: hp ? `${hp.name} ${hp.surname}` : 'the jailer', role: hp && h?.p === id ? 'Jailer of Castle Aldermere' : 'guard of Castle Aldermere', resident: true, plan: dungeonPlan,
+    home: (FOLK.byPlace.get('Castle Aldermere') || []).find(x => x.members.includes(id)) || { kind: 'the garrison', members: [] }, ruler: false, office: !!(h && h.p === id), soldier: true, grown: true };
+}
+function introJailerIn() {
+  const p = introJailer(), [x, y, z] = dungeonWorld(-.8, -DUNGEON.depth, DUNGEON.cellZ - 1);
+  INTRO.jailerId = p.id;
+  INTRO.jailer = addGuard([x, y, z], null, 0, dungeonYaw() + Math.PI, { title: 'Castle Aldermere', plan: dungeonPlan, kind: 'guard', person: p, intro: true });
+  INTRO.jailer.quiet = true;
+  say(INTRO.jailer, INTRO.tries ? 'Back again. Had time to think?' : "Awake at last. Come here, to the bars. (press E)", 5);
+}
+function introJailerOut() { if (INTRO.jailer) { removeGuard(INTRO.jailer); INTRO.jailer = null; } }
+// The prisoners of the other two cells, from the history
+function introPrisoners() {
+  const H = FOLK.H, ids = H._living.filter(id => H.people[id].jail?.at === 'Castle Aldermere'), cells = [[-3.6, 0], [2, 0]];
+  ids.slice(0, 6).forEach((id, i) => {
+    const hp = H.people[id], [cx] = cells[i % 2], k = Math.floor(i / 2), [x, y, z] = dungeonWorld(cx + (k - 1) * .7, -DUNGEON.depth, 5.2 - k * .4);
+    const p = { id, name: `${hp.name} ${hp.surname}`, prisoner: true, role: 'prisoner', jail: hp.jail, plan: dungeonPlan };
+    INTRO.prisoners.push(addGuard([x, y, z], null, 0, dungeonYaw() + Math.PI + (k - 1) * .4, { title: 'Castle Aldermere', plan: dungeonPlan, kind: 'villager', color: 0x5a5048, person: p }));
+  });
+}
+function prisonerAbout(p) {
+  const H = FOLK.H, hp = H.people[p.id], j = hp.jail, v = j.for !== undefined ? H.people[j.for] : null;
+  const what = j.crime === 'murder' ? `murder${v ? `, of ${v.name} ${v.surname}` : ''}` : j.crime;
+  return `${p.name}. In for ${what}${j.why === 'wrongly blamed' ? ", and I never did it, whatever the magistrate says" : ''}. ` +
+    (j.condemned ? "They'll hang me when the lord's court next sits." : j.until === null ? "For life, they say." : `Till ${j.until}, if I last that long.`) + ` Been here since ${j.since}.`;
+}
+// The jailer's questions: [question, [answer, worth]...]; worth -9 is a threat, which ends it
+const INTRO_QS = [
+  ["Easy, now. You're in the cells beneath Castle Aldermere. Fishermen found you on the shore below Port Cassel, more drowned than not, and the guard carried you here. The magistrate wants to know who you are before anyone lets you walk about. So: who are you?",
+    [["I don't know. I can't remember anything before waking here.", 1], ["A merchant. From... Port Cassel.", -1], ["That's my business. Open the door.", -9]]],
+  ["And the sea? How did you come to be in it?",
+    [["I don't remember the sea at all. Only waking up in here.", 1], ["Someone must have thrown me in. Ask them.", 0], ["Does it matter? Let me out.", -1]]],
+  ["Last thing. If I open this door, are you going to give me any trouble?",
+    [["No. I only want to find out who I am.", 1], ["Not if nobody gives me any.", 0], ["Open it and find out.", -9]]],
+];
+const INTRO_REPLIES = { '-1': ["That's not what you told the fishermen.", "Hm. Port Cassel's not missing a merchant that I've heard of."], '0': ['Ha. Maybe.', "Fair enough, I suppose."] };
+function introTalk(gd) {
+  const p = gd.home.person;
+  dlgEl.querySelector('.who').textContent = `${p.name} · ${p.role}`;
+  INTRO.step = 0; INTRO.score = 0;
+  introAsk(gd, '');
+}
+function introAsk(gd, before) {
+  const [q, answers] = INTRO_QS[INTRO.step];
+  renderDialogue(before + q, answers.map(([a, w]) => [a, () => {
+    if (w === -9) return introFail(gd, "Then you can sit there and think on it a while. I'll be back.");
+    INTRO.score += w;
+    const reply = w < 1 ? pick(INTRO_REPLIES[w]) + ' ' : '';
+    if (++INTRO.step < INTRO_QS.length) return introAsk(gd, reply);
+    if (INTRO.score >= 2) return introFree(gd, reply);
+    introFail(gd, reply + "I'm not sure about you. Sit a while longer, and we'll talk again.");
+  }]));
+}
+function introFail(gd, text) {
+  INTRO.tries++;
+  renderDialogue(text, [['...', () => { closeDialogue(); introJailerOut(); INTRO.back = 45; }]]);
+}
+function introFree(gd, before) {
+  INTRO.freed = true;
+  introDoor(true);
+  // He steps aside, out of the doorway, to the corridor's far wall
+  const [x, y, z] = dungeonWorld(-2.6, -DUNGEON.depth, -1.1);
+  gd.a.set(x, y, z); gd.g.position.set(x, y, z); gd.face = dungeonYaw() + Math.PI;
+  const H = FOLK.H, lord = H._held['Castle Aldermere|Lord'], L = lord ? H.people[lord.p] : null;
+  renderDialogue(before + `Good enough for me, and for the magistrate. *The lock grinds and the door swings open.* Up the stair and out through the keep. This is Castle Aldermere, ${L ? `the seat of ${L.sex === 'f' ? 'Lady' : 'Lord'} ${L.name} ${L.surname}` : 'the lord’s seat'}. Keep out of trouble and you'll not see the inside of this cell again. And if you want to know who you are, ask around. Someone may know your face.`,
+    [['Thank you.', () => { closeDialogue(); saveGame(); }]]);
+}
+// Each frame: the scene comes together once the history and the castle are ready, and ends once you're out
+function updateIntro(dt) {
+  if (!FOLK || !started && !everStarted) return;
+  if (!INTRO.ready) {
+    if (!chunks.get(chunkKey(Math.floor(P.pos.x) >> 4, Math.floor(P.pos.z) >> 4))?.decor) return;
+    INTRO.ready = true;
+    introDoor(INTRO.freed);
+    if (!INTRO.freed) { introPrisoners(); INTRO.back = 4; }
+    return;
+  }
+  if (!INTRO.freed && !INTRO.jailer && !dlg.open && everStarted && (INTRO.back -= dt) <= 0) introJailerIn();
+  // Once you've climbed out, the cells go back to the castle's own business
+  if (INTRO.freed && (INTRO.jailer || INTRO.prisoners.length) && P.pos.y > dungeonPlan.base - .5) {
+    introJailerOut(); for (const gd of INTRO.prisoners) removeGuard(gd); INTRO.prisoners = []; INTRO.jailerId = null;
+  }
+}
 
 // Playing: build the history, then the start screen lets you in. Otherwise: the main menu.
 if (PLAY) buildHistory(historyYears);

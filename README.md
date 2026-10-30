@@ -12,6 +12,17 @@ Open `index.html` in a browser. Some browsers block ES modules from `file://`, s
 npx serve .        # or: python3 -m http.server
 ```
 
+## The opening
+
+Every new game begins in the cells beneath the keep of Castle Aldermere. Fishermen found you on the shore below Port Cassel, half drowned and remembering nothing, and the guard carried you here.
+
+- **Waking:** you wake on the cell's stone floor in the morning, facing the bars. A torch gutters in the corridor, and footsteps come down the stair.
+- **The jailer** comes to the bars: Castle Aldermere's Jailer from the history (or, without one, one of its guards). Talk to them (E) and they ask who you are, how you came to be in the sea, and whether you'll give any trouble if they open the door. Calm, honest answers get you let go. A threat, or too many lies, and they leave you to think on it and come back a little later to ask again.
+- **Let go:** the lock turns and the door swings open, the jailer steps aside and tells you where you are and whose seat this is, and you climb the stair and walk out through the keep into the castle and the world. After that the jailer is one of the castle's people like any other.
+- **The other cells** hold the history's real prisoners at Castle Aldermere (the thief, the poacher, someone waiting for the lord's court to hang them, perhaps an innocent), and you can talk to them through the bars.
+- **The cells:** under the keep a stone floor covers a sunken room: a stair down its east side, a corridor lit by two torches, and three barred cells. (`buildDungeon`; the ground inside the keep is sunk by `dungeonAt`.)
+- **Saved:** until you're let go, the game remembers that you're still a prisoner; a save made in the cell loads in the cell.
+
 ## The main menu
 
 The game opens on a main menu, over the last world you played:
@@ -45,7 +56,7 @@ The world is hand-made: one continent, translated from a painted map (`map/paint
 - **The Rustwaste:** a red plateau in the east, cut into flat-topped mesas with sheer banded cliffs of red rock.
 - **The south:** a sand desert, and big red dunes along the south coast.
 - **The marshes:** low ground in the south-west, pocked with pools and channels.
-- **Fort Greyhold** stands at Greyhold Pass, on the west bank of the Vael where it leaves the Greyspine. That's where every world starts. The road out of its gate climbs steadily through a broad cut in the pass to meet the River Road.
+- **Fort Greyhold** stands at Greyhold Pass, on the west bank of the Vael where it leaves the Greyspine. The road out of its gate climbs steadily through a broad cut in the pass to meet the River Road.
 
 ## Places
 
