@@ -37,6 +37,8 @@
   #dialogue .opts { display: flex; flex-direction: column; gap: 6px; }
   #dialogue .opt { text-align: left; background: none; border: 1px solid rgba(255, 179, 71, .35); color: #ffd9a0;
     font: inherit; font-size: 13px; padding: 8px 10px; cursor: pointer; }
+  #dialogue .ask { display: flex; gap: 6px; }
+  #dialogue .ask input { flex: 1; min-width: 0; background: rgba(10, 12, 24, .8); border: 1px solid rgba(255, 179, 71, .6); color: #f0e2bf; font: inherit; font-size: 13px; padding: 6px 8px; }
   #dialogue .opt:hover, #dialogue .opt:focus { background: rgba(255, 179, 71, .12); outline: none; }
   #talkHint { position: fixed; left: 50%; bottom: 44px; transform: translateX(-50%); z-index: 3; font-size: 13px;
     color: #ffd9a0; background: rgba(8, 9, 18, .7); padding: 6px 12px; pointer-events: none; }
@@ -1495,7 +1497,7 @@ $('search').oninput = search;
 // </chronicle>
 window.Chronicle = {
   simSource: () => { const t = document.getElementById('chronicleScript').textContent; return t.slice(t.indexOf('// <family-sim>'), t.indexOf('// </family-sim>')); },
-  newHistory, simulate, save, homes, holdings, history: () => H,
+  newHistory, simulate, save, homes, holdings, relationship, history: () => H,
   // Take a finished history (saved text) for reading, and show it from the start
   use(text) { H = load(text); pickA = pickB = null; $('stats').textContent = `Year ${H.year} after the war\n` + stats(); $('search').value = ''; search(); $('card').innerHTML = '<p class="dim">Pick someone on the left. Click any name or title to follow it. Set A and B to see how two people are related.</p>'; },
   ready: () => H !== null,
@@ -5008,7 +5010,18 @@ const holdings = H => window.Chronicle.holdings(H);
 function makeWorld(H, hm) {
   const byPlace = new Map();
   for (const h of hm.households) { if (!byPlace.has(h.place)) byPlace.set(h.place, []); byPlace.get(h.place).push(h); }
-  return { H, homes: hm, byPlace };
+  // What can be asked about: everyone by full name, first name and surname, and the events people talk of
+  const push = (m, k, v) => { if (!m.has(k)) m.set(k, []); m.get(k).push(v); };
+  const L = { names: new Map(), firsts: new Map(), surnames: new Map(), death: new Map(), sentences: new Map(), byJudge: new Map(), accused: new Map(), caught: new Map(), holdings: holdings(H) };
+  for (const p of H.people) { push(L.names, `${p.name} ${p.surname}`.toLowerCase(), p.id); push(L.firsts, p.name.toLowerCase(), p.id); push(L.surnames, p.surname.toLowerCase(), p.id); }
+  for (const e of H.events) {
+    if (e.t === 'death') L.death.set(e.p, e);
+    if (e.t === 'imprisoned' || e.t === 'exiled' || e.t === 'death' && e.atOnce) { push(L.sentences, e.p, e); if (e.judge !== undefined) push(L.byJudge, e.judge, e); }
+    if (e.t === 'accused') L.accused.set(e.p, e);
+    if (e.t === 'caught') push(L.caught, e.p, e);
+  }
+  L.held = new Map(); for (const h of L.holdings) push(L.held, h.p, h);
+  return { H, homes: hm, byPlace, lore: L };
 }
 const activeHouses = new Set(), houseAwake = new Map(), millBusy = new Map();
 const millKey = pos => `${Math.round(pos[0])},${Math.round(pos[2])}`;
@@ -7400,33 +7413,209 @@ function openDialogue(gd) {
 }
 
 function showDialogue(text) {
-  const p = dlg.gd.home?.person, opts = [];
-  if (p?.resident) {
-    opts.push(['Who are you?', () => showDialogue(residentAbout(p))]);
-  } else if (p?.job === 'carter') {
-    opts.push(['Who are you?', () => showDialogue(carterAbout(p))]);
-    opts.push(["Let's trade.", () => showTrade(p)]);
-  } else if (p?.job === 'merchant') {
-    opts.push(['Who are you?', () => showDialogue(merchantAbout(p))]);
-    opts.push(["Let's trade.", () => showTrade(p)]);
-    opts.push(["What's the news?", () => showDialogue(merchantNews(p))]);
-  } else if (p) {
-    opts.push(["Let's trade.", () => showTrade(p)]);
-    if (p.village.news?.hours >= 6) opts.push(["What's been happening?", () => showDialogue(villageNews(p.village))]);
-    opts.push(['Who are you?', () => showDialogue(villagerAbout(p))]);
-    opts.push(['What are you doing?', () => showDialogue(villagerDoing(p))]);
-    if (p.house.field) opts.push(['How are the crops?', () => showDialogue(villagerCrops(p))]);
-    if (p.job === 'miller' && p.village.mill) opts.push(["How's the mill?", () => showDialogue(villagerMill(p))]);
-    if (p.job === 'baker') opts.push(["How's business?", () => showDialogue(bakerBusiness(p))]);
-    if (p.job === 'baker' && tradeRun(p.village.plan)) opts.push(['Where does your cart go?', () => showDialogue(cartTalk(p))]);
-    if (p.job === 'woodcutter' || p.job === 'hunter') opts.push([`Who buys your ${p.job === 'hunter' ? 'meat and hides' : 'lumber'}?`, () => showDialogue(forestBuyers(p))]);
-    if (p.job === 'miller' && p.village.mill) opts.push(['Who buys your flour?', () => showDialogue(millerBuyers(p))]);
-    if (p.job !== 'baker') opts.push(['Where do you get your bread?', () => showDialogue(villagerBread(p))]);
-    if (p.job === 'miller' || p.job === 'farmer') opts.push(['Where do you get your wheat seed?', () => showDialogue(villagerSeed(p))]);
+  const p = dlg.gd.home?.person;
+  renderDialogue(text, [
+    ['Who are you?', () => showDialogue(whoAreYou(dlg.gd))],
+    ['What are you doing?', () => showDialogue(whatDoing(dlg.gd))],
+    ['What can you tell me about this area?', () => showDialogue(dlg.area ??= describeArea(dlg.gd))],
+    ['Can you tell me about…', () => askBox()],
+    ['Goodbye.', () => closeDialogue()],
+  ]);
+}
+function whoAreYou(gd) {
+  const p = gd.home?.person;
+  if (!p) return `Just keeping watch over ${gd.home?.title || 'the road'}.`;
+  return p.resident ? residentAbout(p) : p.job === 'merchant' ? merchantAbout(p) : p.job === 'carter' ? carterAbout(p) : villagerAbout(p);
+}
+function whatDoing(gd) {
+  const p = gd.home?.person, night = env.daylight < .35;
+  if (!p) return night ? 'Keeping my eyes open. Nights are long out here.' : 'Keeping watch.';
+  if (p.job === 'merchant') return merchantNews(p);
+  if (p.job === 'carter') return carterAbout(p);
+  if (p.resident) return gd.post ? (night ? 'Night watch. Someone has to.' : 'On watch till the change of the guard.')
+    : p.ruler ? `Seeing to ${p.plan.title}'s business. There's always some.` : p.office ? `About my duties as ${p.role.split(' of ')[0]}.` : !p.grown ? 'Playing. Mostly.' : 'Going about my day.';
+  return villagerDoing(p);
+}
+// "Can you tell me about...": type a name, a place, an office or a subject
+function askBox() {
+  renderDialogue('What do you want to ask about?', [['Never mind.', () => showDialogue('Anything else?')]]);
+  const row = Object.assign(document.createElement('div'), { className: 'ask' });
+  const input = Object.assign(document.createElement('input'), { placeholder: 'a name, a place, a title, or a subject such as trade or bread', maxLength: 60 });
+  const go = Object.assign(document.createElement('button'), { className: 'opt', textContent: 'Ask' });
+  const ask = () => { const q = input.value.trim(); if (q) answerAbout(dlg.gd, q); };
+  go.addEventListener('click', e => { e.stopPropagation(); ask(); });
+  input.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') ask(); if (e.key === 'Escape') showDialogue('Anything else?'); });
+  row.append(input, go);
+  dlgEl.querySelector('.opts').prepend(row);
+  input.focus();
+}
+function answerAbout(gd, q) {
+  const p = gd.home?.person, t = q.toLowerCase().replace(/[^a-z' -]/g, ' ').replace(/\s+/g, ' ').trim();
+  // Subjects of the village's work and trade (what used to be the options)
+  if (p && !p.resident && p.village) {
+    const has = (...w) => w.some(x => new RegExp(`\\b${x}`).test(t));
+    if (has('trade', 'buy', 'sell', 'wares', 'goods')) return showTrade(p);
+    if (has('crop', 'field', 'harvest', 'wheat') && p.house.field) return showDialogue(villagerCrops(p));
+    if (has('mill', 'flour')) return showDialogue(p.job === 'miller' && p.village.mill ? (has('buy') ? millerBuyers(p) : villagerMill(p)) : p.job === 'baker' ? bakerBusiness(p) : villagerBread(p));
+    if (has('seed')) return showDialogue(villagerSeed(p));
+    if (has('bread', 'loaf', 'loaves', 'bakery', 'business')) return showDialogue(p.job === 'baker' ? bakerBusiness(p) : villagerBread(p));
+    if (has('cart')) return showDialogue(p.job === 'baker' && tradeRun(p.village.plan) ? cartTalk(p) : villagerBread(p));
+    if (has('lumber', 'meat', 'hide', 'hunt', 'wood', 'timber')) return showDialogue(p.job === 'woodcutter' || p.job === 'hunter' ? forestBuyers(p) : "Ask the woodcutter or the hunter. They'll tell you where it all goes.");
+    if (has('news', 'happen', 'gossip')) return showDialogue(p.village.news?.hours >= 6 ? villageNews(p.village) : 'Nothing much. Quiet, as ever.');
   }
-  opts.push(['What can you tell me about this area?', () => showDialogue(dlg.area ??= describeArea(dlg.gd))]);
-  opts.push(['Goodbye.', () => closeDialogue()]);
-  renderDialogue(text, opts);
+  if (p && (p.job === 'merchant' || p.job === 'carter') && /\b(trade|buy|sell|wares|goods)/.test(t)) return showTrade(p);
+  if (p?.job === 'merchant' && /\b(news|happen)/.test(t)) return showDialogue(merchantNews(p));
+  showDialogue(FOLK ? tellAbout(gd, t, q) : "Can't say I know anything about that.");
+}
+
+// ---- What people know: the history, as they would know it ----
+// Their own family they know well, and the family stories a generation or two back; their neighbours
+// (anyone who has lived in their place in their lifetime) they know of; rulers, judges and the officers over
+// them they know by title; a caught killer is known everywhere. They know what people believe, not the truth:
+// a quiet poisoning is still a fever to them, until the killer is caught. And they feel things: about a judge
+// who sentenced one of their own, or a kinsman they're sure was blamed for something he never did.
+const he = q => q.sex === 'f' ? 'she' : 'he', his = q => q.sex === 'f' ? 'her' : 'his', him = q => q.sex === 'f' ? 'her' : 'him';
+const fullOf = q => `${q.name} ${q.surname}`;
+// The seat whose lord (or thane, Elder, chief) rules over a place
+function seatOver(place) {
+  const R = FOLK.H.rules, O = R.offices;
+  if (O.seats[place]) return place;
+  const pl = R.places.find(q => q.name === place); if (!pl) return null;
+  const race = Object.entries(pl.races).sort((a, b) => b[1] - a[1])[0][0];
+  return race === 'human' ? (R.prisons.westPlaces.includes(place) ? R.prisons.west : R.prisons.rest) : Object.keys(O.seats).find(k => O.seats[k].race === race);
+}
+// How a death is spoken of: what people believe, or the truth once it came out
+function deathWords(x) {
+  const H = FOLK.H, e = FOLK.lore.death.get(x.id);
+  if (!e) return `died in ${x.death}`;
+  if (e.kind === 'murder') {
+    const rev = H._revealed[x.id];
+    if (rev !== undefined) return `was murdered in ${e.y}, by ${fullOf(H.people[e.by])}, though no one knew it till ${H.people[e.by].sex === 'f' ? 'she' : 'he'} was caught in ${rev}`;
+    return /^murder/.test(e.believed) ? `was murdered in ${e.y}${/unknown/.test(e.believed) ? ', and no one ever found out who did it' : `, by ${e.believed.replace(/^murder by /, '')}, they say`}` : `died in ${e.y}, of ${e.believed}`;
+  }
+  if (e.kind === 'execution') return `was ${e.cause.replace(/^put to death/, 'put to death').replace(/^hanged/, 'hanged')} in ${e.y}`;
+  if (e.kind === 'challenge') return `was ${e.cause} in ${e.y}`;
+  if (e.kind === 'old age') return `died in ${e.y}, of old age`;
+  return `died in ${e.y}, of ${e.cause}`;
+}
+// How someone stands to the speaker: a close word ('my brother') or a cousin and such (null if no kin)
+function kinOf(me, x) {
+  if (me.id === x.id) return 'me';
+  const w = kinWord(me, x);
+  if (w !== 'my kin') return w;
+  const r = window.Chronicle.relationship(FOLK.H, me.id, x.id);
+  return r && !/removed/.test(r) || r && /once removed/.test(r) ? `kin: we're ${r}` : null;
+}
+function tellAbout(gd, t, raw) {
+  const H = FOLK.H, P = H.people, L = FOLK.lore, sp = gd.home?.person, me = sp?.id !== undefined ? P[sp.id] : null;
+  const here = gd.home?.title;
+  // A place?
+  const placeHit = [...PLACES.map(q => q.name), MAIN_TITLE].find(n => t.includes(n.toLowerCase().replace(/^the /, '')));
+  if (placeHit) return aboutPlace(gd, placeHit);
+  // An office? ('the lord', 'the magistrate', 'the hangman', ...)
+  const officeAns = me && aboutOffice(me, here, t);
+  if (officeAns) return officeAns;
+  // Avarren: the four peoples fought him, so to their folk he's the Silencer
+  if (/\bavarren\b/.test(t)) return `Avarren the Silencer, you mean. The war against him ended ${H.year === 1 ? 'only a year' : `${H.year} years`} ago${me && me.birth < 0 ? ', and I remember it' : ''}.`;
+  // A person: by full name, else by first name or surname
+  const words = t.split(' '), cands = new Set();
+  for (let i = 0; i + 1 < words.length; i++) for (const id of L.names.get(`${words[i]} ${words[i + 1]}`) || []) cands.add(id);
+  const byFull = cands.size > 0;
+  if (!byFull) for (const w of words) for (const id of [...(L.firsts.get(w) || []), ...(L.surnames.get(w) || [])]) cands.add(id);
+  if (!cands.size) return pick(["Can't say I know anything about that.", "That's nothing I know of.", "I wouldn't know about that, I'm afraid."]);
+  if (!me) return "I'm not from round here. I wouldn't know.";
+  // Who among them the speaker would know, and how well
+  const lived = x => x.death === null || x.death >= me.birth + 4;                    // in the speaker's lifetime (old enough to remember)
+  const scored = [...cands].slice(0, 400).map(id => {
+    const x = P[id];
+    if (x.id === me.id) return { x, s: 100, how: 'me' };
+    const k = kinWord(me, x) !== 'my kin' ? kinWord(me, x) : null;
+    if (k) return { x, s: 90, how: 'kin', k };
+    const local = lived(x) && (x.place === me.place || x.birthPlace === me.place && x.death === null);
+    const judged = (L.byJudge.get(x.id) || []).find(e => P[e.p] && (e.p === me.id || kinWord(me, P[e.p]) !== 'my kin'));
+    if (judged) return { x, s: 80, how: 'judge', e: judged };
+    if (local) return { x, s: 60, how: 'local' };
+    const office = (L.held.get(x.id) || []).find(h => lived(x) && (h.to === null || h.to >= me.birth + 4) && (h.place === me.place || h.place === seatOver(me.place) && FOLK.H.rules.offices.seats[h.place]));
+    if (office) return { x, s: 40, how: 'office', h: office };
+    const ruler = (L.held.get(x.id) || []).find(h => FOLK.H.rules.offices.seats[h.place]?.ruler === h.office && (h.to === null || h.to >= me.birth + 4));
+    if (ruler) return { x, s: 35, how: 'office', h: ruler };
+    const caught = (L.caught.get(x.id) || []).find(e => !e.hushed && e.y >= me.birth);
+    if (caught) return { x, s: 30, how: 'killer', e: caught };
+    return { x, s: 0 };
+  }).filter(c => c.s > 0);
+  // Cousins and the like, for the rest (the costlier check, for only a few)
+  if (!scored.length && cands.size <= 12) for (const id of cands) { const k = kinOf(me, P[id]); if (k) scored.push({ x: P[id], s: 70, how: 'kin', k }); }
+  if (!scored.length) return byFull ? pick([`${cap(raw)}? Never heard of ${raw.split(' ').length > 1 ? 'them' : 'anyone by that name'}.`, `Can't say I know any ${raw}.`]) : `I don't know anyone by that name.`;
+  scored.sort((a, b) => b.s - a.s || (b.x.death === null) - (a.x.death === null) || (b.x.death ?? H.year) - (a.x.death ?? H.year));
+  const top = scored.filter(c => c.s === scored[0].s);
+  if (!byFull && top.length > 1 && top[0].s < 90) {
+    const list = top.slice(0, 3).map(c => `${fullOf(c.x)}${c.x.trade ? ', the ' + c.x.trade : ''}${c.x.death !== null ? ' (gone now)' : ''}`);
+    return `Which one? There's ${andList(list)}${top.length > 3 ? ', and others' : ''}.`;
+  }
+  return aboutPerson(me, top[0]);
+}
+function aboutPerson(me, c) {
+  const H = FOLK.H, P = H.people, L = FOLK.lore, x = c.x, age = (x.death ?? H.year) - x.birth, R = H.rules.races[x.race];
+  if (c.how === 'me') return pick(["That's me.", "That's me you're talking to.", "You're looking at them."]);
+  const name = c.how === 'kin' ? x.name : fullOf(x), out = [];
+  const titles = (L.held.get(x.id) || []).filter(h => h.to === null).map(h => `${h.office} of ${h.place}`);
+  // Who they are to the speaker
+  if (c.how === 'kin') out.push(`${name}? ${c.k.startsWith('kin:') ? `We${x.death === null ? "'re" : ' were'} ${c.k.slice(c.k.indexOf("we're") + 6)}.` : `${cap(he(x))}${x.death === null ? "'s" : ' was'} ${c.k}.`}`);
+  else if (c.how === 'judge') {
+    const e = c.e, v = P[e.p], whom = e.p === me.id ? 'me' : `${kinWord(me, v)} ${v.name}`, wrong = e.why === 'wrongly blamed';
+    const what = e.t === 'exiled' ? 'sent into exile' : e.t === 'death' ? 'put to death' : e.condemned ? 'condemned to die' : e.until === null ? 'locked away for life' : 'sent to the cells';
+    out.push(`${fullOf(x)}. I know that name. ${cap(he(x))}'s the one who had ${whom} ${what}${e.crime && e.crime !== 'murder' ? ` for ${e.crime}` : ''}, back in ${e.y}.${wrong ? ` For something ${e.p === me.id ? 'I' : he(v)} never did.` : ''}`);
+  } else if (c.how === 'office') out.push(`${fullOf(x)}? ${x.death === null && c.h.to === null ? `${cap(he(x))}'s ${c.h.office} of ${c.h.place}.` : `${cap(he(x))} was ${c.h.office} of ${c.h.place}.`}`);
+  else if (c.how === 'killer') { const k = x.killer; out.push(`${fullOf(x)}? Everyone knows that name. The one who left ${k?.mark || 'a mark'} by the dead. Caught in ${c.e.y}.`); }
+  else out.push(`${fullOf(x)}? ${pick(['I know them.', 'Yes, I know of them.', 'Of course.'])}`);
+  // Their life, as far as the speaker would know it
+  const detail = c.how === 'kin' || c.how === 'local';
+  if (x.death !== null) out.push(`${cap(he(x))} ${deathWords(x)}${detail ? `, aged ${age}` : ''}.`);
+  else if (x.jail) {
+    const j = x.jail;
+    out.push(j.condemned ? `${cap(he(x))}'s in the cells beneath ${j.at}, waiting to die, for murder.` : `${cap(he(x))}'s in the cells beneath ${j.at}${j.until === null ? ' for life' : ` till ${j.until}`}, for ${j.crime}.`);
+  } else if (detail) {
+    const hm = FOLK.homes, hh = hm.households[hm.of[x.id]];
+    const grown = age >= R.adult;
+    out.push(`${cap(he(x))}'s ${age}${grown && x.trade ? `, a ${x.trade}` : grown ? '' : `, not grown yet`}${titles.length ? `, and ${titles.join(' and ')}` : ''}${hh ? `, and lives in ${hh.kind === 'a house' ? 'a house in' : hh.kind === 'a shack in the woods' ? 'a shack in the woods by' : hh.kind + ' at'} ${hh.place}` : ''}.`);
+    const sp = spouseLiving(x);
+    if (sp && c.how === 'kin') out.push(`Married to ${sp.id === me.id ? 'me' : fullOf(sp)}${(H._children[x.id] || []).length ? `, with ${H._children[x.id].length} ${H._children[x.id].length === 1 ? 'child' : 'children'}` : ''}.`);
+  }
+  // What the family say about a blame they never believed
+  const acc = L.accused.get(x.id);
+  if (acc && c.how === 'kin') out.push(`They said ${he(x)} killed ${fullOf(P[acc.for])}. ${cap(he(x))} never did. I'll swear to it.`);
+  else if (acc && c.how === 'local') out.push(`They say ${he(x)} killed ${fullOf(P[acc.for])}.`);
+  // Their own sentences, if the speaker would know of them
+  const sent = (L.sentences.get(x.id) || []).filter(e => e.t === 'exiled');
+  if (sent.length && detail && x.death === null && !x.jail) out.push(`${cap(he(x))} was sent away to ${sent.at(-1).to} in ${sent.at(-1).y}.`);
+  if (c.how === 'local' && titles.length && !out.some(o => o.includes(titles[0]))) out.push(`${cap(he(x))}'s ${titles[0]}.`);
+  return out.join(' ');
+}
+function spouseLiving(x) { const s = x.spouses.at(-1), q = s && FOLK.H.people[s.id]; return q && q.death === null ? q : null; }
+// Asking after a title: who holds it here (or over here)
+function aboutOffice(me, here, t) {
+  const H = FOLK.H, O = H.rules.offices, P = H.people;
+  const seat = seatOver(me.place), titles = new Set([...Object.values(O.seats).flatMap(S => [S.ruler, ...S.posts]), 'Regent', ...Object.values(O.villages).flat(), ...Object.values(O.placePosts || {}).flat()]);
+  const asked = [...titles].sort((a, b) => b.length - a.length).find(o => new RegExp(`\\b${o.toLowerCase().replace('-', '.')}\\b`).test(t)) || (/\blord\b|\blady\b/.test(t) && seat && O.seats[seat]?.ruler) || (/\bchief\b/.test(t) && 'War Chief');
+  if (!asked) return null;
+  for (const place of [me.place, seat]) {
+    const h = H._held[place + '|' + asked];
+    if (h) { const x = P[h.p]; return `${place === me.place && place !== seat ? `Our ${asked}` : `The ${asked} of ${place}`} is ${fullOf(x)}${h.from > 0 ? `, since ${h.from}` : ', since the war'}.${(FOLK.lore.byJudge.get(x.id) || []).some(e => e.p === me.id || kinWord(me, P[e.p]) !== 'my kin') ? ` I've no love for ${him(x)}.` : ''}`; }
+  }
+  return `There's no ${asked} that I know of, not here.`;
+}
+function aboutPlace(gd, name) {
+  const H = FOLK.H, here = gd.home?.title, plan = name === MAIN_TITLE ? MAIN_SEAT_PLAN : PLACES.find(q => q.name === name)?.plan;
+  if (name === here) {
+    const n = (FOLK.byPlace.get(name) || []).reduce((s, h) => s + h.members.length, 0), seat = seatOver(name), ruler = seat && H._held[seat + '|' + H.rules.offices.seats[seat].ruler];
+    return `That's here! ${n} of us${seat && seat !== name && ruler ? `, under ${fullOf(H.people[ruler.p])} of ${seat}` : ''}.`;
+  }
+  const dx = plan.cx - gd.g.position.x, dz = plan.cz - gd.g.position.z, d = Math.hypot(dx, dz);
+  const where = d < 400 ? `just ${compass(dx, dz)} of here` : `${(d / 1000).toFixed(1).replace('.0', '')} km or so ${compass(dx, dz)} of here`;
+  const folk = FOLK.byPlace.get(name);
+  if (!folk) return `${cap(name)}? That's ${where}. No one lives there now.`;
+  const n = folk.reduce((s, h) => s + h.members.length, 0), seat = H.rules.offices.seats[name], hd = seat ? H._held[name + '|' + seat.ruler] : null;
+  return `${cap(name)}? ${where.startsWith('just') ? `It's ${where}` : `That's ${where}`}. ${n > 60 ? 'A big place' : n > 25 ? 'A fair-sized place' : 'A small place'}, ${n} folk or thereabouts.${hd ? ` ${seat.ruler} ${fullOf(H.people[hd.p])} holds it.` : ''}`;
 }
 function renderDialogue(text, opts) {
   dlgEl.hidden = false;

@@ -116,14 +116,14 @@ Villages on a road have the road meeting at a village square with a stone well (
   7. Bed around 21:30.
 - **Fires follow the people:** a fire only burns while someone's home and awake. Chimney smoke and lit windows now mean someone's in.
 - **Getting around:** villagers walk a path network covering the streets, the square, each house's door, its rooms, stairs and bed, and a path round the outside to the plot behind. They go through doorways and up the stairs instead of through walls.
-- **Talking:** the panel shows their name, job and village. Ask *Who are you?*, *What are you doing?* (it depends on what they're actually doing) and, for millers and farmers, *Where do you get your wheat seed?* Seed is kept back from each harvest and stored in the house, with a count of sacks; when a harvest fails, it's bought from the merchant who comes from the nearest other village.
+- **Talking:** the panel shows their name, job and village. Ask *Who are you?* and *What are you doing?* (it depends on what they're actually doing); ask about *seed* (see Conversations) and millers and farmers tell you where theirs comes from. Seed is kept back from each harvest and stored in the house, with a count of sacks; when a harvest fails, it's bought from the merchant who comes from the nearest other village.
 - **Farming:** each farming household (and the miller's) has a wheat field on the plot behind the house, with tilled soil and furrows.
   - **Sowing:** uses a sack of the household's seed, and the farmer walks up and down the rows.
   - **Growing:** the wheat takes about 40 game hours (well under two days), rising from green shoots to tall golden ears.
   - **Harvest:** a ripe field yields 4–6 sacks. One sack is kept back as seed and the rest are carried on the farmer's back to the windmill (in a village without a mill they're stored at home). The field is left as stubble until it's sown again.
   - **No seed:** with nothing to sow, the field stays bare until a merchant brings seed.
 - **Milling:** the miller grinds one sack of wheat into one sack of flour every 1½ game hours. The sails turn only while there's wheat to grind and the miller is at work. Sacks of wheat and flour pile up by the mill door to show its stock. Between batches the miller works their own field.
-- **More to ask:** *How are the crops?* (stage and when they'll be ready) and the miller's *How's the mill?* (wheat waiting, flour ready).
+- **More to ask** (type it into *Can you tell me about…*): *crops* (stage and when they'll be ready) and, of the miller, *the mill* (wheat waiting, flour ready).
 - **Bakery:** in villages with two or more cottages, the cottage nearest the square is the bakery, run by the baker's household. It has a domed stone bread oven that glows and sends smoke up the chimney while baking, a shop counter by the door showing the loaves in stock, sacks of flour and a hanging sign with a loaf.
 - **Market stall:** a striped-awning stall stands on the square.
 - **The baker's day:** up before dawn to bake (one sack of flour makes 8 loaves, and they only bake what will sell), at the stall at midday, minding the shop in the afternoon.
@@ -133,9 +133,9 @@ Villages on a road have the road meeting at a village square with a stone well (
   - In the afternoon, when the bakery's flour runs low, the miller carries up to 3 sacks over (white sacks on their back) and is paid 7 coins a sack.
   - The miller pays farmers 3 coins for each sack of wheat they deliver.
   - A village with no mill starts its bakery with flour, and the baker says a merchant brings it from the nearest village with a mill.
-- **More to ask:** the baker's *How's business?* (stock, sales today, where the flour comes from), the miller's *Who buys your flour?*, and everyone else's *Where do you get your bread?*
+- **More to ask** (typed): the baker about *bread* or *business* (stock, sales today, where the flour comes from), the miller about *flour* (who buys it), and anyone else about *bread* (where theirs comes from).
 - **Your purse and pack:** you start with 30 coins. What you carry shows in the bottom-right corner, and it's saved with your world.
-- **Trading:** *Let's trade.* is now a conversation option with every villager. Prices rise when stock runs short, and people pay a little under value for what they buy.
+- **Trading:** ask any villager, merchant or carter about *trade* (or *buy*, *sell*, *goods*) under *Can you tell me about…*. Prices rise when stock runs short, and people pay a little under value for what they buy.
   - **Bakers:** sell bread; buy flour.
   - **Millers:** sell flour and spare seed; buy wheat.
   - **Farmers:** sell spare seed, buy seed when they're short, and buy bread.
@@ -156,7 +156,7 @@ Villages on a road have the road meeting at a village square with a stone well (
   - **There:** households buy bread (up to two loaves each), and the carter buys meat from the hunter, tanned hides, and lumber from the woodcutter. The cart stays parked until 12:30, and you can talk and trade with the carter.
   - **Back:** the cart is home by 14:00. Meat goes on sale at the bakery and the midday stall, and travelling merchants buy the hides and lumber, bringing coin into the village.
   - **Off-screen too:** runs happen whether or not you're nearby. Each village's roster exists as data even if you've never been there, and both villages' memories are updated at load, arrival and return. You'll see the cart on the road if you're within about 160 blocks.
-  - **Asking about it:** bakers answer *Where does your cart go?* (and what the last run sold and bought); woodcutters and hunters answer *Who buys your lumber / meat and hides?*; forest villagers explain where their bread comes from.
+  - **Asking about it** (typed): bakers answer about the *cart* (where it goes, and what the last run sold and bought); woodcutters and hunters about *lumber*, *meat* or *hides* (who buys them); forest villagers about *bread* (where theirs comes from).
 - **Groundwork for trade:** a goods catalogue (wheat seed, wheat, flour, bread, each with a value and source) and per-household stock. Farming, milling, baking and trading will build on this.
 - **Job outfits:** each job has its own look, so you can tell who's who at a glance:
   - **Baker:** white apron and cap.
@@ -170,7 +170,7 @@ Villages on a road have the road meeting at a village square with a stone well (
   - the baker bakes, households eat breakfast and buy bread at midday, and the miller supplies the bakery;
   - merchants visit on market days.
   
-  The first villager to see you says "Welcome back! You've been away 3 days.", and anyone will answer *What's been happening?* with a summary.
+  The first villager to see you says "Welcome back! You've been away 3 days.", and anyone asked about the *news* (under *Can you tell me about…*) answers with a summary.
 - **Simulation scope:** only villages near you are fully simulated. When you arrive, everyone starts wherever their routine has them at that hour, and crops keep growing while you're away.
 - **On the map:** villages show as a little house marker once discovered.
 
@@ -300,14 +300,25 @@ Guards patrol the walls and courtyards and stand at the gates. They're friendly.
 - **Noticing you:** a guard sees you within about 16 blocks by day and 9 at night, as long as no blocks are in the way.
 - **Greeting:** once you're within about 7 blocks, they stop, turn to face you and greet you ("Good day, traveller.", "Evening. Keep to the torchlight.").
 - **Carrying on:** walk off and they go back to their rounds, forgetting you after a few seconds.
-- **Talking:** within about 4 blocks, press **E** (or tap **TALK**) to open a conversation. The game pauses and the mouse is freed. Pick an option with the mouse or the number keys; **Esc** leaves.
-  1. **What can you tell me about this area?** The guard answers from the world itself:
+- **Talking:** within about 4 blocks, press **E** (or tap **TALK**) to open a conversation with anyone. The game pauses and the mouse is freed. Pick an option with the mouse or the number keys; **Esc** leaves. Everyone has the same four questions:
+  1. **Who are you?** Their name, trade or office, and who they live with, from the history.
+  2. **What are you doing?** Whatever they're doing right now.
+  3. **What can you tell me about this area?** They answer from the world itself:
      - the name of the place you're at;
      - the two nearest named forts, watchtowers or ruins, with compass direction and rough distance;
      - which way the land changes (desert, snowfields, pine woods, grassland, the sea, the lake, a mountain tarn, the marshes);
      - the nearest river, by name if it has one (*The Vael runs just to the north-east.*), or a stream;
      - a warning at night.
-  2. **Goodbye.**
+  4. **Can you tell me about…** Type anything and press Enter (see below).
+  5. **Goodbye.**
+- **Asking about people:** type a name, whole or just a first name or surname, and they answer from what they would know, which is what's believed, not always the truth:
+  - **Family** they know well: who it is to them (*my grandmother*, *my wife*, a cousin), their age, trade, offices and home, their marriage and children, or how they died. If a relative was blamed for a murder, the family swear they never did it.
+  - **Neighbours** (anyone who has lived in their place in their lifetime) they know of: trade, home, offices, or how they died, as it's believed. A poisoning taken for a fever is still a fever to them, until the killer is caught.
+  - **Judges** who sentenced them or their family get a reaction: *Dunstan Stone. I know that name. He's the one who had my grandmother Fern sent to the cells for theft, back in 113.*, and *for something she never did* if it was wrongful.
+  - **Rulers and officers** over them they know by title, and a caught killer is known everywhere.
+  - A first name shared by several neighbours gets *Which one? There's…*; someone they wouldn't know gets *Never heard of them*.
+- **Asking about titles and places:** *the Lord*, *the magistrate*, *the reeve* and so on tell you who holds that office over them; a place's name tells you how far and which way it is, how many live there and who holds it. *Avarren* gets *Avarren the Silencer, you mean*, and how long ago the war ended.
+- **Asking about work:** the old questions are now subjects to type: *trade* (opens trading), *crops*, *mill* or *flour*, *bread* or *business*, *seed*, *cart*, *lumber* or *meat*, and *news*.
 - **Place names:** every place has its name from the gazetteer, e.g. *Fort Greyhold*, *Kelford*, *the Sunken Throne*.
 - **Speech bubbles** are drawn over the 3D view rather than inside it, so they stay readable in ASCII mode.
 - **Solid:** guards block your way, but you can always step away from one.
