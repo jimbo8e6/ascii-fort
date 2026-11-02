@@ -14,6 +14,8 @@
   #keys { left: 12px; bottom: 10px; color: #b8b2a2; }
   #hint { left: 50%; bottom: 46px; transform: translateX(-50%); }
   #hint[hidden] { display: none; }
+  #fade { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity .22s; }
+  #fade.on { opacity: 1; }
 </style>
 <script type="importmap">
 { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
@@ -22,11 +24,13 @@
 <body>
 <div id="where" class="panel"></div>
 <div id="hint" class="panel" hidden></div>
-<div id="keys" class="panel">WASD / arrows walk · E open/close a door · Q / R turn the view · wheel or +/− zoom · C cutaway on/off</div>
+<div id="keys" class="panel"></div>
+<div id="fade"></div>
 <script type="module">
 // A test of Castle Aldermere seen from above at an angle, the way a top-down adventure game would show it. The
 // castle itself is the game's own (copied in below by build.mjs); this page adds the camera, a person to walk about,
-// doors and light, and a cutaway: indoors, everything above head height is sliced away so you can see into the room.
+// doors and light. It plays as a console role-playing game would: one screen at a time (the courtyard, each floor,
+// the cells), doorways and stairs leading from one to the next. M switches to roaming freely, with a cutaway.
 import * as THREE from 'three';
 
 // What the game's castle code expects to find about it
@@ -114,7 +118,7 @@ const legs = [];
   ghost.renderOrder = 10; ghost.traverse(o => { o.renderOrder = 10; });
 }
 scene.add(player, ghost);
-const P = { x: 0, y: 0, z: 8, vy: 0, yaw: -Math.PI / 2, walk: 0 };       // in the courtyard, facing the great doors
+const P = { x: 0, y: 0, z: 9, vy: 0, yaw: Math.PI, walk: 0 };           // in the courtyard, facing the great doors
 
 // ---- Moving about: the castle's own colliders, stepping up stairs, falling down them ----
 const R = .3, HT = 1.75;
@@ -154,66 +158,125 @@ function updateDoors(dt) {
   }
 }
 
-// ---- The camera: looking down at an angle from one of four corners, square on to the castle's walls ----
+// ---- The camera ----
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(2, devicePixelRatio)); renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.body.appendChild(renderer.domElement);
 const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, .1, 600);
-const view = { yaw: Math.PI / 4, turnTo: Math.PI / 4, pitch: .66, zoom: 26, cut: true, focus: new THREE.Vector3(P.x, P.y, P.z) };
+const view = { yaw: 0, turnTo: 0, pitch: .9, zoom: 30, cut: true, focus: new THREE.Vector3(P.x, P.y, P.z) };
 function fitCamera() {
   const a = innerWidth / innerHeight;
   cam.left = -view.zoom * a / 2; cam.right = view.zoom * a / 2; cam.top = view.zoom / 2; cam.bottom = -view.zoom / 2; cam.updateProjectionMatrix();
 }
-addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); fitCamera(); });
-fitCamera();
-// The cutaway: indoors (with a roof or a floor overhead), everything above head height is sliced off
-const cutPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), 1e6);
-renderer.clippingPlanes = [cutPlane];
+// Clipping: six planes making a box (rooms), or one cutting off overhead (free roaming); off, they sit far away
+const clip = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]].map(n => new THREE.Plane(new THREE.Vector3(...n), 1e6));
+renderer.clippingPlanes = clip;
+const clipBox = b => { if (!b) { for (const c of clip) c.constant = 1e6; return; } const [x0, y0, z0, x1, y1, z1] = b; [-x0, x1, -y0, y1, -z0, z1].forEach((v, i) => { clip[i].constant = v; }); };
 const roofed = (x, y, z) => { for (const k of colliders) if (k.y0 >= y + HT - .2 && k.y0 < y + 16 && over(k, x, z, 0)) return true; return false; };
+
+// ---- Areas, one screen each (as in a console role-playing game): the courtyard outside, and inside the castle a
+// screen for each floor and one for the cells. Walking through a door or up or down a stair takes you to the next.
+// Each: what's shown (box [x0, y0, z0, x1, y1, z1], walls cut at chest height), the stretch the camera frames, and
+// its ways out: where you step ([x0, z0, x1, z1] and a height range), where you arrive and which way you face.
+const WEST = Math.PI, EAST = 0;                                      // (facings: the player model looks along +z)
+const AREAS = {
+  courtyard: { name: 'The courtyard', follow: true, zoom: 30, keep: [-26, -26, 26, 31], exits: [
+    { at: [-1.5, 3.1, 1.5, 4.4], y: [-1, 2], to: 'ground', spawn: [0, 0, 1.6], face: WEST },
+    { at: [12, 3.1, 13.2, 4.6], y: [-1, 2], to: 'ground', spawn: [12.6, 0, 1.2], face: WEST } ] },
+  ground: { name: 'Ground floor', box: [-21.5, -.1, -21.5, 31.5, 2.8, 4.25], frame: [-21, -21, 31, 4], exits: [
+    { at: [-1.5, 3.3, 1.5, 4.6], y: [-1, 2], to: 'courtyard', spawn: [0, 0, 5.8], face: EAST },
+    { at: [12, 2.3, 13.2, 4.6], y: [-1, 2], to: 'courtyard', spawn: [12.6, 0, 5.8], face: EAST },
+    { at: [4.5, -3, 6, -1.2], y: [3.4, 6], to: 'first', spawn: [5.25, 5, -3.6], face: WEST },
+    { at: [3.4, -12.2, 5, -7], y: [-5, -2.4], to: 'cells', spawn: [4.2, -4, -12.3], face: WEST } ] },
+  first: { name: 'First floor', box: [-21.5, 4.9, -21.5, 21.5, 7.8, 4.25], frame: [-21, -21, 21, 4], exits: [
+    { at: [4.5, -2.4, 6, 3], y: [0, 4.4], to: 'ground', spawn: [5.25, 0, 2.6], face: EAST },
+    { at: [-6, -1, -4.5, 2], y: [8.6, 11], to: 'second', spawn: [-5.25, 10, 2.5], face: EAST } ] },
+  second: { name: 'Second floor', box: [-7.5, 9.9, -21.5, 7.5, 12.8, 4.25], frame: [-7, -21, 7, 4], exits: [
+    { at: [-6, -3, -4.5, 1.5], y: [5, 9.4], to: 'first', spawn: [-5.25, 5, -3.7], face: WEST } ] },
+  cells: { name: 'The cells', box: [-6, -4.1, -18, 6, -1.4, -4], frame: [-6, -18, 6, -4], exits: [
+    { at: [3.4, -12, 5, -6.6], y: [-1.5, 1], to: 'ground', spawn: [4.2, 0, -5.8], face: EAST } ] },
+};
+const state = { mode: 'rooms', area: 'courtyard', fading: false };
+const fadeEl = document.getElementById('fade');
+function frameArea() {
+  const A = AREAS[state.area];
+  if (state.mode === 'free') { clipBox(null); return; }
+  clipBox(A.box || null);
+  if (A.follow) { view.zoom = A.zoom; return; }
+  // Fit the area's stretch: across the screen its x (north to the right), up the screen its z, foreshortened
+  const [x0, z0, x1, z1] = A.frame, a = innerWidth / innerHeight, s = Math.sin(view.pitch);
+  view.zoom = Math.max((z1 - z0) * s + 4, (x1 - x0 + 3) / a);
+  const floor = A.box[1] + .1;
+  view.focus.set((x0 + x1) / 2, floor, (z0 + z1) / 2);
+}
+function goTo(exit) {
+  state.fading = true; fadeEl.classList.add('on'); keys.clear();
+  setTimeout(() => {
+    state.area = exit.to; Object.assign(P, { x: exit.spawn[0], y: exit.spawn[1], z: exit.spawn[2], vy: 0, yaw: exit.face });
+    view.focus.set(P.x, P.y + 1, P.z); frameArea(); fitCamera(); lampT = 0;
+    fadeEl.classList.remove('on'); setTimeout(() => { state.fading = false; }, 120);
+  }, 240);
+}
+addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); frameArea(); fitCamera(); });
 
 // ---- Keys ----
 const keys = new Set();
 addEventListener('keydown', e => {
   const k = e.key.toLowerCase(); keys.add(k);
-  if (k === 'q') view.turnTo -= Math.PI / 2;
-  if (k === 'r') view.turnTo += Math.PI / 2;
-  if (k === 'c') view.cut = !view.cut;
-  if (k === '+' || k === '=') view.zoom = Math.max(10, view.zoom / 1.2), fitCamera();
-  if (k === '-' || k === '_') view.zoom = Math.min(90, view.zoom * 1.2), fitCamera();
   if (k === 'e') { const d = nearestDoor(); if (d) d.manual = !(d.manual === true || d.angle > Math.PI / 2); }
+  if (k === 'm') { state.mode = state.mode === 'rooms' ? 'free' : 'rooms'; if (state.mode === 'free') view.zoom = 26; view.turnTo = view.yaw = 0; frameArea(); fitCamera(); showKeys(); }
+  if (state.mode === 'free') {                                          // (free roaming: turn, zoom and cut away by hand)
+    if (k === 'q') view.turnTo -= Math.PI / 2;
+    if (k === 'r') view.turnTo += Math.PI / 2;
+    if (k === 'c') view.cut = !view.cut;
+    if (k === '+' || k === '=') view.zoom = Math.max(10, view.zoom / 1.2), fitCamera();
+    if (k === '-' || k === '_') view.zoom = Math.min(90, view.zoom * 1.2), fitCamera();
+  }
   if (k.startsWith('arrow')) e.preventDefault();
 });
 addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
 addEventListener('blur', () => keys.clear());
-addEventListener('wheel', e => { view.zoom = Math.min(90, Math.max(10, view.zoom * (e.deltaY > 0 ? 1.12 : 1 / 1.12))); fitCamera(); }, { passive: true });
+addEventListener('wheel', e => { if (state.mode !== 'free' && !AREAS[state.area].follow) return; view.zoom = Math.min(90, Math.max(10, view.zoom * (e.deltaY > 0 ? 1.12 : 1 / 1.12))); fitCamera(); }, { passive: true });
+const keysEl = document.getElementById('keys');
+function showKeys() {
+  keysEl.textContent = state.mode === 'rooms' ? 'WASD / arrows walk · E open/close a door · walk through a doorway or up a stair to go on · M free roaming'
+    : 'WASD / arrows walk · E door · Q / R turn the view · wheel or +/− zoom · C cutaway on/off · M back to rooms';
+}
+showKeys();
 
 // ---- Where you are, on the plans' grid: columns A-N west to east, rows 1-14 north to south ----
 const whereEl = document.getElementById('where'), hintEl = document.getElementById('hint');
 function whereText() {
   const col = 'ABCDEFGHIJKLMN'[Math.floor((P.z + 28) / 4)] || '·', row = Math.floor((28 - P.x) / 4) + 1;
-  const level = P.y < -2 ? 'the cells' : P.y < 2.5 ? (roofed(P.x, P.y, P.z) ? 'ground floor' : 'outside') : P.y < 7.5 ? (Math.abs(P.x) > 20.5 || Math.abs(P.z) > 20.5 ? 'the wall walk' : 'first floor') : 'second floor';
-  return `<b>Castle Aldermere</b> · ${col}-${row} · ${level}`;
+  const level = state.mode === 'rooms' ? AREAS[state.area].name : P.y < -2 ? 'the cells' : P.y < 2.5 ? (roofed(P.x, P.y, P.z) ? 'ground floor' : 'outside') : P.y < 7.5 ? (Math.abs(P.x) > 20.5 || Math.abs(P.z) > 20.5 ? 'the wall walk' : 'first floor') : 'second floor';
+  return `<b>Castle Aldermere</b> · ${level} · ${col}-${row}`;
 }
 
 // ---- Each frame ----
 const clock = new THREE.Clock();
 let lampT = 0;
+frameArea(); fitCamera();
 function frame() {
-  const dt = Math.min(clock.getDelta(), .05), t = clock.elapsedTime;
-  // Turn the view smoothly to the chosen corner
+  const dt = Math.min(clock.getDelta(), .05), t = clock.elapsedTime, A = AREAS[state.area], rooms = state.mode === 'rooms';
   view.yaw += (view.turnTo - view.yaw) * Math.min(1, dt * 8);
   const fx = -Math.sin(view.yaw), fz = -Math.cos(view.yaw);              // "up" on the screen, along the ground
   // Walk: screen-relative, a few small steps a frame so nothing is skipped through
   let ix = 0, iz = 0;
-  if (keys.has('w') || keys.has('arrowup')) { ix += fx; iz += fz; }
-  if (keys.has('s') || keys.has('arrowdown')) { ix -= fx; iz -= fz; }
-  if (keys.has('d') || keys.has('arrowright')) { ix -= fz; iz += fx; }
-  if (keys.has('a') || keys.has('arrowleft')) { ix += fz; iz -= fx; }
+  if (!state.fading) {
+    if (keys.has('w') || keys.has('arrowup')) { ix += fx; iz += fz; }
+    if (keys.has('s') || keys.has('arrowdown')) { ix -= fx; iz -= fz; }
+    if (keys.has('d') || keys.has('arrowright')) { ix -= fz; iz += fx; }
+    if (keys.has('a') || keys.has('arrowleft')) { ix += fz; iz -= fx; }
+  }
   const len = Math.hypot(ix, iz), moving = len > 0;
   if (moving) {
-    const speed = 4.6 * dt, n = Math.ceil(speed / .1);
-    for (let i = 0; i < n; i++) { step(P.x + ix / len * speed / n, P.z); step(P.x, P.z + iz / len * speed / n); }
+    const speed = 4.6 * dt, n = Math.ceil(speed / .1), keep = rooms && A.keep;
+    for (let i = 0; i < n; i++) {
+      const ox = P.x, oz = P.z;
+      step(P.x + ix / len * speed / n, P.z); step(P.x, P.z + iz / len * speed / n);
+      if (keep && (P.x < keep[0] || P.x > keep[2] || P.z < keep[1] || P.z > keep[3])) { P.x = ox; P.z = oz; }
+    }
     const want = Math.atan2(ix, iz); let d = want - P.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); P.yaw += d * Math.min(1, dt * 14);
     P.walk += dt * 9;
   } else P.walk = 0;
@@ -225,19 +288,26 @@ function frame() {
   player.updateMatrixWorld(true);
   for (const m of ghost.children) m.matrix.copy(m.userData.src.matrixWorld);
   updateDoors(dt);
-  // Follow, and cut away overhead indoors
-  view.focus.lerp(new THREE.Vector3(P.x, P.y + 1, P.z), Math.min(1, dt * 6));
+  // Through a doorway or up a stair: on to the next screen
+  if (rooms && !state.fading) for (const ex of A.exits) {
+    const [x0, z0, x1, z1] = ex.at;
+    if (P.x >= x0 && P.x <= x1 && P.z >= z0 && P.z <= z1 && P.y >= ex.y[0] && P.y <= ex.y[1]) { goTo(ex); break; }
+  }
+  // The camera: framing the room, or following you (outside, and when roaming freely)
+  if (!rooms || A.follow) view.focus.lerp(new THREE.Vector3(P.x, P.y + 1, P.z), Math.min(1, dt * 6));
   const dir = new THREE.Vector3(Math.sin(view.yaw) * Math.cos(view.pitch), Math.sin(view.pitch), Math.cos(view.yaw) * Math.cos(view.pitch));
   cam.position.copy(view.focus).addScaledVector(dir, 200); cam.lookAt(view.focus);
-  cutPlane.constant = view.cut && roofed(P.x, P.y, P.z) ? P.y + 2.3 : 1e6;
-  scene.background.setHex(cutPlane.constant < -.5 ? 0x231e1a : 0x8fb4d8);           // (below ground: earth all round, not sky)
+  if (!rooms) { clipBox(null); clip[3].constant = view.cut && roofed(P.x, P.y, P.z) ? P.y + 2.3 : 1e6; }
+  const top = rooms ? (A.box ? A.box[4] : 1e6) : clip[3].constant, underground = top < -.5;
+  scene.background.setHex(rooms && A.box ? 0x14120f : underground ? 0x231e1a : 0x8fb4d8);
   if (cam.top !== view.zoom / 2) fitCamera();
   // Torches flicker; the nearest few light their rooms
   for (const tc of torches) { const f = 1 + Math.sin(t * 9 + tc.seed) * .12 + Math.sin(t * 23 + tc.seed * 2) * .06; tc.flame.scale.set(f, 1.7 * f, f); }
   if ((lampT -= dt) <= 0) {
     lampT = .25;
-    const near = [...torches].sort((a, b) => a.g.position.distanceToSquared(player.position) - b.g.position.distanceToSquared(player.position));
-    lamps.forEach((l, i) => { const tc = near[i]; l.position.copy(tc.g.position); l.intensity = tc.g.position.y <= cutPlane.constant ? 9 : 0; });
+    const shown = tc => { const p = tc.g.position, b = rooms && A.box; return b ? p.x >= b[0] && p.x <= b[3] && p.y >= b[1] - 1 && p.y <= b[4] + 1.5 && p.z >= b[2] && p.z <= b[5] : p.y <= top; };
+    const near = torches.filter(shown).sort((a, b) => a.g.position.distanceToSquared(player.position) - b.g.position.distanceToSquared(player.position));
+    lamps.forEach((l, i) => { const tc = near[i]; if (tc) { l.position.copy(tc.g.position); l.intensity = 9; } else l.intensity = 0; });
   }
   // What you can do here
   const d = nearestDoor();
@@ -246,7 +316,7 @@ function frame() {
   renderer.render(scene, cam);
   requestAnimationFrame(frame);
 }
-window.__iso = { P, view, doors, colliders, keys };                         // (for tests)
+window.__iso = { P, view, doors, colliders, keys, state, AREAS, goTo };          // (for tests)
 requestAnimationFrame(frame);
 </script>
 </body>

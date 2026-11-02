@@ -488,4 +488,4 @@ The world map (M) shows biomes, water depth and hill shading, with the fort and 
 ## Prototypes
 
 - **`prototypes/family-sim`:** the family simulation that writes the world's history, and its viewer.
-- **`prototypes/iso-castle`:** a test of an isometric, top-down way of playing: Castle Aldermere, built by the game's own code, seen from above at an angle with a cutaway indoors. It is separate from the game (see its README).
+- **`prototypes/iso-castle`:** a test of an isometric, top-down way of playing: Castle Aldermere, built by the game's own code, seen from above at an angle, one screen at a time like a console role-playing game (the courtyard, each floor, the cells; doorways and stairs lead between them), or roamed freely with a cutaway indoors. It is separate from the game (see its README).
