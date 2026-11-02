@@ -484,3 +484,8 @@ The world map (M) shows biomes, water depth and hill shading, with the fort and 
    - **CLASSIC**: the short ramp ` .,:-=+*o#%@` on a dark background.
 10. **Animals.** Each animal is a small model made of boxes, with jointed legs, neck, tail or wings. A simple state machine (idle, walk, flee, climb, fly) moves it over the terrain heightmap, keeping it off roads and out of buildings. Animals only update within about 90 blocks of you.
 11. **Arrows.** Each arrow is moved along an exact ballistic arc every frame. The path is tested against the blocks it passes through, and raycast against the hit boxes of nearby animals. A deer has a hidden heart box low in its chest: an arrow that reaches it within 0.8 blocks of entering the body counts as a heart shot.
+
+## Prototypes
+
+- **`prototypes/family-sim`:** the family simulation that writes the world's history, and its viewer.
+- **`prototypes/iso-castle`:** a test of an isometric, top-down way of playing: Castle Aldermere, built by the game's own code, seen from above at an angle with a cutaway indoors. It is separate from the game (see its README).

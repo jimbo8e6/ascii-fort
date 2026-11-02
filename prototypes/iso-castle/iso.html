@@ -1,0 +1,991 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Castle Aldermere, isometric</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1d22; }
+  body { font: 13px/1.45 ui-monospace, Menlo, Consolas, monospace; color: #e8e2d0; }
+  canvas { display: block; }
+  .panel { position: fixed; background: rgba(12, 14, 18, .74); border-radius: 4px; padding: 8px 11px; pointer-events: none; }
+  #where { left: 12px; top: 10px; }
+  #where b { color: #f0c870; font-weight: 600; }
+  #keys { left: 12px; bottom: 10px; color: #b8b2a2; }
+  #hint { left: 50%; bottom: 46px; transform: translateX(-50%); }
+  #hint[hidden] { display: none; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+</script>
+</head>
+<body>
+<div id="where" class="panel"></div>
+<div id="hint" class="panel" hidden></div>
+<div id="keys" class="panel">WASD / arrows walk · E open/close a door · Q / R turn the view · wheel or +/− zoom · C cutaway on/off</div>
+<script type="module">
+// A test of Castle Aldermere seen from above at an angle, the way a top-down adventure game would show it. The
+// castle itself is the game's own (copied in below by build.mjs); this page adds the camera, a person to walk about,
+// doors and light, and a cutaway: indoors, everything above head height is sliced away so you can see into the room.
+import * as THREE from 'three';
+
+// What the game's castle code expects to find about it
+const SANDSTONE = -1, DOOR_SPEED = 4;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x8fb4d8);
+const colliders = new Set(), doors = new Set();
+const addColliders = list => { for (const k of list) colliders.add(k); };
+const removeColliders = list => { for (const k of list) colliders.delete(k); };
+function placeModel(K, m) { const b = K.build(m.pos[0], m.pos[1], m.pos[2], m.angle); scene.add(b.group); addColliders(b.colliders); return { g: b.group, colliders: b.colliders, torches: [] }; }
+
+// <castle-code> (copied from index.html by build.mjs; edit it there)
+function mulberry32(seed) {
+  return function () {
+    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+const rand = mulberry32(1337);
+function canvasTexture(size, draw) {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  draw(c.getContext('2d'), size);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.magFilter = THREE.NearestFilter;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+function noiseFill(g, size, base, spread, y0 = 0, y1 = size) {
+  for (let y = y0; y < y1; y++) for (let x = 0; x < size; x++) {
+    const v = (rand() - .5) * spread;
+    g.fillStyle = `rgb(${base[0] + v | 0},${base[1] + v | 0},${base[2] + v | 0})`;
+    g.fillRect(x, y, 1, 1);
+  }
+}
+const TEX = {
+  brick: canvasTexture(32, (g, s) => {
+    noiseFill(g, s, [150, 140, 125], 30);
+    g.fillStyle = 'rgba(30,25,20,.85)';
+    for (let row = 0; row < 4; row++) {
+      const y = row * 8;
+      g.fillRect(0, y, s, 1);
+      for (let x = row % 2 ? 8 : 0; x < s + 16; x += 16) g.fillRect(x % s, y, 1, 8);
+    }
+  }),
+  wood: canvasTexture(32, (g, s) => {
+    noiseFill(g, s, [120, 80, 45], 25);
+    g.fillStyle = 'rgba(40,25,10,.8)';
+    for (let y = 0; y < s; y += 8) g.fillRect(0, y, s, 1);
+    g.strokeStyle = 'rgba(40,25,10,.8)';
+    g.strokeRect(.5, .5, s - 1, s - 1);
+    g.beginPath(); g.moveTo(0, 0); g.lineTo(s, s); g.stroke();
+  }),
+  grassTop: canvasTexture(32, (g, s) => noiseFill(g, s, [62, 92, 44], 34)),
+  grassSide: canvasTexture(32, (g, s) => {
+    noiseFill(g, s, [110, 85, 60], 28);
+    noiseFill(g, s, [62, 92, 44], 34, 0, 6);
+    for (let x = 0; x < s; x++) if (rand() < .5) { g.fillStyle = 'rgb(62,92,44)'; g.fillRect(x, 6, 1, 1 + rand() * 4 | 0); }
+  }),
+  dirt: canvasTexture(32, (g, s) => noiseFill(g, s, [110, 85, 60], 28)),
+  path: canvasTexture(32, (g, s) => {
+    noiseFill(g, s, [128, 108, 80], 30);
+    g.fillStyle = 'rgba(70,60,45,.6)';
+    for (let i = 0; i < 14; i++) g.fillRect(rand() * s | 0, rand() * s | 0, 2, 2);
+  }),
+  rock: canvasTexture(32, (g, s) => {
+    noiseFill(g, s, [118, 118, 122], 34);
+    g.strokeStyle = 'rgba(40,40,45,.6)';
+    for (let i = 0; i < 4; i++) { g.beginPath(); g.moveTo(rand() * s, rand() * s); g.lineTo(rand() * s, rand() * s); g.stroke(); }
+  }),
+  log: canvasTexture(32, (g, s) => {
+    noiseFill(g, s, [85, 60, 38], 20);
+    g.fillStyle = 'rgba(30,20,10,.7)';
+    for (let x = 2; x < s; x += 5) g.fillRect(x, 0, 1, s);
+  }),
+  logTop: canvasTexture(32, (g, s) => {
+    noiseFill(g, s, [150, 115, 75], 18);
+    g.strokeStyle = 'rgba(80,55,30,.8)';
+    for (let r = 3; r < 16; r += 4) { g.beginPath(); g.arc(16, 16, r, 0, Math.PI * 2); g.stroke(); }
+  }),
+  leaves: canvasTexture(32, (g, s) => {
+    noiseFill(g, s, [40, 78, 42], 40);
+    g.fillStyle = 'rgba(10,25,12,.7)';
+    for (let i = 0; i < 40; i++) g.fillRect(rand() * s | 0, rand() * s | 0, 2, 2);
+  }),
+};
+Object.assign(TEX, {
+  sand: canvasTexture(32, (g, s) => noiseFill(g, s, [150, 134, 98], 24)),
+  sandstone: canvasTexture(32, (g, s) => {
+    noiseFill(g, s, [140, 120, 84], 20);
+    g.fillStyle = 'rgba(120,95,60,.6)';
+    for (let y = 5; y < s; y += 9) g.fillRect(0, y, s, 1);
+  }),
+  snowTop: canvasTexture(32, (g, s) => noiseFill(g, s, [170, 178, 194], 16)),
+  snowSide: canvasTexture(32, (g, s) => {
+    noiseFill(g, s, [110, 85, 60], 28);
+    noiseFill(g, s, [170, 178, 194], 16, 0, 7);
+    for (let x = 0; x < s; x++) if (rand() < .5) { g.fillStyle = 'rgb(170,178,194)'; g.fillRect(x, 7, 1, 1 + rand() * 4 | 0); }
+  }),
+  ice: canvasTexture(32, (g, s) => {
+    noiseFill(g, s, [96, 124, 158], 16);
+    g.strokeStyle = 'rgba(170,195,225,.6)';
+    for (let i = 0; i < 5; i++) { g.beginPath(); const x = rand() * s, y = rand() * s; g.moveTo(x, y); g.lineTo(x + 8, y - 6); g.stroke(); }
+  }),
+  cactus: canvasTexture(32, (g, s) => {
+    noiseFill(g, s, [62, 122, 52], 18);
+    g.fillStyle = 'rgba(25,60,20,.8)';
+    for (let x = 3; x < s; x += 7) g.fillRect(x, 0, 2, s);
+    g.fillStyle = 'rgba(230,230,180,.9)';
+    for (let i = 0; i < 12; i++) g.fillRect(rand() * s | 0, rand() * s | 0, 1, 1);
+  }),
+  cactusTop: canvasTexture(32, (g, s) => noiseFill(g, s, [86, 142, 64], 18)),
+  oakLeaves: canvasTexture(32, (g, s) => {
+    noiseFill(g, s, [70, 112, 46], 42);
+    g.fillStyle = 'rgba(15,35,10,.7)';
+    for (let i = 0; i < 40; i++) g.fillRect(rand() * s | 0, rand() * s | 0, 2, 2);
+  }),
+  snowLeaves: canvasTexture(32, (g, s) => {
+    noiseFill(g, s, [40, 78, 42], 40);
+    g.fillStyle = 'rgba(175,182,196,.9)';
+    for (let i = 0; i < 70; i++) g.fillRect(rand() * s | 0, rand() * s | 0, 3, 2);
+  }),
+  plank: canvasTexture(32, (g, s) => {
+    noiseFill(g, s, [150, 112, 70], 18);
+    g.fillStyle = 'rgba(60,40,20,.75)';
+    for (let x = 0; x < s; x += 8) g.fillRect(x, 0, 1, s);
+    for (let i = 0; i < 6; i++) g.fillRect(rand() * s | 0, rand() * s | 0, 1, 1);
+  }),
+  plaster: canvasTexture(32, (g, s) => noiseFill(g, s, [214, 204, 180], 14)),
+  timber: canvasTexture(32, (g, s) => {
+    noiseFill(g, s, [70, 48, 30], 14);
+    g.fillStyle = 'rgba(30,18,8,.6)';
+    for (let y = 2; y < s; y += 5) g.fillRect(0, y, s, 1);
+  }),
+  deckPlank: canvasTexture(32, (g, s) => {
+    noiseFill(g, s, [140, 104, 64], 18);
+    g.fillStyle = 'rgba(40,26,12,.85)';
+    for (let y = 0; y < s; y += 8) g.fillRect(0, y, s, 2);
+    for (let i = 0; i < 8; i++) g.fillRect(rand() * s | 0, rand() * s | 0, 1, 1);
+  }),
+  roof: canvasTexture(32, (g, s) => {
+    noiseFill(g, s, [140, 62, 46], 22);
+    g.fillStyle = 'rgba(50,20,15,.75)';
+    for (let y = 0; y < s; y += 6) { g.fillRect(0, y, s, 1); for (let x = (y / 6 % 2) * 4; x < s; x += 8) g.fillRect(x, y, 1, 6); }
+  }),
+  crystal: canvasTexture(32, (g, s) => {
+    noiseFill(g, s, [120, 70, 200], 40);
+    g.strokeStyle = 'rgba(210,190,255,.9)';
+    for (let i = 0; i < 6; i++) { const x = rand() * s; g.beginPath(); g.moveTo(x, s); g.lineTo(x + (rand() - .5) * 10, 0); g.stroke(); }
+    g.fillStyle = 'rgba(160,240,255,.9)';
+    for (let i = 0; i < 10; i++) g.fillRect(rand() * s | 0, rand() * s | 0, 2, 2);
+  }),
+  redRock: canvasTexture(32, (g, s) => {
+    noiseFill(g, s, [150, 82, 52], 22);
+    g.fillStyle = 'rgba(95,45,25,.55)';
+    for (let y = 3; y < s; y += 7) g.fillRect(0, y, s, 2);
+  }),
+  redSand: canvasTexture(32, (g, s) => noiseFill(g, s, [172, 108, 66], 22)),
+  marble: canvasTexture(32, (g, s) => {                 // the old race's pale, weathered stone
+    noiseFill(g, s, [190, 184, 168], 16);
+    g.strokeStyle = 'rgba(120,112,100,.35)';
+    for (let i = 0; i < 3; i++) { g.beginPath(); g.moveTo(rand() * s, 0); g.bezierCurveTo(rand() * s, s / 3, rand() * s, s * 2 / 3, rand() * s, s); g.stroke(); }
+    g.fillStyle = 'rgba(60,56,50,.5)';
+    for (let i = 0; i < 6; i++) g.fillRect(rand() * s | 0, rand() * s | 0, 2, 1);
+  }),
+  water: canvasTexture(32, (g, s) => {
+    noiseFill(g, s, [44, 86, 150], 26);
+    g.strokeStyle = 'rgba(150,190,240,.55)';
+    for (let i = 0; i < 8; i++) { const x = rand() * s, y = rand() * s; g.beginPath(); g.moveTo(x, y); g.quadraticCurveTo(x + 4, y - 2, x + 8, y); g.stroke(); }
+  }),
+});
+function scaledBox(w, h, d) {
+  const g = new THREE.BoxGeometry(w, h, d), uv = g.attributes.uv, dims = [[d, h], [d, h], [w, d], [w, d], [w, h], [w, h]];
+  for (let f = 0; f < 6; f++) for (let k = 0; k < 4; k++) { const i = f * 4 + k; uv.setXY(i, uv.getX(i) * dims[f][0], uv.getY(i) * dims[f][1]); }
+  return g;
+}
+const BDEF = { plaster: 'plaster', timber: 'timber', stone: 'rock', roof: 'roof', floor: 'deckPlank', wood: 'plank', log: 'log', castle: 'brick', sandstone: 'sandstone', crate: 'wood', marble: 'marble' };
+const BMAT = {};
+function buildingMat(key) {
+  if (BMAT[key]) return BMAT[key];
+  const [base, mod] = key.split(':');
+  const m = base[0] === '#' ? new THREE.MeshLambertMaterial({ color: parseInt(base.slice(1), 16) })
+    : base === 'glass' ? new THREE.MeshLambertMaterial({ color: 0x2c3c4c })
+    : TEX[BDEF[base]] ? new THREE.MeshLambertMaterial({ map: TEX[BDEF[base]] }) : new THREE.MeshLambertMaterial();
+  if (mod === 'in') m.color.multiplyScalar(.55);
+  return BMAT[key] = m;
+}
+function mergeGeos(geos) {
+  let nv = 0, ni = 0;
+  for (const g of geos) { nv += g.attributes.position.count; ni += g.index ? g.index.count : g.attributes.position.count; }
+  const pos = new Float32Array(nv * 3), nrm = new Float32Array(nv * 3), uv = new Float32Array(nv * 2), idx = new Uint32Array(ni);
+  let vo = 0, io = 0;
+  for (const g of geos) {
+    const n = g.attributes.position.count;
+    pos.set(g.attributes.position.array, vo * 3); nrm.set(g.attributes.normal.array, vo * 3);
+    if (g.attributes.uv) uv.set(g.attributes.uv.array, vo * 2);
+    if (g.index) { for (let i = 0; i < g.index.count; i++) idx[io + i] = g.index.array[i] + vo; io += g.index.count; }
+    else { for (let i = 0; i < n; i++) idx[io + i] = vo + i; io += n; }
+    vo += n; g.dispose();
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  out.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
+  out.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  out.setIndex(new THREE.BufferAttribute(idx, 1));
+  out.computeBoundingSphere();
+  return out;
+}
+function scaleUV(g, su, sv) { const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * su, uv.getY(i) * sv); return g; }
+class Kit {
+  constructor() { this.parts = new Map(); this.cols = []; }
+  add(key, geo) { if (!this.parts.has(key)) this.parts.set(key, []); this.parts.get(key).push(geo); return geo; }
+  box(key, w, h, d, x, y, z, ry = 0, rx = 0) {
+    const g = scaledBox(w, h, d); if (rx) g.rotateX(rx); if (ry) g.rotateY(ry); g.translate(x, y, z); return this.add(key, g);
+  }
+  // Axis-aligned box from corners, optionally solid
+  aabb(key, x0, y0, z0, x1, y1, z1, solid = false) {
+    this.box(key, x1 - x0, y1 - y0, z1 - z0, (x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
+    if (solid) this.solid(x0, y0, z0, x1, y1, z1);
+  }
+  // A box collider turned by a (as a box part's ry), centred on (cx, cz) with half sizes hx, hz
+  solidRot(cx, cz, hx, hz, y0, y1, a) { this.cols.push({ cx, cz, hx, hz, y0, y1, a }); }
+  solid(x0, y0, z0, x1, y1, z1) { this.cols.push({ cx: (x0 + x1) / 2, cz: (z0 + z1) / 2, hx: Math.abs(x1 - x0) / 2, hz: Math.abs(z1 - z0) / 2, y0, y1 }); }
+  cyl(key, r0, r1, h, x, y, z, seg = 10, solid = false) {
+    const g = scaleUV(new THREE.CylinderGeometry(r0, r1, h, seg), Math.PI * (r0 + r1), h); g.translate(x, y + h / 2, z); this.add(key, g);
+    if (solid) this.cols.push({ cyl: true, cx: x, cz: z, r: Math.max(r0, r1), y0: y, y1: y + h });
+  }
+  // Build: a group of merged meshes placed at (ox, oy, oz) turned by yaw, plus world colliders
+  build(ox, oy, oz, yaw) {
+    const group = new THREE.Group(), meshes = {};
+    for (const [key, geos] of this.parts) { const m = new THREE.Mesh(mergeGeos(geos), buildingMat(key)); group.add(m); meshes[key] = m; }
+    group.position.set(ox, oy, oz); group.rotation.y = yaw;
+    const c = Math.cos(yaw), s = Math.sin(yaw);
+    const colliders = this.cols.map(k => ({ ...k, x: ox + k.cx * c + k.cz * s, z: oz - k.cx * s + k.cz * c, y0: oy + k.y0, y1: oy + k.y1,
+      c: k.a ? Math.cos(yaw + k.a) : c, s: k.a ? Math.sin(yaw + k.a) : s }));
+    return { group, meshes, colliders, toWorld: (lx, ly, lz) => [ox + lx * c + lz * s, oy + ly, oz - lx * s + lz * c] };
+  }
+}
+function kitTools(K, C) {
+  const blk = (key, x0, y0, z0, x1, y1, z1, solid = true) => K.aabb(key, x0 - C, y0, z0 - C, x1 - C, y1, z1 - C, solid);
+  // A wall from (x0, z0) to (x1, z1) and y0..y1, with openings [a0, a1, b0, b1] along its length and height
+  const holed = (key, x0, z0, x1, z1, y0, y1, holes) => {
+    const alongX = x1 - x0 > z1 - z0, a0 = alongX ? x0 : z0, a1 = alongX ? x1 : z1;
+    const piece = (p0, p1, q0, q1) => { if (p1 > p0 && q1 > q0) alongX ? blk(key, p0, q0, z0, p1, q1, z1) : blk(key, x0, q0, p0, x1, q1, p1); };
+    let p = a0;
+    for (const [h0, h1, v0, v1] of [...holes].sort((a, b) => a[0] - b[0])) { piece(p, h0, y0, y1); piece(h0, h1, y0, v0); piece(h0, h1, v1, y1); p = h1; }
+    piece(p, a1, y0, y1);
+  };
+  // A merlon on every other cell round the edge of a rectangle
+  const merlons = (key, x0, x1, z0, z1, y) => {
+    for (let x = x0; x < x1; x++) for (let z = z0; z < z1; z++)
+      if ((x === x0 || x === x1 - 1 || z === z0 || z === z1 - 1) && (x + z) % 2 === 0) blk(key, x + .05, y, z + .05, x + .95, y + .95, z + .95);
+  };
+  return { blk, holed, merlons };
+}
+const stoneKey = mat => mat === SANDSTONE ? 'sandstone' : 'castle';
+function hangDoor(group, m, hx, hy, hz, w, ht, wood = '#4a3020', turn = 0) {
+  const pivot = new THREE.Group(); pivot.position.set(hx, hy, hz); pivot.rotation.y = turn;
+  const leaf = new THREE.Mesh(scaledBox(w - .02, ht, .07), buildingMat(wood)); leaf.position.set(w / 2, ht / 2 + .005, 0); pivot.add(leaf);
+  const knob = new THREE.Mesh(scaledBox(.07, .07, .16), buildingMat('#2a2a2e')); knob.position.set(w - .14, ht / 2, 0); pivot.add(knob);
+  group.add(pivot);
+  const DK = new Kit(), mx = hx + w / 2 * Math.cos(turn), mz = hz - w / 2 * Math.sin(turn);
+  DK.solidRot(mx, mz, w / 2, .07, hy, hy + ht + .05, turn);
+  const c = Math.cos(m.angle), s = Math.sin(m.angle), lx = mx, lz = mz + (turn ? 0 : .045);
+  const door = { pivot, leaf, turn, col: DK.build(m.pos[0], m.pos[1], m.pos[2], m.angle).colliders, colOn: true, angle: 0, manual: null,
+    at: [m.pos[0] + lx * c + lz * s, m.pos[1] + hy, m.pos[2] - lx * s + lz * c] };
+  addColliders(door.col); doors.add(door);
+  return door;
+}
+function buildFort({ N, wall, mat, keep = true, crates = [], dungeon = false, castle = false }) {
+  const C = N / 2;
+  const torches = castle ? [[3.3, 3.4, C + 12], [N - 3.3, 3.4, C + 12], [C - 2.6, 3, C + 4.45], [C + 2.6, 3, C + 4.45], [C + 11.6, 2.6, C + 4.3],
+    [C - 2.5, 3.4, N + .3], [C + 2.5, 3.4, N + .3]] : [[N / 3, 3.4, 3.3], [2 * N / 3, 3.4, 3.3], [3.3, 3.4, C - 2], [N - 3.3, 3.4, C - 2],
+    [C - 2.5, 3.4, N + .3], [C + 2.5, 3.4, N + .3]];
+  if (keep) torches.push([C, 3.4, C - 3.7]);
+  // Inside Castle Aldermere (in the fort's own frame, so C + the castle's centred coordinates): the great hall's walls
+  // and hearths, the guardroom, barracks, kitchen and servants' rooms; the landing, solar, bedchamber, corridor and
+  // bedrooms; the upper landing and its two rooms
+  if (castle) torches.push([C + 29.7, 2.9, C - 12.2], [C + 29.7, 2.9, C - 3.4], [C + 24.3, 2.9, C - 7.8],     // the children's house
+    [C - 18.7, 3.4, C - 15], [C - 18.7, 3.4, C - 2], [C - 7.3, 3.4, C - 8], [C - 18.5, .55, C - 12], [C - 18.5, .55, C - 5.5],
+    [C - 4.7, 3.2, C - 7], [C + 5.7, 3.2, C - 16], [C + 18.3, .55, C - 2.5], [C + 7.3, 3.2, C - 2], [C + 18.7, 3.2, C - 9], [C + 18.7, 3.2, C - 15.5],
+    [C, 8.2, C - 3.7], [C + 5.7, 8.2, C - 8.5], [C + 5.7, 8.2, C - 14], [C - 5.6, 5.55, C - 8.3], [C + 7.3, 8.2, C - 6], [C + 7.3, 8.2, C - 16],
+    ...[-16.3, -10.75, -5.25, .3].map(z => [C + 18.7, 8.2, C + z]), [C - 5.7, 13.2, C - 12], [C + 5.7, 13.2, C - 12], [C + 5.7, 13.2, C - 2]);
+  if (keep && dungeon) torches.push([C - 3.6, -1.6, C - 12.7], [C + 2, -1.6, C - 12.7], [C - .3, -1.5, C - 13.9]);   // the cells' corridor; the jailer's room
+  const guards = [
+    { a: [6, wall, 1.5], b: [N - 6, wall, 1.5], speed: 1.3 },
+    { a: [8, 0, C + (castle ? 9 : 6)], b: [N - 8, 0, C + (castle ? 9 : 6)], speed: 1.2 },
+    { a: [C - 3.2, 0, N + 2], face: [0, 1] }, { a: [C + 3.2, 0, N + 2], face: [0, 1] },
+  ];
+  return { torches, guards, models: [{ kind: 'fort', x: C, y: 0, z: C, N, wall, mat, keep, crates, dungeon, castle, angle: 0 }] };
+}
+function makeFort(m) {
+  const K = new Kit(), { N, wall, keep } = m, C = N / 2, TOP = wall + 3, stone = stoneKey(m.mat), tools = kitTools(K, C), { blk, holed } = tools;
+  const merlons = (x0, x1, z0, z1, y) => tools.merlons(stone, x0, x1, z0, z1, y);
+  // A tower: solid to the walkway, a chamber above with doorways, a roof and battlements
+  const tower = (x0, z0, x1, z1, doors) => {
+    blk(stone, x0 - .2, 0, z0 - .2, x1 + .2, 1, z1 + .2);                       // plinth
+    blk(stone, x0, 1, z0, x1, wall, z1);
+    blk(stone, x0 - .12, wall - .3, z0 - .12, x1 + .12, wall, z1 + .12, false);   // string course
+    const top = TOP - .5, door = side => doors.filter(d => d[0] === side).map(d => [d[1], d[2], wall, wall + 2.3]);
+    holed(stone, x0, z0, x1, z0 + 1, wall, top, door('N'));
+    holed(stone, x0, z1 - 1, x1, z1, wall, top, door('S'));
+    holed(stone, x0, z0 + 1, x0 + 1, z1 - 1, wall, top, door('W'));
+    holed(stone, x1 - 1, z0 + 1, x1, z1 - 1, wall, top, door('E'));
+    blk(stone, x0, top, z0, x1, TOP, z1);
+    merlons(x0, x1, z0, z1, TOP);
+  };
+
+  // Curtain walls, between the towers (the south wall is broken by the gatehouse)
+  blk(stone, 5, 0, 0, N - 5, wall, 3);
+  blk(stone, 0, 0, 5, 3, wall, N - 5);
+  if (keep && m.castle) holed(stone, N - 3, 5, N, N - 5, 0, wall, [[C - 8.4, C - 7.2, 0, 2.3]]);   // the passage out to the children's house
+  else blk(stone, N - 3, 0, 5, N, wall, N - 5);
+  blk(stone, 5, 0, N - 3, C - 6, wall, N);
+  blk(stone, C + 6, 0, N - 3, N - 5, wall, N);
+  // Parapets with merlons along the outer edges
+  const parapet = (x0, z0, x1, z1) => {
+    blk(stone, x0, wall, z0, x1, wall + .6, z1);
+    const alongX = x1 - x0 > z1 - z0;
+    for (let i = Math.ceil(alongX ? x0 : z0); i < (alongX ? x1 : z1); i++) if (i % 2 === 0)
+      alongX ? blk(stone, i + .05, wall + .6, z0, i + .95, wall + 1.5, z1) : blk(stone, x0, wall + .6, i + .05, x1, wall + 1.5, i + .95);
+  };
+  parapet(5, 0, N - 5, .5); parapet(0, 5, .5, N - 5); parapet(N - .5, 5, N, N - 5);
+  parapet(5, N - .5, C - 6, N); parapet(C + 6, N - .5, N - 5, N);
+
+  // Corner towers, with doorways where the walkways come in
+  for (const [tx, tz] of [[-2, -2], [N - 5, -2], [-2, N - 5], [N - 5, N - 5]]) {
+    const xs = tx < C ? [0, 3] : [N - 3, N], zs = tz < C ? [0, 3] : [N - 3, N];
+    tower(tx, tz, tx + 7, tz + 7, [[tx < C ? 'E' : 'W', zs[0], zs[1]], [tz < C ? 'S' : 'N', xs[0], xs[1]]]);
+  }
+  // The gatehouse: towers either side, a lintel and arch over the gateway, and the gates
+  for (const gx of [C - 6, C + 2]) tower(gx, N - 4, gx + 4, N + 1, [['W', N - 3, N], ['E', N - 3, N]]);
+  blk(stone, C - 2, 4, N - 3, C + 2, wall, N);
+  for (const s of [-1, 1]) {
+    const x = s < 0 ? C - 2 : C + 2;
+    blk(stone, Math.min(x, x - s * .9), 3.4, N - 3, Math.max(x, x - s * .9), 4, N);
+    blk(stone, Math.min(x, x - s * .45), 2.8, N - 3, Math.max(x, x - s * .45), 3.4, N);
+  }
+  for (const s of [-1, 1]) {                                                       // gate leaves, swung open inwards
+    const x = s < 0 ? C - 1.85 : C + 1.65;
+    blk('#4a3220', x, 0, N - 5, x + .2, 3.5, N - 3);
+    for (const y of [.6, 2.8]) blk('#2a2a2e', x - .03, y, N - 4.9, x + .23, y + .14, N - 3.1, false);   // iron bands
+  }
+  // Stairs up to the walkway either side of the gate, in half steps
+  for (let j = 1; j <= 2 * wall; j++) {
+    blk(stone, 5.5 + j * .5, 0, N - 5, 6 + j * .5, j * .5, N - 3);
+    blk(stone, N - 6 - j * .5, 0, N - 5, N - 5.5 - j * .5, j * .5, N - 3);
+  }
+  // Castle Aldermere: a great castle from the keep back to the west wall (see buildCastle), spires on the corner towers
+  let castleDoors = [];
+  if (keep && m.castle) {
+    castleDoors = buildCastle(K, tools, stone, C, m);
+    for (const s of [-1, 1]) for (const t of [-1, 1]) spire(K, stone, s * 22.5, TOP, t * 22.5, 2.1, 5, 7);
+    if (m.dungeon) buildDungeon(K, tools, stone, C);
+  }
+  // The keep: hollow, with a doorway on the courtyard side and window slits
+  else if (keep) {
+    const x0 = C - 6, x1 = C + 6, z0 = C - 14, z1 = C - 4;
+    blk(stone, x0 - .2, 0, z0 - .2, x1 + .2, .6, z1 + .2, false);
+    holed(stone, x0, z1 - 1, x1, z1, 0, 7, [[C - 1, C + 1, 0, 3]]);
+    holed(stone, x0, z0, x1, z0 + 1, 0, 7, [[C - 3, C - 2, 3, 5], [C + 2, C + 3, 3, 5]]);
+    holed(stone, x0, z0 + 1, x0 + 1, z1 - 1, 0, 7, [[C - 10, C - 8, 3, 5]]);
+    holed(stone, x1 - 1, z0 + 1, x1, z1 - 1, 0, 7, [[C - 10, C - 8, 3, 5]]);
+    blk(stone, x0, 7, z0, x1, 8, z1);
+    merlons(x0, x1, z0, z1, 8);
+    if (m.dungeon) buildDungeon(K, tools, stone, C); else blk('floor:in', x0 + 1, 0, z0 + 1, x1 - 1, .05, z1 - 1, false);
+  }
+  for (const [x, y, z] of m.crates || []) blk('crate', x + .04, y, z + .04, x + .96, y + .92, z + .96);
+  const obj = placeModel(K, m);
+  // The jailer's room door, in the corridor's west wall, swinging into the room; the castle's doors
+  if (keep && m.dungeon) obj.door = hangDoor(obj.g, m, -2.2, -DUNGEON.depth, -13.045, 1.2, 2.2);
+  obj.doors = castleDoors.map(([hx, hy, hz, w, turn]) => hangDoor(obj.g, m, hx, hy, hz, w, 2.2, '#4a3020', turn));
+  return obj;
+}
+const SLATE = '#3e4654', GILT = '#c8a040';
+function spire(K, stone, x, y, z, r, body, high, corbel = 0) {
+  if (corbel) K.cyl(stone, r, r * .25, corbel, x, y - corbel, z, 12);
+  K.cyl(stone, r, r, body, x, y, z, 12);
+  K.cyl(stone, r + .22, r + .22, .45, x, y + body, z, 12);
+  for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2 + .4; K.aabb('#1a1a1e', x + Math.cos(a) * (r - .02) - .12, y + body * .45, z + Math.sin(a) * (r - .02) - .12, x + Math.cos(a) * (r - .02) + .12, y + body * .45 + 1.1, z + Math.sin(a) * (r - .02) + .12); }
+  const g = new THREE.ConeGeometry(r + .4, high, 12); g.translate(x, y + body + .45 + high / 2, z); K.add(SLATE, g);
+  const f = new THREE.SphereGeometry(.18, 6, 4); f.translate(x, y + body + .45 + high + .1, z); K.add(GILT, f);
+}
+const SCHOOL_ROWS = [-12.6, -11.2, -9.8], SCHOOL_COLS = [24.75, 25.75, 28.25, 29.25];
+const CRADLES = [-2.6, -1.6], NURSERY_STOOLS = [[28.35, -5.5], [29.85, -5.5], [29.1, -4.75]];
+const CASTLE_ROOMS = [[-19, -13.65], [-13.35, -8.15], [-7.85, -2.65], [-2.35, 3]];
+const BUNK_X = i => -5.8 + i * 1.6, DORM_X = i => 9.6 + i * 1.6;
+function buildCastle(K, { blk }, stone, C, m) {
+  const IN = stone + ':in', FL = 'floor:in', FS = 'stone:in', wood = '#6b4a2e', dark = '#4a3220', iron = '#2a2a2e';
+  const red = '#7a1a1a', gold = GILT, linen = '#d9d4c4', wool = '#7a6450', hay = '#c8a860';
+  const B = (key, x0, y0, z0, x1, y1, z1, solid = true) => blk(key, C + Math.min(x0, x1), y0, C + Math.min(z0, z1), C + Math.max(x0, x1), y1, C + Math.max(z0, z1), solid);
+  const D = (key, x0, y0, z0, x1, y1, z1) => B(key, x0, y0, z0, x1, y1, z1, false);
+  const S = (x0, y0, z0, x1, y1, z1) => K.solid(Math.min(x0, x1), y0, Math.min(z0, z1), Math.max(x0, x1), y1, Math.max(z0, z1));
+  // A wall from (x0, z0) to (x1, z1), y0..y1, with openings [a0, a1, v0, v1] along its length and height (they
+  // may stand one above another): cut into columns at every opening's edges, each filled round its openings
+  const wall = (key, x0, z0, x1, z1, y0, y1, holes = [], solid = true) => {
+    const alongX = x1 - x0 > z1 - z0, a0 = alongX ? x0 : z0, a1 = alongX ? x1 : z1;
+    const piece = (p0, p1, q0, q1) => { if (p1 > p0 + 1e-6 && q1 > q0 + 1e-6) alongX ? B(key, p0, q0, z0, p1, q1, z1, solid) : B(key, x0, q0, p0, x1, q1, p1, solid); };
+    const cuts = [...new Set([a0, a1, ...holes.flatMap(h => [h[0], h[1]])])].filter(e => e >= a0 && e <= a1).sort((a, b) => a - b);
+    for (let i = 0; i + 1 < cuts.length; i++) {
+      const p = cuts[i], q = cuts[i + 1];
+      let y = y0;
+      for (const [, , v0, v1] of holes.filter(h => h[0] <= p + 1e-6 && h[1] >= q - 1e-6).sort((a, b) => a[2] - b[2])) { piece(p, q, y, v0); y = Math.max(y, v1); }
+      piece(p, q, y, y1);
+    }
+  };
+  // An outside wall: the stone face, a darker lining on the inside face (side: 'x0', 'x1', 'z0' or 'z1'), and
+  // glass in the windows (openings that don't reach the floor)
+  const outer = (x0, z0, x1, z1, y0, y1, holes, side) => {
+    wall(stone, x0, z0, x1, z1, y0, y1, holes);
+    const t = .03, [a0, b0, a1, b1] = side === 'x0' ? [x0 - t, z0, x0, z1] : side === 'x1' ? [x1, z0, x1 + t, z1] : side === 'z0' ? [x0, z0 - t, x1, z0] : [x0, z1, x1, z1 + t];
+    wall(IN, a0, b0, a1, b1, y0, y1, holes, false);
+    const alongX = x1 - x0 > z1 - z0, mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
+    for (const [h0, h1, v0, v1] of holes) if (v0 > y0 + .5) {
+      if (alongX) { B('glass', h0, v0, mz - .04, h1, v1, mz + .04); D(stone, h0 - .1, v0 - .15, z0 - .12, h1 + .1, v0, z1 + .12); }
+      else { B('glass', mx - .04, v0, h0, mx + .04, v1, h1); D(stone, x0 - .12, v0 - .15, h0 - .1, x1 + .12, v0, h1 + .1); }
+    }
+  };
+  const merl = (x0, z0, x1, z1, y) => {                                         // a parapet with merlons along an edge
+    B(stone, x0, y, z0, x1, y + .6, z1);
+    const alongX = x1 - x0 > z1 - z0;
+    for (let i = Math.ceil(alongX ? x0 : z0); i < (alongX ? x1 : z1); i++) if (((i % 2) + 2) % 2 === 0)
+      alongX ? B(stone, i + .05, y + .6, z0, i + .95, y + 1.5, z1) : B(stone, x0, y + .6, i + .05, x1, y + 1.5, i + .95);
+  };
+  const doors = [];
+  const door = (hx, hy, hz, turn = 0) => doors.push([hx, hy, hz, 1.2, turn]);
+  const win = (a, y0 = 6, y1 = 8.6, w = 1.2) => [a - w / 2, a + w / 2, y0, y1];
+
+  // ---- Outside walls ----
+  // The front, facing the courtyard: the great hall's tall windows, the doors, the kitchen's windows
+  outer(-21, 3, -7, 4, 0, 10, [-16, -13, -10].map(a => win(a, 1.8, 8.2)), 'z0');
+  outer(-7, 3, 7, 4, 0, 15, [[-1.5, 1.5, 0, 3.6], win(-4, 1.4, 3.4), win(3, 1.4, 3.4), win(-4), win(0, 6.2), win(3), win(-3.5, 11, 13.4, 1), win(0, 11, 13.4, 1), win(3.5, 11, 13.4, 1)], 'z0');
+  outer(7, 3, 21, 4, 0, 10, [[12, 13.2, 0, 2.3], win(9.8, 1.4, 3.4), win(16, 1.4, 3.4), win(8, 6, 8.4), win(14, 6, 8.4), win(17.2, 6, 8.4)], 'z0');
+  door(12, 0, 2.955);
+  // The sides, along the north and south curtain walls (the wall walks pass outside); the back, along the west wall
+  outer(-21, -21, -19, 4, 0, 10, [-15.5, -9, -2].map(a => win(a, 7.2, 9.2)), 'x1');
+  outer(19, -21, 21, 4, 0, 10, [...[-14.8, -9.25, -3.75].map(a => win(a, 7.2, 9)), [-8.4, -7.2, 0, 2.3]], 'x0');      // (the passage to the children's house)
+  door(18.955, 0, -7.2, Math.PI / 2);
+  outer(-19, -21, -7, -19, 0, 10, [], 'z1');
+  outer(7, -21, 19, -19, 0, 10, [], 'z1');
+  outer(-7, -21, 7, -19, 0, 15, [win(-2, 7.2, 9), win(2, 7.2, 9), win(-3, 11.2, 13.4), win(3, 11.2, 13.4)], 'z1');
+  // The middle block's sides above the wings' roofs
+  outer(-7, -19, -6, 3, 10, 15, [win(-16, 11.2, 13.4), win(-10, 11.2, 13.4)], 'x1');
+  outer(6, -19, 7, 3, 10, 15, [win(-16, 11.2, 13.4), win(-10, 11.2, 13.4)], 'x0');
+  // Roofs: planked ceilings under stone, and battlements round every edge
+  for (const [x0, x1] of [[-19, -7], [7, 19]]) { B(FL, x0, 9.7, -19, x1, 9.85, 3); B(stone, x0, 9.85, -19, x1, 10, 3); }
+  B(FL, -6, 14.7, -19, 6, 14.85, 3); B(stone, -6, 14.85, -19, 6, 15, 3);
+  for (const [x0, x1] of [[-21, -7], [7, 21]]) { merl(x0, 3.5, x1, 4, 10); merl(x0, -21, x1, -20.5, 10); }
+  merl(-21, -21, -20.5, 4, 10); merl(20.5, -21, 21, 4, 10);
+  merl(-7, 3.5, 7, 4, 15); merl(-7, -21, 7, -20.5, 15); merl(-7, -21, -6.5, 4, 15); merl(6.5, -21, 7, 4, 15);
+  // Details on the front: a plinth, string courses, the doorway's surround and a shield over it, banners
+  for (const [a, b] of [[-21.2, -2.1], [2.1, 11.9], [13.3, 21.2]]) D(stone, a, 0, 4, b, .5, 4.22);
+  for (const y of [4.85, 9.85]) D(stone, -21, y, 4, 21, y + .2, 4.14);
+  for (const s of [-1, 1]) B(stone, s * 1.5, 0, 4, s * 2.15, 4.3, 4.4);
+  B(stone, -2.15, 3.6, 4, 2.15, 4.5, 4.4); D(stone, -1.6, 4.5, 4, 1.6, 4.8, 4.3);
+  D(red, -.55, 4.9, 4.14, .55, 6.1, 4.26); D(gold, -.12, 5.05, 4.26, .12, 5.95, 4.3); D(gold, -.42, 5.4, 4.26, .42, 5.6, 4.3);
+  for (const s of [-1, 1]) { D(red, s * 5.2, 5.4, 4, s * 6.2, 9.4, 4.06); D(gold, s * 5.6, 5.6, 4.06, s * 5.8, 9.2, 4.09); D(gold, s * 5.2, 5.4, 4.06, s * 6.2, 5.6, 4.09); }
+  for (const s of [-1, 1]) { const x = s < 0 ? -1.62 : 1.5; B('#4a3220', x, 0, 1.5, x + .12, 3.5, 3); }   // the great doors, standing open
+  // Turrets at every corner of the wings and of the middle block, and the great tower with its spire
+  for (const s of [-1, 1]) { spire(K, stone, s * 20, 10, 3, 2, 7, 7.5, 2.5); spire(K, stone, s * 7, 15, 3.6, 1.5, 5, 6, 2); spire(K, stone, s * 7, 15, -20.6, 1.5, 5, 6, 2); }
+  B(stone, -3, 15, -14, 3, 23, -8, false);
+  D(stone, -3.15, 22.4, -14.15, 3.15, 22.7, -7.85);
+  for (const [a, b] of [[-3.02, -11.6], [3.02, -11.6]]) for (const y of [16.5, 19.5]) D('#1a1a1e', a - .03, y, b - .2, a + .03, y + 1.6, b + .2);
+  for (const [a, b] of [[-.2, -14.02], [-.2, -7.98]]) for (const y of [16.5, 19.5]) D('#1a1a1e', a, y, b - .03, a + .4, y + 1.6, b + .03);
+  { const g = new THREE.ConeGeometry(4.6, 11, 4); g.rotateY(Math.PI / 4); g.translate(0, 23 + 5.5, -11); K.add(SLATE, g);
+    const f = new THREE.SphereGeometry(.28, 6, 4); f.translate(0, 34.2, -11); K.add(GILT, f);
+    D(dark, -.05, 34.3, -11.05, .05, 37, -10.95); D(red, -.04, 35.6, -10.95, .04, 36.8, -9.3); }
+  for (const [a, b] of [[-3, -14], [3, -14], [-3, -8], [3, -8]]) { const g = new THREE.ConeGeometry(.55, 2.6, 4); g.rotateY(Math.PI / 4); g.translate(a, 24.3, b); K.add(SLATE, g); }
+
+  // ---- Inside walls ----
+  // Between the middle block and the wings: the great hall's doorway, and the north wing's door from the landing
+  wall(IN, -7, -19, -6, 3, 0, 10, [[-1.2, 1.2, 0, 3.2]]);
+  wall(IN, 6, -19, 7, 3, 0, 10, [[-3.8, -2.6, 5, 7.3]]);
+  door(7.045, 5, -3.8, -Math.PI / 2);
+  // The guardroom: the old keep's walls round the cells, its doorway to the entrance hall and a door to the barracks
+  B(IN, -6, 0, -14, -5, 4.7, -4); B(IN, 5, 0, -14, 6, 4.7, -4);
+  wall(IN, -6, -5, 6, -4, 0, 4.7, [[-1, 1, 0, 3]]);
+  wall(IN, -6, -14, 6, -13, 0, 4.7, [[-3.2, -2, 0, 2.3]]);
+  door(-3.2, 0, -14.045);
+  // The north wing's ground floor: kitchen, servants' hall, dormitory
+  wall(IN, 7, -6.5, 19, -6, 0, 4.7, [[8, 9.2, 0, 2.3]]); door(8, 0, -6.545);
+  wall(IN, 7, -12.5, 19, -12, 0, 4.7, [[8, 9.2, 0, 2.3]]); door(8, 0, -12.545);
+  // First floor: the solar and bedchamber behind the landing
+  wall(IN, -6, -5, 6, -4, 5, 9.7, [[-.6, .6, 5, 7.3]]); door(-.6, 5, -5.045);
+  wall(IN, -6, -12, 6, -11.6, 5, 9.7, [[2, 3.2, 5, 7.3]]); door(2, 5, -12.045);
+  // The north wing's corridor and four bedrooms
+  const ROOMS = CASTLE_ROOMS;
+  wall(IN, 9, -19, 9.3, 3, 5, 9.7, ROOMS.map(([a]) => [a + .5, a + 1.7, 5, 7.3]));
+  for (const [a] of ROOMS) door(9.345, 5, a + .5, -Math.PI / 2);
+  for (const z of [-13.5, -8, -2.5]) B(IN, 9.3, 5, z - .15, 19, 9.7, z + .15);
+  // Second floor: two bedrooms off the upper landing
+  wall(IN, -6, -5, 6, -4, 10, 14.7, [[-3, -1.8, 10, 12.3], [1.8, 3, 10, 12.3]]); door(-3, 10, -5.045); door(1.8, 10, -5.045);
+  B(IN, -.15, 10, -19, .15, 14.7, -5);
+
+  // ---- Floors and stairs ----
+  for (const [x0, z0, x1, z1] of [[-6, -4, 6, 3], [-19, -19, -7, 3], [-6, -19, 6, -14], [7, -19, 19, 3]]) D(FS, x0, 0, z0, x1, .04, z1);
+  B(FL, -6, 4.7, -19, 4.5, 5, 3); B(FL, 4.5, 4.7, -19, 6, 5, -3); B(FL, 7, 4.7, -19, 19, 5, 3);
+  B(FL, -4.5, 9.7, -19, 6, 10, 3); B(FL, -6, 9.7, -19, -4.5, 10, -3); B(FL, -6, 9.7, 2, -4.5, 10, 3);
+  // The great stair, up the north side of the entrance hall towards the back; the stair to the second floor up
+  // the south side of the landing towards the front; rails round both stairwells
+  for (let i = 1; i <= 10; i++) B(IN, 4.5, 0, 2 - .5 * i, 6, .5 * i, 2.5 - .5 * i);
+  for (let i = 1; i <= 10; i++) B(IN, -6, 5, -3.5 + .5 * i, -4.5, 5 + .5 * i, -3 + .5 * i);
+  const rail = (x0, z0, x1, z1, y) => { B(dark, x0, y + 1, z0, x1, y + 1.12, z1); const alongX = x1 - x0 > z1 - z0;
+    for (let a = alongX ? x0 : z0; a <= (alongX ? x1 : z1) + 1e-6; a += .5) alongX ? D(dark, a - .03, y, z0, a + .03, y + 1, z1) : D(dark, x0, y, a - .03, x1, y + 1, a + .03);
+    S(x0, y, z0, x1, y + 1.15, z1); };
+  rail(4.45, -3, 4.55, 3, 5); rail(-4.55, -3, -4.45, 1.5, 10); rail(-6, -3.05, -4.5, -2.95, 10);
+
+  // ---- Furniture ----
+  const legs = (x0, z0, x1, z1, y, h, w = .06) => { for (const [a, b] of [[x0, z0], [x1 - w, z0], [x0, z1 - w], [x1 - w, z1 - w]]) D(dark, a, y, b, a + w, y + h, b + w); };
+  const table = (x0, z0, x1, z1, y, h = .76) => { D(wood, x0, y + h - .06, z0, x1, y + h, z1); legs(x0 + .05, z0 + .05, x1 - .05, z1 - .05, y, h - .06); S(x0, y, z0, x1, y + h, z1); };
+  const bench = (x0, z0, x1, z1, y) => { D(wood, x0, y + .4, z0, x1, y + .46, z1); legs(x0 + .04, z0 + .04, x1 - .04, z1 - .04, y, .4, .05); S(x0, y, z0, x1, y + .46, z1); };
+  const stool = (x, z, y) => { D(wood, x - .17, y + .38, z - .17, x + .17, y + .43, z + .17); legs(x - .14, z - .14, x + .14, z + .14, y, .38, .05); };
+  const chair = (x, z, y, face, key = dark) => {                      // face: the way the sitter looks, [dx, dz]
+    D(wood, x - .22, y + .42, z - .22, x + .22, y + .48, z + .22); legs(x - .2, z - .2, x + .2, z + .2, y, .42, .05);
+    const bx = x - face[0] * .2, bz = z - face[1] * .2;
+    face[0] ? D(key, bx - .03, y + .48, z - .22, bx + .03, y + 1.08, z + .22) : D(key, x - .22, y + .48, bz - .03, x + .22, y + 1.08, bz + .03);
+  };
+  const bed = (x0, z0, x1, z1, y, head, cover = wool) => {            // head: which end the pillow is ('x0', 'x1', 'z0', 'z1')
+    D(dark, x0, y, z0, x1, y + .32, z1); S(x0, y, z0, x1, y + .5, z1);
+    D(hay, x0 + .05, y + .32, z0 + .05, x1 - .05, y + .44, z1 - .05);
+    const [p0, p1] = head[0] === 'x' ? [x0, x1] : [z0, z1], at = head[1] === '0' ? p0 : p1, dir = head[1] === '0' ? 1 : -1;
+    const pil = [at + dir * .08, at + dir * .42].sort((a, b) => a - b), cov = [at + dir * .5, head[1] === '0' ? p1 - .06 : p0 + .06].sort((a, b) => a - b);
+    if (head[0] === 'x') { D(linen, pil[0], y + .44, z0 + .12, pil[1], y + .58, z1 - .12); D(cover, cov[0], y + .44, z0 + .06, cov[1], y + .52, z1 - .06);
+      D(dark, head[1] === '0' ? x0 : x1 - .07, y, z0, head[1] === '0' ? x0 + .07 : x1, y + 1, z1); }
+    else { D(linen, x0 + .12, y + .44, pil[0], x1 - .12, y + .58, pil[1]); D(cover, x0 + .06, y + .44, cov[0], x1 - .06, y + .52, cov[1]);
+      D(dark, x0, y, head[1] === '0' ? z0 : z1 - .07, x1, y + 1, head[1] === '0' ? z0 + .07 : z1); }
+  };
+  const chest = (x0, z0, x1, z1, y) => { D(dark, x0, y, z0, x1, y + .45, z1); D(wood, x0 - .02, y + .45, z0 - .02, x1 + .02, y + .56, z1 + .02); S(x0, y, z0, x1, y + .56, z1); };
+  const shelves = (x0, z0, x1, z1, y, h = 1.8) => {
+    const alongX = x1 - x0 > z1 - z0;
+    for (const e of alongX ? [x0, x1 - .06] : [z0, z1 - .06]) alongX ? D(dark, e, y, z0, e + .06, y + h, z1) : D(dark, x0, y, e, x1, y + h, e + .06);
+    for (const k of [.05, .6, 1.15, h - .05]) D(wood, x0, y + k, z0, x1, y + k + .04, z1);
+    S(x0, y, z0, x1, y + h, z1); return alongX;
+  };
+  const rug = (x0, z0, x1, z1, y, key = red) => D(key, x0, y + .04, z0, x1, y + .06, z1);
+  const fire = (x, y, z) => { D('#2a1a10', x - .3, y + .06, z - .3, x + .3, y + .16, z + .3); D('#3a2414', x - .15, y + .12, z - .4, x + .15, y + .22, z + .4); };
+  // A hearth against a wall at x = wx (facing dir, +1 or -1), its opening centred on z, from floor y up to top
+  const hearth = (wx, dir, z, y, top, w = 1.4) => {
+    const x1 = wx + dir * .8, [a, b] = [wx, x1].sort((p, q) => p - q);
+    B(FS, a, y, z - w, b, top, z - w + .5); B(FS, a, y, z + w - .5, b, top, z + w);
+    B(FS, a, y + 1.6, z - w + .5, b, top, z + w - .5); D(FS, a - .1, y + 1.6, z - w - .1, b + .1, y + 1.72, z + w + .1);
+    const [h0, h1] = [x1, x1 + dir * .6].sort((p, q) => p - q); D(FS, h0, y, z - w, h1, y + .06, z + w);
+    fire(wx + dir * .4, y, z);
+  };
+
+  // The entrance hall: a runner from the doors, banners either side of the guardroom's doorway
+  rug(-1, -3.9, 1, 2.9, 0);
+  for (const s of [-1, 1]) { D(red, s * 1.6, 1.2, -4.03, s * 2.6, 4, -4); D(gold, s * 1.6, 1.2, -4.06, s * 2.6, 1.4, -4.03); }
+  // The great hall: the dais and throne at the west end, the high table, two long tables with benches, two
+  // hearths, iron candle-rings hanging from the roof, banners and a tapestry behind the throne
+  B(FS, -16.5, 0, -19, -9.5, .5, -15.8); B(FS, -16.5, 0, -15.8, -9.5, .25, -15.3);
+  D(red, -13.65, .5, -18.75, -12.35, 1, -17.7); D(gold, -13.75, .5, -18.95, -12.25, 2.9, -18.75); D(red, -13.5, 1.1, -18.75, -12.5, 2.6, -18.7);
+  for (const s of [-1, 1]) D(gold, -13 + s * .7 - .1, .5, -18.75, -13 + s * .7 + .1, 1.45, -17.7);
+  S(-13.75, .5, -18.95, -12.25, 2.9, -17.7);
+  chair(-15.3, -17.6, .5, [0, 1], red); chair(-10.7, -17.6, .5, [0, 1], red);
+  table(-15.8, -17.1, -10.2, -16.3, .5);
+  for (const x of [-16, -10]) { table(x - .6, -13, x + .6, .5, 0, .78); bench(x - 1.3, -13, x - .9, .5, 0); bench(x + .9, -13, x + 1.3, .5, 0);
+    for (let z = -12; z < 0; z += 2.2) { D('#b8b8b0', x - .45, .78, z - .15, x - .15, .8, z + .15); D('#b8b8b0', x + .15, .78, z + .85, x + .45, .8, z + 1.15); D('#8a6a3a', x - .06, .78, z + .4, x + .06, .98, z + .52); } }
+  rug(-14, -15.3, -12, 2.6, 0);
+  hearth(-19, 1, -12, 0, 9.7); hearth(-19, 1, -5.5, 0, 9.7);
+  for (const z of [-10, -3]) { D(iron, -13.03, 7, z - .03, -12.97, 9.7, z + .03);
+    for (const [a, b, c, d] of [[-13.8, z - .8, -12.2, z - .74], [-13.8, z + .74, -12.2, z + .8], [-13.8, z - .8, -13.74, z + .8], [-12.26, z - .8, -12.2, z + .8]]) D(iron, a, 6.95, b, c, 7.05, d);
+    for (const [a, b] of [[-13.77, z], [-12.23, z], [-13, z - .77], [-13, z + .77]]) D('#e8e0c0', a - .04, 7.05, b - .04, a + .04, 7.3, b + .04); }
+  for (const x of [-15.5, -10.5]) { D(red, x - .55, 2.5, -19, x + .55, 7.8, -18.95); D(gold, x - .55, 2.5, -18.95, x + .55, 2.7, -18.92); }
+  D('#5a4a2a', -14.3, 3.4, -19, -11.7, 6.4, -18.97); D('#3a5a3a', -13.9, 3.8, -18.97, -12.1, 6, -18.95);
+  // The guardroom over the cells: a table with stools, a weapon rack
+  table(-2.6, -10.6, -1, -9.4, 0); stool(-3.05, -10, 0); stool(-.55, -10, 0); stool(-1.8, -11.05, 0);
+  const rack = (x0, z0, x1, z1, y) => {                              // a weapon rack against a wall along z: spears and swords
+    for (const z of [z0, z1 - .1]) D(dark, x0, y, z, x1, y + 1.7, z + .1); for (const h of [.35, 1.35]) D(wood, x0 + .05, y + h, z0, x1 - .05, y + h + .1, z1);
+    for (let z = z0 + .3; z < z1 - .25; z += .27) { D(wood, x0 + .14, y + .05, z - .025, x0 + .2, y + 1.85, z + .025); D('#9a9ca2', x0 + .13, y + 1.85, z - .035, x0 + .21, y + 2.05, z + .035); }
+    S(x0, y, z0, x1, y + 1.8, z1);
+  };
+  rack(-4.98, -12.6, -4.6, -10.8, 0);
+  // The barracks: seven bunks along the back wall, a locker at the foot of each, a weapon rack
+  const bunk = x0 => {                                                // two beds, one over the other, heads to the back wall
+    const x1 = x0 + 1;
+    for (const [a, b] of [[x0, -19], [x1 - .08, -19], [x0, -17.08], [x1 - .08, -17.08]]) D(dark, a, 0, b, a + .08, 2.6, b + .08);
+    for (const y of [.3, 1.6]) { D(dark, x0, y, -19, x1, y + .08, -17); D(hay, x0 + .06, y + .08, -18.95, x1 - .06, y + .2, -17.05);
+      D(wool, x0 + .06, y + .2, -18.4, x1 - .06, y + .27, -17.08); D(linen, x0 + .12, y + .2, -18.92, x1 - .12, y + .32, -18.6); }
+    S(x0, 0, -19, x1, 2.6, -17);
+    chest(x0 + .1, -16.95, x1 - .1, -16.55, 0);
+  };
+  for (let i = 0; i < 7; i++) bunk(BUNK_X(i));
+  rack(5.55, -16.6, 5.95, -14.6, 0);
+  // The kitchen: the great hearth with a pot over the fire, a worktable, barrels, shelves of food
+  hearth(19, -1, -2.5, 0, 4.7, 2);
+  K.cyl(iron, .36, .3, .45, 18.45, .25, -2.5, 10);
+  D(iron, 18.4, 1.3, -3.3, 18.5, 1.38, -1.7);
+  table(11, -3, 15, -1.6, 0, .86);
+  D('#b07a3a', 11.4, .86, -2.6, 11.9, 1, -2.2); D('#b07a3a', 12.2, .86, -2.5, 12.7, 1, -2.1); D('#8a3a2a', 13.4, .86, -2.7, 13.9, 1.05, -2); D('#9a9ca2', 14.2, .86, -2.4, 14.7, .89, -2.3);
+  for (const [x, z] of [[7.55, 2.4], [8.4, 2.4], [7.55, 1.55]]) K.cyl(wood, .38, .38, .9, x, 0, z, 10, true);
+  shelves(13, -6, 17, -5.6, 0);
+  for (let i = 0; i < 6; i++) D('#7a5a40', 13.2 + i * .62, .65, -5.95, 13.5 + i * .62, .95, -5.7);
+  for (let i = 0; i < 4; i++) D('#d8b048', 13.3 + i * .9, 1.2, -5.95, 13.8 + i * .9, 1.34, -5.65);
+  for (let i = 0; i < 5; i++) D('#a08060', 13.2 + i * .75, .1, -5.95, 13.8 + i * .75, .55, -5.65);
+  // The servants' hall: a long table and benches, a cupboard
+  table(10.5, -9.9, 17.5, -8.7, 0); bench(10.5, -10.6, 17.5, -10.2, 0); bench(10.5, -8.4, 17.5, -8, 0);
+  B(dark, 18.4, 0, -11.4, 19, 2, -9.6); D(wood, 18.38, .9, -11.3, 18.4, 1.9, -9.7);
+  // The servants' dormitory: six bunks along the back wall and two beds along the north wall
+  for (let i = 0; i < 6; i++) bunk(DORM_X(i));
+  bed(17, -15.6, 19, -14.6, 0, 'x1'); bed(17, -14.2, 19, -13.2, 0, 'x1');
+
+  // First floor. The landing: a rug and a bench under the front windows
+  rug(-3.5, -3.6, 3.5, 2, 5); bench(-2.6, 2.4, -.8, 2.8, 5);
+  // The lord's solar: a desk and chair, shelves of books, a hearth with two chairs before it, a rug
+  table(1.5, -6.6, 3.5, -5.8, 5); chair(2.5, -7.1, 5, [0, 1], red);
+  shelves(5.6, -10.2, 6, -6.8, 5, 2.2);
+  for (let j = 0; j < 3; j++) for (let i = 0; i < 9; i++) D(['#6a2a2a', '#2a4a6a', '#5a4a2a', '#3a5a3a'][(i + j) % 4], 5.65, 5.66 + j * .55, -10.1 + i * .36, 5.95, 6.1 + j * .55, -9.85 + i * .36);
+  hearth(-6, 1, -8.3, 5, 9.7, 1.3);
+  chair(-4.1, -9.3, 5, [-1, 0], red); chair(-4.1, -7.3, 5, [-1, 0], red);
+  rug(-3.4, -10.4, 1.6, -6, 5, '#3a4a6a');
+  // The lord's bedchamber: a great bed with posts and a canopy between the windows, a chest at its foot, a
+  // wardrobe, a washstand, a rug
+  { const [x0, z0, x1, z1] = [-1.3, -19, 1.3, -16.3];
+    bed(x0, z0, x1, z1, 5, 'z0', red);
+    for (const [a, b] of [[x0, z0], [x1 - .12, z0], [x0, z1 - .12], [x1 - .12, z1 - .12]]) B(dark, a, 5, b, a + .12, 7.6, b + .12);
+    D(red, x0, 7.5, z0, x1, 7.7, z1); D(gold, x0 - .02, 7.5, z1 - .02, x1 + .02, 7.6, z1);
+    chest(-.8, -16.15, .8, -15.55, 5); }
+  B(dark, 4.8, 5, -18.6, 6, 7.4, -16.6); D(wood, 4.78, 5.3, -18.4, 4.8, 7.1, -16.8);
+  table(-5.7, -14.2, -4.9, -13.4, 5, .82); D('#c8c8c0', -5.5, 5.82, -14, -5.1, 5.92, -13.6);
+  rug(-3, -15.2, 3, -12.6, 5);
+  // The corridor and the four bedrooms: in each a double bed against the north wall, a chest at its foot, a cot, a
+  // table and a stool
+  rug(7.4, -18.6, 8.6, 2.6, 5);
+  for (const [a, b] of ROOMS) {
+    const c = (a + b) / 2;
+    bed(17, c - .8, 19, c + .8, 5, 'x1', ['#3a4a6a', '#5a3a2a', '#3a5a3a', '#6a5a2a'][ROOMS.findIndex(r => r[0] === a)]);
+    chest(16.35, c - .45, 16.9, c + .45, 5); bed(14, b - 1, 15.9, b - .12, 5, 'x1');
+    table(11, b - 1.3, 12, b - .5, 5); stool(12.4, b - .9, 5);
+    rug(12.5, c - 1, 15.5, c + 1, 5, '#5a3a2a');
+  }
+
+  // The children's house, built against the outside of the north curtain wall (columns D to G), reached from the
+  // servants' hall by a passage through both walls: a lobby with the pages' bench, the schoolroom to the west with a
+  // blackboard, the teacher's desk and twelve desks with stools, and the nursery to the east with a rug, toys, two
+  // cradles, a low table and stools and a chair for the servant minding them. One storey, battlements on top.
+  outer(30, -16, 31, 0, 0, 4.5, [win(-13.2, 1.2, 3.2), win(-10.6, 1.2, 3.2), win(-7.6, 1.2, 3.2), win(-3.6, 1.2, 3.2)], 'x0');
+  outer(24, -16, 30, -15, 0, 4.5, [], 'z1'); outer(24, -1, 30, 0, 0, 4.5, [[26.4, 27.6, 1.2, 3.2]], 'z0');
+  D(IN, 24, 0, -15, 24.03, 4.2, -1);
+  D(FS, 24, 0, -15, 30, .04, -1); D(FS, 19, 0, -8.4, 24, .04, -7.2);
+  B(FL, 24, 4.2, -15, 30, 4.35, -1); B(stone, 24, 4.35, -16, 31, 4.5, 0);
+  merl(30.5, -16, 31, 0, 4.5); merl(24, -16, 31, -15.5, 4.5); merl(24, -.5, 31, 0, 4.5);
+  D(stone, 31, 0, -16.2, 31.25, .5, .2);
+  wall(IN, 24, -8.9, 30, -8.6, 0, 4.2, [[26.4, 27.6, 0, 2.3]]); wall(IN, 24, -6.6, 30, -6.3, 0, 4.2, [[26.4, 27.6, 0, 2.3]]);
+  bench(29.4, -8.45, 29.85, -6.75, 0); for (const z of [-8.2, -7.6, -7]) { D(dark, 29.95, 1.6, z - .03, 30, 1.66, z + .03); D(['#5a3a2a', '#3a4a6a', '#6a5a2a'][Math.round(z * 3) & 1 ? 1 : 0], 29.86, .9, z - .18, 29.95, 1.6, z + .18); }
+  D('#1e2a22', 25.6, 1, -15, 28.4, 2.4, -14.94); D(dark, 25.5, .92, -15, 28.5, 1, -14.85); for (const x of [26, 26.9, 27.7]) D('#e8e0c0', x, 1.9, -14.94, x + .35, 1.93, -14.93);
+  table(26.2, -14, 27.8, -13.5, 0, .8); D('#e8e0c0', 26.5, .8, -13.9, 27, .83, -13.6);
+  for (const zr of SCHOOL_ROWS) for (const x of SCHOOL_COLS) { table(x - .42, zr - .25, x + .42, zr + .25, 0, .62); stool(x, zr + .5, 0); D('#d9d4c4', x - .2, .62, zr - .15, x + .15, .63, zr + .1); }
+  rug(25, -5.3, 29, -2, 0, '#3a5a3a');
+  for (const [x, z, c] of [[25.6, -4.6, '#c03a2a'], [25.9, -4.5, '#2a5ac0'], [25.7, -4.2, '#d8b048'], [28.2, -2.6, '#2a8a4a'], [28.5, -2.4, '#c03a2a']]) D(c, x - .12, .06, z - .12, x + .12, .3, z + .12);
+  { const x = 27.8, z = -4.4; for (const s of [-1, 1]) D(dark, x - .5, .05, z + s * .2 - .03, x + .5, .12, z + s * .2 + .03); D('#8a5a34', x - .35, .3, z - .15, x + .35, .55, z + .15); D('#8a5a34', x + .3, .45, z - .1, x + .55, .85, z + .1); for (const s of [-1, 1]) D(dark, x + s * .25 - .03, .1, z - .03, x + s * .25 + .03, .32, z + .03); }
+  for (const z of CRADLES) { D(dark, 29.1, .1, z - .32, 29.9, .45, z + .32); D(hay, 29.15, .4, z - .27, 29.85, .44, z + .27); for (const s of [-1, 1]) D(dark, 29.1, 0, z + s * .25 - .04, 29.9, .12, z + s * .25 + .04); S(29.1, 0, z - .32, 29.9, .45, z + .32); }
+  table(28.6, -5.9, 29.6, -5.1, 0, .42); for (const [x, z] of NURSERY_STOOLS) { D(wood, x - .14, .25, z - .14, x + .14, .28, z + .14); legs(x - .12, z - .12, x + .12, z + .12, 0, .25, .04); }
+  chair(25, -1.8, 0, [1, 0], red);
+
+  // Second floor. Two beds in the south room, one great bed in the north room, a chest and a table in each
+  bed(-5.5, -19, -4.4, -17, 10, 'z0', '#3a4a6a'); bed(-2.5, -19, -1.4, -17, 10, 'z0', '#3a5a3a');
+  chest(-5.4, -16.9, -4.5, -16.5, 10); chest(-2.4, -16.9, -1.5, -16.5, 10); table(-5.6, -9, -4.6, -8, 10); stool(-4.2, -8.5, 10);
+  bed(2, -19, 4.2, -16.8, 10, 'z0', '#6a2a3a'); chest(2.3, -16.65, 3.9, -16.15, 10); table(4.8, -9, 5.8, -8, 10); stool(4.4, -8.5, 10);
+  rug(-4.6, -14, -1.4, -11, 10, '#5a3a2a'); rug(1.4, -14, 4.6, -11, 10, '#3a4a6a'); rug(-3, -3.6, 3, 2, 10);
+  return doors;
+}
+const DUNGEON = { depth: 4, stairX: 3.4, cellZ: 2, cells: [[-5, -2.2], [-2.2, .6], [.6, 3.4]], door: 1.2 };
+function buildDungeon(K, { blk }, stone, C) {
+  const D = DUNGEON.depth, ox = C, oz = C - 11, X0 = ox - 5, X1 = ox + 5, Z0 = oz - 2, Z1 = oz + 6, SX = ox + DUNGEON.stairX, FZ = oz + DUNGEON.cellZ;
+  const iron = '#2a2a2e';
+  // The ground floor, open over the stair, with a rail along the drop
+  blk('floor:in', X0, -.3, Z0, SX, 0, Z1);
+  blk('floor:in', SX, -.3, Z0, X1, 0, Z0 + 1);
+  blk('floor:in', SX, -.3, Z1 - 1.6, X1, 0, Z1);
+  blk(stone, ox - 1, -.3, Z1, ox + 1, 0, Z1 + 1.1);                                  // the doorway's threshold, over the sunk ground's edge
+  blk(iron, SX - .12, 0, Z0 + 1, SX, 1.15, Z1 - 1.6);                                   // (too high to step up onto)
+  // The stair, eight half steps down northwards to the corridor
+  const run = (Z1 - 1.6 - (Z0 + 1)) / 8;
+  for (let i = 1; i <= 8; i++) blk(stone, SX, -D, Z1 - 1.6 - run * i, X1, -.5 * i, Z1 - 1.6 - run * (i - 1));
+  // Stone lining the sunken room, and the walls between the cells (and between the cells and the stair)
+  blk(stone, X0, -D, Z0, X0 + .3, -.3, Z1); blk(stone, X1 - .3, -D, Z0, X1, -.3, Z1);
+  // (the corridor's west wall has the doorway to the jailer's room, at x C-2.2..C-1)
+  blk(stone, X0, -D, Z0, ox - 2.2, -.3, Z0 + .3); blk(stone, ox - 1, -D, Z0, X1, -.3, Z0 + .3); blk(stone, ox - 2.2, -D + 2.25, Z0, ox - 1, -.3, Z0 + .3);
+  blk(stone, X0, -D, Z1 - .3, X1, -.3, Z1);
+  for (const x of [ox - 2.2, ox + .6]) blk(stone, x - .15, -D, FZ, x + .15, -.3, Z1);
+  blk(stone, SX - .3, -D, FZ, SX, -.3, Z1);
+  blk('floor:in', X0, -D, Z0, X1, -D + .05, Z1, false);
+  // Bars across each cell's front, with a barred door in the middle (the middle cell's is its own piece: see the opening)
+  DUNGEON.cells.forEach(([a, b], i) => {
+    const x0 = ox + a, x1 = ox + b, cx = (x0 + x1) / 2, d0 = cx - DUNGEON.door / 2, d1 = cx + DUNGEON.door / 2;
+    for (const [p, q] of i === 1 ? [[x0, d0], [d1, x1]] : [[x0, x1]]) {
+      blk(iron, p, -D, FZ - .05, q, -D + .1, FZ + .05); blk(iron, p, -.75, FZ - .05, q, -.65, FZ + .05);
+      for (let x = p + .15; x < q - .05; x += .3) blk(iron, x - .035, -D, FZ - .035, x + .035, -.65, FZ + .035, false);
+      K.solid(p - C, -D, FZ - .08 - C, q - C, -.3, FZ + .08 - C);                     // (you can see between the bars, not walk through)
+    }
+    // The outer cells' barred doors, locked: a frame in the bars, a band across, hinges and a lock
+    if (i !== 1) {
+      for (const x of [d0, d1]) blk(iron, x - .05, -D, FZ - .06, x + .05, -.65, FZ + .06, false);
+      blk(iron, d0, -D + 1.85, FZ - .05, d1, -D + 1.95, FZ + .05, false);
+      for (const y of [.4, 2.6]) blk(iron, d0 - .1, -D + y, FZ - .08, d0 + .06, -D + y + .14, FZ + .08, false);
+      blk('#6a5a3a', d1 - .25, -D + 1.1, FZ - .09, d1 - .08, -D + 1.3, FZ + .09, false);
+    }
+  });
+  furnishDungeon(K, blk, stone, C);
+}
+const CELL_SPOTS = DUNGEON.cells.map(([a, b], i) => {
+  const x0 = a + (i === 0 ? .3 : .15), x1 = b - (i === 2 ? .3 : .15);
+  return { bed: [x0 + .2, -6.35, x0 + 2.1, -5.4], stool: [x1 - .45, -7.9], table: [x1 - .62, -7.05, x1 - .12, -6.55] };
+});
+const JAILER_ROOM = { bed: [-.95, -16.9, -.05, -14.9], chest: [-.75, -14.75, -.1, -14.1], table: [-2.65, -16, -1.55, -15], chair: [-2.1, -14.55],
+  rack: [-4, -15.6, -3.62, -14.2], shelves: [-3.7, -17, -1.8, -16.6], corridorTable: [-4.6, -11.6, -3.4, -10.4], corridorChairs: [[-4, -12.05, 1], [-4, -9.95, -1]] };
+function furnishDungeon(K, blk, stone, C) {
+  const F = -DUNGEON.depth;
+  const B = (key, a0, y0, b0, a1, y1, b1, solid = false) => blk(key, C + Math.min(a0, a1), y0, C + Math.min(b0, b1), C + Math.max(a0, a1), y1, C + Math.max(b0, b1), solid);
+  const S = (a0, y0, b0, a1, y1, b1) => K.solid(Math.min(a0, a1), y0, Math.min(b0, b1), Math.max(a0, a1), y1, Math.max(b0, b1));
+  const wood = '#6b4a2e', dark = '#4a3220', hay = '#c8a860', linen = '#d9d4c4', wool = '#7a6450', iron = '#2a2a2e', steel = '#9a9ca2';
+  const legs = (a0, b0, a1, b1, h, w = .06) => { for (const [a, b] of [[a0, b0], [a1 - w, b0], [a0, b1 - w], [a1 - w, b1 - w]]) B(dark, a, F, b, a + w, F + h, b + w); };
+  const table = (a0, b0, a1, b1, h = .74) => { B(wood, a0, F + h - .06, b0, a1, F + h, b1); legs(a0 + .05, b0 + .05, a1 - .05, b1 - .05, h - .06); S(a0, F, b0, a1, F + h, b1); };
+  const chair = (a, b, db) => {                                               // facing along lz (db = +1 or -1), its back behind
+    B(wood, a - .22, F + .4, b - .22, a + .22, F + .46, b + .22); legs(a - .2, b - .2, a + .2, b + .2, .4, .05);
+    const bb = b - db * .2; B(dark, a - .22, F + .46, bb - .03, a + .22, F + 1.02, bb + .03);
+  };
+  const stool = (a, b) => { B(wood, a - .17, F + .38, b - .17, a + .17, F + .43, b + .17); legs(a - .14, b - .14, a + .14, b + .14, .38, .05); };
+  const bedding = ([a0, b0, a1, b1]) => {                                     // a hay pallet with a sheet, a rolled blanket at the head
+    B(hay, a0, F, b0, a1, F + .12, b1); B(linen, a0 + .07, F + .12, b0 + .06, a1 - .07, F + .15, b1 - .06);
+    B(wool, a0 + .1, F + .15, b0 + .1, a0 + .4, F + .32, b1 - .1);
+  };
+  // The jailer's room: walls, floor, and the courtyard paving over it
+  const R = JAILER_ROOM;
+  B(stone, -4.3, F, -17.3, -4, -.3, -13, true); B(stone, 0, F, -17.3, .3, -.3, -13, true); B(stone, -4.3, F, -17.3, .3, -.3, -17, true);
+  B('floor:in', -4.3, F, -17.3, .3, F + .05, -13);
+  B(stone, -5.3, -.3, -18.3, 1.3, 0, -13, true);
+  { const [a0, b0, a1, b1] = R.bed;                                            // a bed with a headboard to the west
+    B(dark, a0, F, b0, a1, F + .3, b1, true); B(hay, a0 + .05, F + .3, b0 + .05, a1 - .05, F + .42, b1 - .05); B(linen, a0 + .08, F + .42, b0 + .35, a1 - .08, F + .46, b1 - .08);
+    B(wool, a0 + .08, F + .42, b0 + .55, a1 - .08, F + .5, b1 - .3); B(linen, a0 + .15, F + .42, b0 + .08, a1 - .15, F + .56, b0 + .4); B(dark, a0, F, b0 - .06, a1, F + .95, b0); }
+  { const [a0, b0, a1, b1] = R.chest;                                          // a chest at its foot, iron-bound
+    B(dark, a0, F, b0, a1, F + .45, b1, true); B(wood, a0 - .02, F + .45, b0 - .02, a1 + .02, F + .56, b1 + .02);
+    for (const t of [.2, .8]) { const a = a0 + (a1 - a0) * t; B(iron, a - .03, F, b0 - .03, a + .03, F + .57, b1 + .03); } }
+  table(...R.table); chair(...R.chair, -1);
+  { const [a0, b0, a1, b1] = R.rack;                                           // a weapon rack against the south wall: spears and swords
+    for (const b of [b0, b1 - .1]) B(dark, a0, F, b, a1, F + 1.7, b + .1); for (const y of [.35, 1.35]) B(wood, a0 + .05, F + y, b0, a1 - .05, F + y + .1, b1);
+    for (let i = 0; i < 4; i++) { const b = b0 + .3 + i * .27; B(wood, a0 + .14, F + .05, b - .025, a0 + .2, F + 1.85, b + .025); B(steel, a0 + .13, F + 1.85, b - .035, a0 + .21, F + 2.05, b + .035); }
+    for (const b of [b1 - .32, b1 - .5]) { B(steel, a0 + .2, F + .45, b - .02, a0 + .24, F + 1.3, b + .02); B(dark, a0 + .17, F + 1.3, b - .08, a0 + .27, F + 1.36, b + .08); B(dark, a0 + .2, F + 1.36, b - .02, a0 + .24, F + 1.55, b + .02); }
+    S(a0, F, b0, a1, F + 1.8, b1); }
+  { const [a0, b0, a1, b1] = R.shelves;                                        // shelves against the west wall: the jailer's food
+    for (const a of [a0, a1 - .06]) B(dark, a, F, b0, a + .06, F + 1.75, b1); for (const y of [.42, 1, 1.58]) B(wood, a0, F + y, b0, a1, F + y + .04, b1);
+    for (let i = 0; i < 3; i++) B('#a08060', a0 + .15 + i * .55, F + .46, b0 + .05, a0 + .55 + i * .55, F + .9, b1 - .05);          // sacks of flour and oats
+    for (let i = 0; i < 5; i++) B('#7a5a40', a0 + .15 + i * .33, F + 1.04, b0 + .1, a0 + .32 + i * .33, F + 1.3, b0 + .27);           // jars
+    for (let i = 0; i < 2; i++) B('#d8b048', a0 + .2 + i * .45, F + 1.62, b0 + .06, a0 + .55 + i * .45, F + 1.74, b1 - .06);          // cheeses
+    B('#b07a3a', a1 - .7, F + 1.62, b0 + .08, a1 - .4, F + 1.76, b1 - .08); B('#8a3a2a', a1 - .35, F + 1.62, b0 + .08, a1 - .12, F + 1.82, b1 - .1);   // a loaf and a ham
+    S(a0, F, b0, a1, F + 1.8, b1); }
+  // The corridor: a table and two chairs
+  table(...R.corridorTable); for (const [a, b, db] of R.corridorChairs) chair(a, b, db);
+  // Each cell: bedding on the floor, a stool and a little table
+  for (const c of CELL_SPOTS) { bedding(c.bed); stool(...c.stool); table(...c.table, .55); }
+}
+// </castle-code>
+
+// ---- The castle, centred on the origin: x north, z east (the gate at z = +24), y up from the courtyard ----
+const N = 48, C = N / 2;
+const plan = buildFort({ N, wall: 6, mat: 0, keep: true, dungeon: true, castle: true, crates: [[4, 0, 30], [5, 0, 30], [4, 1, 30], [N - 6, 0, 35], [N - 6, 0, 36]] });
+makeFort({ ...plan.models[0], pos: [0, 0, 0], angle: 0 });
+// The middle cell's barred door (in the game it's the opening's own piece), shut
+{
+  const K = new Kit(), w = DUNGEON.door, D = DUNGEON.depth, iron = '#2a2a2e', cx = -.8, z = -11 + DUNGEON.cellZ;
+  K.aabb(iron, cx - w / 2, -D, z - .05, cx + w / 2, -D + .1, z + .05); K.aabb(iron, cx - w / 2, -.75, z - .05, cx + w / 2, -.65, z + .05);
+  for (let x = cx - w / 2 + .12; x < cx + w / 2; x += .3) K.aabb(iron, x - .035, -D, z - .035, x + .035, -.65, z + .035);
+  K.aabb('#6a5a3a', cx + w / 2 - .25, -D + 1.1, z - .09, cx + w / 2 - .1, -D + 1.3, z + .09);
+  K.solid(cx - w / 2, -D, z - .1, cx + w / 2, -.3, z + .1);
+  placeModel(K, { pos: [0, 0, 0], angle: 0 });
+}
+// Seen from any side and sliced open, walls should look solid
+scene.traverse(o => { if (o.material) o.material.side = THREE.DoubleSide; });
+
+// ---- The ground: grass outside the walls, beaten earth inside, sunk under the guardroom for the cells ----
+const SUNK = [[-5, -13, 5, -5], [-4.3, -17.3, .3, -13]];                  // [x0, z0, x1, z1]
+const groundAt = (x, z) => SUNK.some(([a, b, c, d]) => x >= a && x <= c && z >= b && z <= d) ? -DUNGEON.depth : 0;
+{
+  const tiles = { grass: [], earth: [] };
+  for (let x = -70; x < 70; x++) for (let z = -70; z < 70; z++) {
+    if (x >= -5 && x < 5 && z >= -13 && z < -5) continue;                  // (open over the stair down to the cells)
+    tiles[Math.abs(x + .5) < C && Math.abs(z + .5) < C ? 'earth' : 'grass'].push([x, z]);
+  }
+  for (const [kind, list] of Object.entries(tiles)) {
+    const pos = [], uv = [], nrm = [];
+    for (const [x, z] of list) {
+      pos.push(x, 0, z, x, 0, z + 1, x + 1, 0, z, x + 1, 0, z, x, 0, z + 1, x + 1, 0, z + 1);
+      uv.push(0, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 1); for (let i = 0; i < 6; i++) nrm.push(0, 1, 0);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+    const mesh = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ map: kind === 'grass' ? TEX.grassTop : TEX.path }));
+    mesh.position.y = -.02; scene.add(mesh);
+  }
+  const far = new THREE.Mesh(new THREE.PlaneGeometry(2000, 2000), new THREE.MeshLambertMaterial({ color: 0x4a6a38 }));
+  far.rotation.x = -Math.PI / 2; far.position.y = -.08; scene.add(far);
+}
+
+// ---- Light: daylight, and the castle's torches (the nearest few cast light) ----
+scene.add(new THREE.HemisphereLight(0xe6eef6, 0x6a5a48, 2.2));
+const sun = new THREE.DirectionalLight(0xfff0d8, 1.7); sun.position.set(40, 70, 25); scene.add(sun);
+const torches = plan.torches.map(([x, y, z]) => {
+  const g = new THREE.Group(); g.position.set(x - C, y, z - C);
+  const stick = new THREE.Mesh(new THREE.BoxGeometry(.12, .6, .12), new THREE.MeshLambertMaterial({ color: 0x2a1c10 })); stick.position.y = -.3;
+  const flame = new THREE.Mesh(new THREE.OctahedronGeometry(.22, 0), new THREE.MeshBasicMaterial({ color: 0xffa040 })); flame.scale.y = 1.7;
+  g.add(stick, flame); scene.add(g);
+  return { g, flame, seed: Math.random() * 100 };
+});
+const lamps = Array.from({ length: 8 }, () => { const l = new THREE.PointLight(0xff9a50, 0, 11, 1.4); scene.add(l); return l; });
+
+// ---- The player: a plain figure, and a faint silhouette of it that shows through walls ----
+const player = new THREE.Group(), ghost = new THREE.Group();
+const legs = [];
+{
+  const part = (w, h, d, color, x, y, z, parent = player) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshLambertMaterial({ color })); m.position.set(x, y, z); parent.add(m); return m;
+  };
+  for (const x of [-.12, .12]) { const p = new THREE.Group(); p.position.set(x, .8, 0); part(.18, .8, .2, 0x3a2e24, 0, -.4, 0, p); player.add(p); legs.push(p); }
+  part(.52, .66, .3, 0x2f6a4a, 0, 1.13, 0); part(.56, .08, .32, 0x5a3a20, 0, .84, 0);
+  for (const x of [-.34, .34]) part(.14, .6, .16, 0x2f6a4a, x, 1.12, 0);
+  part(.36, .36, .36, 0xe0b48e, 0, 1.64, 0); part(.38, .12, .38, 0x6a4020, 0, 1.86, 0); part(.08, .06, .02, 0x202020, -.08, 1.68, .19); part(.08, .06, .02, 0x202020, .08, 1.68, .19);
+  const see = new THREE.MeshBasicMaterial({ color: 0xf0e0b0, transparent: true, opacity: .32, depthTest: false, depthWrite: false });
+  player.traverse(o => { if (o.isMesh) { const m = new THREE.Mesh(o.geometry, see); o.updateMatrixWorld(); m.matrixAutoUpdate = false; m.userData.src = o; ghost.add(m); } });
+  ghost.renderOrder = 10; ghost.traverse(o => { o.renderOrder = 10; });
+}
+scene.add(player, ghost);
+const P = { x: 0, y: 0, z: 8, vy: 0, yaw: -Math.PI / 2, walk: 0 };       // in the courtyard, facing the great doors
+
+// ---- Moving about: the castle's own colliders, stepping up stairs, falling down them ----
+const R = .3, HT = 1.75;
+function over(k, x, z, r = R) {
+  if (k.cyl) return Math.hypot(x - k.x, z - k.z) < k.r + r;
+  const dx = x - k.x, dz = z - k.z, lx = dx * k.c - dz * k.s, lz = dx * k.s + dz * k.c;
+  return Math.abs(lx) < k.hx + r && Math.abs(lz) < k.hz + r;
+}
+function hit(x, y, z) {
+  if (groundAt(x, z) > y + .01) return true;
+  for (const k of colliders) if (y < k.y1 - 1e-4 && y + HT > k.y0 + 1e-4 && over(k, x, z)) return true;
+  return false;
+}
+function support(x, y, z) {
+  let best = groundAt(x, z);
+  for (const k of colliders) if (k.y1 <= y + .05 && k.y1 > best && over(k, x, z, R * .8)) best = k.y1;
+  return best;
+}
+function step(nx, nz) {
+  if (!hit(nx, P.y, nz)) { P.x = nx; P.z = nz; return; }
+  for (const up of [.3, .55]) if (!hit(nx, P.y + up, nz)) { P.x = nx; P.z = nz; P.y += up; return; }
+}
+
+// ---- Doors: the castle's own, opened and closed with E ----
+function nearestDoor() {
+  let best = null, bd = 2.3;
+  for (const d of doors) { const dist = Math.hypot(d.at[0] - P.x, d.at[2] - P.z); if (dist < bd && Math.abs(d.at[1] - P.y) < 1.5) { best = d; bd = dist; } }
+  return best;
+}
+function updateDoors(dt) {
+  for (const d of doors) {
+    const inWay = d.col.some(k => over(k, P.x, P.z) && P.y < k.y1 && P.y + HT > k.y0);
+    const target = d.manual === true || inWay && d.angle > .01 ? Math.PI : 0;
+    if (d.angle !== target) { d.angle += Math.sign(target - d.angle) * Math.min(Math.abs(target - d.angle), dt * DOOR_SPEED); d.pivot.rotation.y = d.turn + d.angle; }
+    if (d.angle < .15 && !d.colOn) { addColliders(d.col); d.colOn = true; }
+    else if (d.angle >= .15 && d.colOn) { removeColliders(d.col); d.colOn = false; }
+  }
+}
+
+// ---- The camera: looking down at an angle from one of four corners, square on to the castle's walls ----
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(2, devicePixelRatio)); renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, .1, 600);
+const view = { yaw: Math.PI / 4, turnTo: Math.PI / 4, pitch: .66, zoom: 26, cut: true, focus: new THREE.Vector3(P.x, P.y, P.z) };
+function fitCamera() {
+  const a = innerWidth / innerHeight;
+  cam.left = -view.zoom * a / 2; cam.right = view.zoom * a / 2; cam.top = view.zoom / 2; cam.bottom = -view.zoom / 2; cam.updateProjectionMatrix();
+}
+addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); fitCamera(); });
+fitCamera();
+// The cutaway: indoors (with a roof or a floor overhead), everything above head height is sliced off
+const cutPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), 1e6);
+renderer.clippingPlanes = [cutPlane];
+const roofed = (x, y, z) => { for (const k of colliders) if (k.y0 >= y + HT - .2 && k.y0 < y + 16 && over(k, x, z, 0)) return true; return false; };
+
+// ---- Keys ----
+const keys = new Set();
+addEventListener('keydown', e => {
+  const k = e.key.toLowerCase(); keys.add(k);
+  if (k === 'q') view.turnTo -= Math.PI / 2;
+  if (k === 'r') view.turnTo += Math.PI / 2;
+  if (k === 'c') view.cut = !view.cut;
+  if (k === '+' || k === '=') view.zoom = Math.max(10, view.zoom / 1.2), fitCamera();
+  if (k === '-' || k === '_') view.zoom = Math.min(90, view.zoom * 1.2), fitCamera();
+  if (k === 'e') { const d = nearestDoor(); if (d) d.manual = !(d.manual === true || d.angle > Math.PI / 2); }
+  if (k.startsWith('arrow')) e.preventDefault();
+});
+addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
+addEventListener('blur', () => keys.clear());
+addEventListener('wheel', e => { view.zoom = Math.min(90, Math.max(10, view.zoom * (e.deltaY > 0 ? 1.12 : 1 / 1.12))); fitCamera(); }, { passive: true });
+
+// ---- Where you are, on the plans' grid: columns A-N west to east, rows 1-14 north to south ----
+const whereEl = document.getElementById('where'), hintEl = document.getElementById('hint');
+function whereText() {
+  const col = 'ABCDEFGHIJKLMN'[Math.floor((P.z + 28) / 4)] || '·', row = Math.floor((28 - P.x) / 4) + 1;
+  const level = P.y < -2 ? 'the cells' : P.y < 2.5 ? (roofed(P.x, P.y, P.z) ? 'ground floor' : 'outside') : P.y < 7.5 ? (Math.abs(P.x) > 20.5 || Math.abs(P.z) > 20.5 ? 'the wall walk' : 'first floor') : 'second floor';
+  return `<b>Castle Aldermere</b> · ${col}-${row} · ${level}`;
+}
+
+// ---- Each frame ----
+const clock = new THREE.Clock();
+let lampT = 0;
+function frame() {
+  const dt = Math.min(clock.getDelta(), .05), t = clock.elapsedTime;
+  // Turn the view smoothly to the chosen corner
+  view.yaw += (view.turnTo - view.yaw) * Math.min(1, dt * 8);
+  const fx = -Math.sin(view.yaw), fz = -Math.cos(view.yaw);              // "up" on the screen, along the ground
+  // Walk: screen-relative, a few small steps a frame so nothing is skipped through
+  let ix = 0, iz = 0;
+  if (keys.has('w') || keys.has('arrowup')) { ix += fx; iz += fz; }
+  if (keys.has('s') || keys.has('arrowdown')) { ix -= fx; iz -= fz; }
+  if (keys.has('d') || keys.has('arrowright')) { ix -= fz; iz += fx; }
+  if (keys.has('a') || keys.has('arrowleft')) { ix += fz; iz -= fx; }
+  const len = Math.hypot(ix, iz), moving = len > 0;
+  if (moving) {
+    const speed = 4.6 * dt, n = Math.ceil(speed / .1);
+    for (let i = 0; i < n; i++) { step(P.x + ix / len * speed / n, P.z); step(P.x, P.z + iz / len * speed / n); }
+    const want = Math.atan2(ix, iz); let d = want - P.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); P.yaw += d * Math.min(1, dt * 14);
+    P.walk += dt * 9;
+  } else P.walk = 0;
+  // Fall onto whatever's below
+  const below = support(P.x, P.y, P.z);
+  if (P.y > below + .001) { P.vy -= 30 * dt; P.y = Math.max(below, P.y + P.vy * dt); } else { P.y = below; P.vy = 0; }
+  player.position.set(P.x, P.y, P.z); player.rotation.y = P.yaw;
+  legs[0].rotation.x = Math.sin(P.walk) * .6; legs[1].rotation.x = -Math.sin(P.walk) * .6;
+  player.updateMatrixWorld(true);
+  for (const m of ghost.children) m.matrix.copy(m.userData.src.matrixWorld);
+  updateDoors(dt);
+  // Follow, and cut away overhead indoors
+  view.focus.lerp(new THREE.Vector3(P.x, P.y + 1, P.z), Math.min(1, dt * 6));
+  const dir = new THREE.Vector3(Math.sin(view.yaw) * Math.cos(view.pitch), Math.sin(view.pitch), Math.cos(view.yaw) * Math.cos(view.pitch));
+  cam.position.copy(view.focus).addScaledVector(dir, 200); cam.lookAt(view.focus);
+  cutPlane.constant = view.cut && roofed(P.x, P.y, P.z) ? P.y + 2.3 : 1e6;
+  scene.background.setHex(cutPlane.constant < -.5 ? 0x231e1a : 0x8fb4d8);           // (below ground: earth all round, not sky)
+  if (cam.top !== view.zoom / 2) fitCamera();
+  // Torches flicker; the nearest few light their rooms
+  for (const tc of torches) { const f = 1 + Math.sin(t * 9 + tc.seed) * .12 + Math.sin(t * 23 + tc.seed * 2) * .06; tc.flame.scale.set(f, 1.7 * f, f); }
+  if ((lampT -= dt) <= 0) {
+    lampT = .25;
+    const near = [...torches].sort((a, b) => a.g.position.distanceToSquared(player.position) - b.g.position.distanceToSquared(player.position));
+    lamps.forEach((l, i) => { const tc = near[i]; l.position.copy(tc.g.position); l.intensity = tc.g.position.y <= cutPlane.constant ? 9 : 0; });
+  }
+  // What you can do here
+  const d = nearestDoor();
+  hintEl.hidden = !d; if (d) hintEl.textContent = `E · ${d.manual === true || d.angle > Math.PI / 2 ? 'close' : 'open'} the door`;
+  whereEl.innerHTML = whereText();
+  renderer.render(scene, cam);
+  requestAnimationFrame(frame);
+}
+window.__iso = { P, view, doors, colliders, keys };                         // (for tests)
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

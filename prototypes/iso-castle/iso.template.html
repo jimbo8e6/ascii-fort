@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Castle Aldermere, isometric</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1d22; }
+  body { font: 13px/1.45 ui-monospace, Menlo, Consolas, monospace; color: #e8e2d0; }
+  canvas { display: block; }
+  .panel { position: fixed; background: rgba(12, 14, 18, .74); border-radius: 4px; padding: 8px 11px; pointer-events: none; }
+  #where { left: 12px; top: 10px; }
+  #where b { color: #f0c870; font-weight: 600; }
+  #keys { left: 12px; bottom: 10px; color: #b8b2a2; }
+  #hint { left: 50%; bottom: 46px; transform: translateX(-50%); }
+  #hint[hidden] { display: none; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+</script>
+</head>
+<body>
+<div id="where" class="panel"></div>
+<div id="hint" class="panel" hidden></div>
+<div id="keys" class="panel">WASD / arrows walk · E open/close a door · Q / R turn the view · wheel or +/− zoom · C cutaway on/off</div>
+<script type="module">
+// A test of Castle Aldermere seen from above at an angle, the way a top-down adventure game would show it. The
+// castle itself is the game's own (copied in below by build.mjs); this page adds the camera, a person to walk about,
+// doors and light, and a cutaway: indoors, everything above head height is sliced away so you can see into the room.
+import * as THREE from 'three';
+
+// What the game's castle code expects to find about it
+const SANDSTONE = -1, DOOR_SPEED = 4;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x8fb4d8);
+const colliders = new Set(), doors = new Set();
+const addColliders = list => { for (const k of list) colliders.add(k); };
+const removeColliders = list => { for (const k of list) colliders.delete(k); };
+function placeModel(K, m) { const b = K.build(m.pos[0], m.pos[1], m.pos[2], m.angle); scene.add(b.group); addColliders(b.colliders); return { g: b.group, colliders: b.colliders, torches: [] }; }
+
+// <castle-code>
+// </castle-code>
+
+// ---- The castle, centred on the origin: x north, z east (the gate at z = +24), y up from the courtyard ----
+const N = 48, C = N / 2;
+const plan = buildFort({ N, wall: 6, mat: 0, keep: true, dungeon: true, castle: true, crates: [[4, 0, 30], [5, 0, 30], [4, 1, 30], [N - 6, 0, 35], [N - 6, 0, 36]] });
+makeFort({ ...plan.models[0], pos: [0, 0, 0], angle: 0 });
+// The middle cell's barred door (in the game it's the opening's own piece), shut
+{
+  const K = new Kit(), w = DUNGEON.door, D = DUNGEON.depth, iron = '#2a2a2e', cx = -.8, z = -11 + DUNGEON.cellZ;
+  K.aabb(iron, cx - w / 2, -D, z - .05, cx + w / 2, -D + .1, z + .05); K.aabb(iron, cx - w / 2, -.75, z - .05, cx + w / 2, -.65, z + .05);
+  for (let x = cx - w / 2 + .12; x < cx + w / 2; x += .3) K.aabb(iron, x - .035, -D, z - .035, x + .035, -.65, z + .035);
+  K.aabb('#6a5a3a', cx + w / 2 - .25, -D + 1.1, z - .09, cx + w / 2 - .1, -D + 1.3, z + .09);
+  K.solid(cx - w / 2, -D, z - .1, cx + w / 2, -.3, z + .1);
+  placeModel(K, { pos: [0, 0, 0], angle: 0 });
+}
+// Seen from any side and sliced open, walls should look solid
+scene.traverse(o => { if (o.material) o.material.side = THREE.DoubleSide; });
+
+// ---- The ground: grass outside the walls, beaten earth inside, sunk under the guardroom for the cells ----
+const SUNK = [[-5, -13, 5, -5], [-4.3, -17.3, .3, -13]];                  // [x0, z0, x1, z1]
+const groundAt = (x, z) => SUNK.some(([a, b, c, d]) => x >= a && x <= c && z >= b && z <= d) ? -DUNGEON.depth : 0;
+{
+  const tiles = { grass: [], earth: [] };
+  for (let x = -70; x < 70; x++) for (let z = -70; z < 70; z++) {
+    if (x >= -5 && x < 5 && z >= -13 && z < -5) continue;                  // (open over the stair down to the cells)
+    tiles[Math.abs(x + .5) < C && Math.abs(z + .5) < C ? 'earth' : 'grass'].push([x, z]);
+  }
+  for (const [kind, list] of Object.entries(tiles)) {
+    const pos = [], uv = [], nrm = [];
+    for (const [x, z] of list) {
+      pos.push(x, 0, z, x, 0, z + 1, x + 1, 0, z, x + 1, 0, z, x, 0, z + 1, x + 1, 0, z + 1);
+      uv.push(0, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 1); for (let i = 0; i < 6; i++) nrm.push(0, 1, 0);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+    const mesh = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ map: kind === 'grass' ? TEX.grassTop : TEX.path }));
+    mesh.position.y = -.02; scene.add(mesh);
+  }
+  const far = new THREE.Mesh(new THREE.PlaneGeometry(2000, 2000), new THREE.MeshLambertMaterial({ color: 0x4a6a38 }));
+  far.rotation.x = -Math.PI / 2; far.position.y = -.08; scene.add(far);
+}
+
+// ---- Light: daylight, and the castle's torches (the nearest few cast light) ----
+scene.add(new THREE.HemisphereLight(0xe6eef6, 0x6a5a48, 2.2));
+const sun = new THREE.DirectionalLight(0xfff0d8, 1.7); sun.position.set(40, 70, 25); scene.add(sun);
+const torches = plan.torches.map(([x, y, z]) => {
+  const g = new THREE.Group(); g.position.set(x - C, y, z - C);
+  const stick = new THREE.Mesh(new THREE.BoxGeometry(.12, .6, .12), new THREE.MeshLambertMaterial({ color: 0x2a1c10 })); stick.position.y = -.3;
+  const flame = new THREE.Mesh(new THREE.OctahedronGeometry(.22, 0), new THREE.MeshBasicMaterial({ color: 0xffa040 })); flame.scale.y = 1.7;
+  g.add(stick, flame); scene.add(g);
+  return { g, flame, seed: Math.random() * 100 };
+});
+const lamps = Array.from({ length: 8 }, () => { const l = new THREE.PointLight(0xff9a50, 0, 11, 1.4); scene.add(l); return l; });
+
+// ---- The player: a plain figure, and a faint silhouette of it that shows through walls ----
+const player = new THREE.Group(), ghost = new THREE.Group();
+const legs = [];
+{
+  const part = (w, h, d, color, x, y, z, parent = player) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshLambertMaterial({ color })); m.position.set(x, y, z); parent.add(m); return m;
+  };
+  for (const x of [-.12, .12]) { const p = new THREE.Group(); p.position.set(x, .8, 0); part(.18, .8, .2, 0x3a2e24, 0, -.4, 0, p); player.add(p); legs.push(p); }
+  part(.52, .66, .3, 0x2f6a4a, 0, 1.13, 0); part(.56, .08, .32, 0x5a3a20, 0, .84, 0);
+  for (const x of [-.34, .34]) part(.14, .6, .16, 0x2f6a4a, x, 1.12, 0);
+  part(.36, .36, .36, 0xe0b48e, 0, 1.64, 0); part(.38, .12, .38, 0x6a4020, 0, 1.86, 0); part(.08, .06, .02, 0x202020, -.08, 1.68, .19); part(.08, .06, .02, 0x202020, .08, 1.68, .19);
+  const see = new THREE.MeshBasicMaterial({ color: 0xf0e0b0, transparent: true, opacity: .32, depthTest: false, depthWrite: false });
+  player.traverse(o => { if (o.isMesh) { const m = new THREE.Mesh(o.geometry, see); o.updateMatrixWorld(); m.matrixAutoUpdate = false; m.userData.src = o; ghost.add(m); } });
+  ghost.renderOrder = 10; ghost.traverse(o => { o.renderOrder = 10; });
+}
+scene.add(player, ghost);
+const P = { x: 0, y: 0, z: 8, vy: 0, yaw: -Math.PI / 2, walk: 0 };       // in the courtyard, facing the great doors
+
+// ---- Moving about: the castle's own colliders, stepping up stairs, falling down them ----
+const R = .3, HT = 1.75;
+function over(k, x, z, r = R) {
+  if (k.cyl) return Math.hypot(x - k.x, z - k.z) < k.r + r;
+  const dx = x - k.x, dz = z - k.z, lx = dx * k.c - dz * k.s, lz = dx * k.s + dz * k.c;
+  return Math.abs(lx) < k.hx + r && Math.abs(lz) < k.hz + r;
+}
+function hit(x, y, z) {
+  if (groundAt(x, z) > y + .01) return true;
+  for (const k of colliders) if (y < k.y1 - 1e-4 && y + HT > k.y0 + 1e-4 && over(k, x, z)) return true;
+  return false;
+}
+function support(x, y, z) {
+  let best = groundAt(x, z);
+  for (const k of colliders) if (k.y1 <= y + .05 && k.y1 > best && over(k, x, z, R * .8)) best = k.y1;
+  return best;
+}
+function step(nx, nz) {
+  if (!hit(nx, P.y, nz)) { P.x = nx; P.z = nz; return; }
+  for (const up of [.3, .55]) if (!hit(nx, P.y + up, nz)) { P.x = nx; P.z = nz; P.y += up; return; }
+}
+
+// ---- Doors: the castle's own, opened and closed with E ----
+function nearestDoor() {
+  let best = null, bd = 2.3;
+  for (const d of doors) { const dist = Math.hypot(d.at[0] - P.x, d.at[2] - P.z); if (dist < bd && Math.abs(d.at[1] - P.y) < 1.5) { best = d; bd = dist; } }
+  return best;
+}
+function updateDoors(dt) {
+  for (const d of doors) {
+    const inWay = d.col.some(k => over(k, P.x, P.z) && P.y < k.y1 && P.y + HT > k.y0);
+    const target = d.manual === true || inWay && d.angle > .01 ? Math.PI : 0;
+    if (d.angle !== target) { d.angle += Math.sign(target - d.angle) * Math.min(Math.abs(target - d.angle), dt * DOOR_SPEED); d.pivot.rotation.y = d.turn + d.angle; }
+    if (d.angle < .15 && !d.colOn) { addColliders(d.col); d.colOn = true; }
+    else if (d.angle >= .15 && d.colOn) { removeColliders(d.col); d.colOn = false; }
+  }
+}
+
+// ---- The camera: looking down at an angle from one of four corners, square on to the castle's walls ----
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(2, devicePixelRatio)); renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, .1, 600);
+const view = { yaw: Math.PI / 4, turnTo: Math.PI / 4, pitch: .66, zoom: 26, cut: true, focus: new THREE.Vector3(P.x, P.y, P.z) };
+function fitCamera() {
+  const a = innerWidth / innerHeight;
+  cam.left = -view.zoom * a / 2; cam.right = view.zoom * a / 2; cam.top = view.zoom / 2; cam.bottom = -view.zoom / 2; cam.updateProjectionMatrix();
+}
+addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); fitCamera(); });
+fitCamera();
+// The cutaway: indoors (with a roof or a floor overhead), everything above head height is sliced off
+const cutPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), 1e6);
+renderer.clippingPlanes = [cutPlane];
+const roofed = (x, y, z) => { for (const k of colliders) if (k.y0 >= y + HT - .2 && k.y0 < y + 16 && over(k, x, z, 0)) return true; return false; };
+
+// ---- Keys ----
+const keys = new Set();
+addEventListener('keydown', e => {
+  const k = e.key.toLowerCase(); keys.add(k);
+  if (k === 'q') view.turnTo -= Math.PI / 2;
+  if (k === 'r') view.turnTo += Math.PI / 2;
+  if (k === 'c') view.cut = !view.cut;
+  if (k === '+' || k === '=') view.zoom = Math.max(10, view.zoom / 1.2), fitCamera();
+  if (k === '-' || k === '_') view.zoom = Math.min(90, view.zoom * 1.2), fitCamera();
+  if (k === 'e') { const d = nearestDoor(); if (d) d.manual = !(d.manual === true || d.angle > Math.PI / 2); }
+  if (k.startsWith('arrow')) e.preventDefault();
+});
+addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
+addEventListener('blur', () => keys.clear());
+addEventListener('wheel', e => { view.zoom = Math.min(90, Math.max(10, view.zoom * (e.deltaY > 0 ? 1.12 : 1 / 1.12))); fitCamera(); }, { passive: true });
+
+// ---- Where you are, on the plans' grid: columns A-N west to east, rows 1-14 north to south ----
+const whereEl = document.getElementById('where'), hintEl = document.getElementById('hint');
+function whereText() {
+  const col = 'ABCDEFGHIJKLMN'[Math.floor((P.z + 28) / 4)] || '·', row = Math.floor((28 - P.x) / 4) + 1;
+  const level = P.y < -2 ? 'the cells' : P.y < 2.5 ? (roofed(P.x, P.y, P.z) ? 'ground floor' : 'outside') : P.y < 7.5 ? (Math.abs(P.x) > 20.5 || Math.abs(P.z) > 20.5 ? 'the wall walk' : 'first floor') : 'second floor';
+  return `<b>Castle Aldermere</b> · ${col}-${row} · ${level}`;
+}
+
+// ---- Each frame ----
+const clock = new THREE.Clock();
+let lampT = 0;
+function frame() {
+  const dt = Math.min(clock.getDelta(), .05), t = clock.elapsedTime;
+  // Turn the view smoothly to the chosen corner
+  view.yaw += (view.turnTo - view.yaw) * Math.min(1, dt * 8);
+  const fx = -Math.sin(view.yaw), fz = -Math.cos(view.yaw);              // "up" on the screen, along the ground
+  // Walk: screen-relative, a few small steps a frame so nothing is skipped through
+  let ix = 0, iz = 0;
+  if (keys.has('w') || keys.has('arrowup')) { ix += fx; iz += fz; }
+  if (keys.has('s') || keys.has('arrowdown')) { ix -= fx; iz -= fz; }
+  if (keys.has('d') || keys.has('arrowright')) { ix -= fz; iz += fx; }
+  if (keys.has('a') || keys.has('arrowleft')) { ix += fz; iz -= fx; }
+  const len = Math.hypot(ix, iz), moving = len > 0;
+  if (moving) {
+    const speed = 4.6 * dt, n = Math.ceil(speed / .1);
+    for (let i = 0; i < n; i++) { step(P.x + ix / len * speed / n, P.z); step(P.x, P.z + iz / len * speed / n); }
+    const want = Math.atan2(ix, iz); let d = want - P.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); P.yaw += d * Math.min(1, dt * 14);
+    P.walk += dt * 9;
+  } else P.walk = 0;
+  // Fall onto whatever's below
+  const below = support(P.x, P.y, P.z);
+  if (P.y > below + .001) { P.vy -= 30 * dt; P.y = Math.max(below, P.y + P.vy * dt); } else { P.y = below; P.vy = 0; }
+  player.position.set(P.x, P.y, P.z); player.rotation.y = P.yaw;
+  legs[0].rotation.x = Math.sin(P.walk) * .6; legs[1].rotation.x = -Math.sin(P.walk) * .6;
+  player.updateMatrixWorld(true);
+  for (const m of ghost.children) m.matrix.copy(m.userData.src.matrixWorld);
+  updateDoors(dt);
+  // Follow, and cut away overhead indoors
+  view.focus.lerp(new THREE.Vector3(P.x, P.y + 1, P.z), Math.min(1, dt * 6));
+  const dir = new THREE.Vector3(Math.sin(view.yaw) * Math.cos(view.pitch), Math.sin(view.pitch), Math.cos(view.yaw) * Math.cos(view.pitch));
+  cam.position.copy(view.focus).addScaledVector(dir, 200); cam.lookAt(view.focus);
+  cutPlane.constant = view.cut && roofed(P.x, P.y, P.z) ? P.y + 2.3 : 1e6;
+  scene.background.setHex(cutPlane.constant < -.5 ? 0x231e1a : 0x8fb4d8);           // (below ground: earth all round, not sky)
+  if (cam.top !== view.zoom / 2) fitCamera();
+  // Torches flicker; the nearest few light their rooms
+  for (const tc of torches) { const f = 1 + Math.sin(t * 9 + tc.seed) * .12 + Math.sin(t * 23 + tc.seed * 2) * .06; tc.flame.scale.set(f, 1.7 * f, f); }
+  if ((lampT -= dt) <= 0) {
+    lampT = .25;
+    const near = [...torches].sort((a, b) => a.g.position.distanceToSquared(player.position) - b.g.position.distanceToSquared(player.position));
+    lamps.forEach((l, i) => { const tc = near[i]; l.position.copy(tc.g.position); l.intensity = tc.g.position.y <= cutPlane.constant ? 9 : 0; });
+  }
+  // What you can do here
+  const d = nearestDoor();
+  hintEl.hidden = !d; if (d) hintEl.textContent = `E · ${d.manual === true || d.angle > Math.PI / 2 ? 'close' : 'open'} the door`;
+  whereEl.innerHTML = whereText();
+  renderer.render(scene, cam);
+  requestAnimationFrame(frame);
+}
+window.__iso = { P, view, doors, colliders, keys };                         // (for tests)
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
