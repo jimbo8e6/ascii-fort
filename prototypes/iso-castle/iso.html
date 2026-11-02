@@ -328,7 +328,7 @@ function makeFort(m) {
   const tower = (x0, z0, x1, z1, doors) => {
     blk(stone, x0 - .2, 0, z0 - .2, x1 + .2, 1, z1 + .2);                       // plinth
     blk(stone, x0, 1, z0, x1, wall, z1);
-    blk(stone, x0 - .12, wall - .3, z0 - .12, x1 + .12, wall, z1 + .12, false);   // string course
+    blk(stone, x0 - .12, wall - .3, z0 - .12, x1 + .12, wall - .02, z1 + .12, false);   // string course (just under the floor above, not level with it)
     const top = TOP - .5, door = side => doors.filter(d => d[0] === side).map(d => [d[1], d[2], wall, wall + 2.3]);
     holed(stone, x0, z0, x1, z0 + 1, wall, top, door('N'));
     holed(stone, x0, z1 - 1, x1, z1, wall, top, door('S'));
@@ -437,15 +437,17 @@ function buildCastle(K, { blk }, stone, C, m) {
     }
   };
   // An outside wall: the stone face, a darker lining on the inside face (side: 'x0', 'x1', 'z0' or 'z1'), and
-  // glass in the windows (openings that don't reach the floor)
-  const outer = (x0, z0, x1, z1, y0, y1, holes, side) => {
+  // glass in the windows (openings that don't reach the floor). The lining stops under the ceiling (.3 below the
+  // top) and, given `room` [from, to] along the wall, at the room's ends, so none of it lies flush with another surface.
+  const outer = (x0, z0, x1, z1, y0, y1, holes, side, room = null) => {
     wall(stone, x0, z0, x1, z1, y0, y1, holes);
-    const t = .03, [a0, b0, a1, b1] = side === 'x0' ? [x0 - t, z0, x0, z1] : side === 'x1' ? [x1, z0, x1 + t, z1] : side === 'z0' ? [x0, z0 - t, x1, z0] : [x0, z1, x1, z1 + t];
-    wall(IN, a0, b0, a1, b1, y0, y1, holes, false);
+    const t = .03, alongX0 = x1 - x0 > z1 - z0, [r0, r1] = room || (alongX0 ? [x0, x1] : [z0, z1]);
+    const [a0, b0, a1, b1] = side === 'x0' ? [x0 - t, r0, x0, r1] : side === 'x1' ? [x1, r0, x1 + t, r1] : side === 'z0' ? [r0, z0 - t, r1, z0] : [r0, z1, r1, z1 + t];
+    wall(IN, a0, b0, a1, b1, y0, y1 - .3, holes, false);
     const alongX = x1 - x0 > z1 - z0, mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
     for (const [h0, h1, v0, v1] of holes) if (v0 > y0 + .5) {
-      if (alongX) { B('glass', h0, v0, mz - .04, h1, v1, mz + .04); D(stone, h0 - .1, v0 - .15, z0 - .12, h1 + .1, v0, z1 + .12); }
-      else { B('glass', mx - .04, v0, h0, mx + .04, v1, h1); D(stone, x0 - .12, v0 - .15, h0 - .1, x1 + .12, v0, h1 + .1); }
+      if (alongX) { B('glass', h0, v0, mz - .04, h1, v1, mz + .04); D(stone, h0 - .1, v0 - .15, z0 - .12, h1 + .1, v0 + .02, z1 + .12); }
+      else { B('glass', mx - .04, v0, h0, mx + .04, v1, h1); D(stone, x0 - .12, v0 - .15, h0 - .1, x1 + .12, v0 + .02, h1 + .1); }
     }
   };
   const merl = (x0, z0, x1, z1, y) => {                                         // a parapet with merlons along an edge
@@ -460,17 +462,18 @@ function buildCastle(K, { blk }, stone, C, m) {
 
   // ---- Outside walls ----
   // The front, facing the courtyard: the great hall's tall windows, the doors, the kitchen's windows
-  outer(-21, 3, -7, 4, 0, 10, [-16, -13, -10].map(a => win(a, 1.8, 8.2)), 'z0');
-  outer(-7, 3, 7, 4, 0, 15, [[-1.5, 1.5, 0, 3.6], win(-4, 1.4, 3.4), win(3, 1.4, 3.4), win(-4), win(0, 6.2), win(3), win(-3.5, 11, 13.4, 1), win(0, 11, 13.4, 1), win(3.5, 11, 13.4, 1)], 'z0');
-  outer(7, 3, 21, 4, 0, 10, [[12, 13.2, 0, 2.3], win(9.8, 1.4, 3.4), win(16, 1.4, 3.4), win(8, 6, 8.4), win(14, 6, 8.4), win(17.2, 6, 8.4)], 'z0');
+  outer(-19, 3, -7, 4, 0, 10, [-16, -13, -10].map(a => win(a, 1.8, 8.2)), 'z0');
+  outer(-7, 3, 7, 4, 0, 15, [[-1.5, 1.5, 0, 3.6], win(-4, 1.4, 3.4), win(3, 1.4, 3.4), win(-4), win(0, 6.2), win(3), win(-3.5, 11, 13.4, 1), win(0, 11, 13.4, 1), win(3.5, 11, 13.4, 1)], 'z0', [-6, 6]);
+  outer(7, 3, 19, 4, 0, 10, [[12, 13.2, 0, 2.3], win(9.8, 1.4, 3.4), win(16, 1.4, 3.4), win(8, 6, 8.4), win(14, 6, 8.4), win(17.2, 6, 8.4)], 'z0');
   door(12, 0, 2.955);
   // The sides, along the north and south curtain walls (the wall walks pass outside); the back, along the west wall
-  outer(-21, -21, -19, 4, 0, 10, [-15.5, -9, -2].map(a => win(a, 7.2, 9.2)), 'x1');
-  outer(19, -21, 21, 4, 0, 10, [...[-14.8, -9.25, -3.75].map(a => win(a, 7.2, 9)), [-8.4, -7.2, 0, 2.3]], 'x0');      // (the passage to the children's house)
+  B(stone, -21, 9, -21, -19, 10, -19); B(stone, 19, 9, -21, 21, 10, -19);          // (over the corner towers)
+  outer(-21, -19, -19, 4, 0, 10, [-15.5, -9, -2].map(a => win(a, 7.2, 9.2)), 'x1', [-19, 3]);
+  outer(19, -19, 21, 4, 0, 10, [...[-14.8, -9.25, -3.75].map(a => win(a, 7.2, 9)), [-8.4, -7.2, 0, 2.3]], 'x0', [-19, 3]);      // (the passage to the children's house)
   door(18.955, 0, -7.2, Math.PI / 2);
   outer(-19, -21, -7, -19, 0, 10, [], 'z1');
   outer(7, -21, 19, -19, 0, 10, [], 'z1');
-  outer(-7, -21, 7, -19, 0, 15, [win(-2, 7.2, 9), win(2, 7.2, 9), win(-3, 11.2, 13.4), win(3, 11.2, 13.4)], 'z1');
+  outer(-7, -21, 7, -19, 0, 15, [win(-2, 7.2, 9), win(2, 7.2, 9), win(-3, 11.2, 13.4), win(3, 11.2, 13.4)], 'z1', [-6, 6]);
   // The middle block's sides above the wings' roofs
   outer(-7, -19, -6, 3, 10, 15, [win(-16, 11.2, 13.4), win(-10, 11.2, 13.4)], 'x1');
   outer(6, -19, 7, 3, 10, 15, [win(-16, 11.2, 13.4), win(-10, 11.2, 13.4)], 'x0');
@@ -478,16 +481,16 @@ function buildCastle(K, { blk }, stone, C, m) {
   for (const [x0, x1] of [[-19, -7], [7, 19]]) { B(FL, x0, 9.7, -19, x1, 9.85, 3); B(stone, x0, 9.85, -19, x1, 10, 3); }
   B(FL, -6, 14.7, -19, 6, 14.85, 3); B(stone, -6, 14.85, -19, 6, 15, 3);
   for (const [x0, x1] of [[-21, -7], [7, 21]]) { merl(x0, 3.5, x1, 4, 10); merl(x0, -21, x1, -20.5, 10); }
-  merl(-21, -21, -20.5, 4, 10); merl(20.5, -21, 21, 4, 10);
-  merl(-7, 3.5, 7, 4, 15); merl(-7, -21, 7, -20.5, 15); merl(-7, -21, -6.5, 4, 15); merl(6.5, -21, 7, 4, 15);
+  merl(-21, -20.5, -20.5, 3.5, 10); merl(20.5, -20.5, 21, 3.5, 10);
+  merl(-7, 3.5, 7, 4, 15); merl(-7, -21, 7, -20.5, 15); merl(-7, -20.5, -6.5, 3.5, 15); merl(6.5, -20.5, 7, 3.5, 15);
   // Details on the front: a plinth, string courses, the doorway's surround and a shield over it, banners
   for (const [a, b] of [[-21.2, -2.1], [2.1, 11.9], [13.3, 21.2]]) D(stone, a, 0, 4, b, .5, 4.22);
   for (const y of [4.85, 9.85]) D(stone, -21, y, 4, 21, y + .2, 4.14);
-  for (const s of [-1, 1]) B(stone, s * 1.5, 0, 4, s * 2.15, 4.3, 4.4);
+  for (const s of [-1, 1]) B(stone, s * 1.5, 0, 4, s * 2.15, 3.6, 4.4);
   B(stone, -2.15, 3.6, 4, 2.15, 4.5, 4.4); D(stone, -1.6, 4.5, 4, 1.6, 4.8, 4.3);
   D(red, -.55, 4.9, 4.14, .55, 6.1, 4.26); D(gold, -.12, 5.05, 4.26, .12, 5.95, 4.3); D(gold, -.42, 5.4, 4.26, .42, 5.6, 4.3);
   for (const s of [-1, 1]) { D(red, s * 5.2, 5.4, 4, s * 6.2, 9.4, 4.06); D(gold, s * 5.6, 5.6, 4.06, s * 5.8, 9.2, 4.09); D(gold, s * 5.2, 5.4, 4.06, s * 6.2, 5.6, 4.09); }
-  for (const s of [-1, 1]) { const x = s < 0 ? -1.62 : 1.5; B('#4a3220', x, 0, 1.5, x + .12, 3.5, 3); }   // the great doors, standing open
+  for (const s of [-1, 1]) { const x = s < 0 ? -1.62 : 1.5; B('#4a3220', x, 0, 1.5, x + .12, 3.5, 2.95); }   // the great doors, standing open
   // Turrets at every corner of the wings and of the middle block, and the great tower with its spire
   for (const s of [-1, 1]) { spire(K, stone, s * 20, 10, 3, 2, 7, 7.5, 2.5); spire(K, stone, s * 7, 15, 3.6, 1.5, 5, 6, 2); spire(K, stone, s * 7, 15, -20.6, 1.5, 5, 6, 2); }
   B(stone, -3, 15, -14, 3, 23, -8, false);
@@ -505,7 +508,7 @@ function buildCastle(K, { blk }, stone, C, m) {
   wall(IN, 6, -19, 7, 3, 0, 10, [[-3.8, -2.6, 5, 7.3]]);
   door(7.045, 5, -3.8, -Math.PI / 2);
   // The guardroom: the old keep's walls round the cells, its doorway to the entrance hall and a door to the barracks
-  B(IN, -6, 0, -14, -5, 4.7, -4); B(IN, 5, 0, -14, 6, 4.7, -4);
+  B(IN, -6, 0, -13, -5, 4.7, -5); B(IN, 5, 0, -13, 6, 4.7, -5);
   wall(IN, -6, -5, 6, -4, 0, 4.7, [[-1, 1, 0, 3]]);
   wall(IN, -6, -14, 6, -13, 0, 4.7, [[-3.2, -2, 0, 2.3]]);
   door(-3.2, 0, -14.045);
@@ -535,7 +538,7 @@ function buildCastle(K, { blk }, stone, C, m) {
   const rail = (x0, z0, x1, z1, y) => { B(dark, x0, y + 1, z0, x1, y + 1.12, z1); const alongX = x1 - x0 > z1 - z0;
     for (let a = alongX ? x0 : z0; a <= (alongX ? x1 : z1) + 1e-6; a += .5) alongX ? D(dark, a - .03, y, z0, a + .03, y + 1, z1) : D(dark, x0, y, a - .03, x1, y + 1, a + .03);
     S(x0, y, z0, x1, y + 1.15, z1); };
-  rail(4.45, -3, 4.55, 3, 5); rail(-4.55, -3, -4.45, 1.5, 10); rail(-6, -3.05, -4.5, -2.95, 10);
+  rail(4.45, -3, 4.55, 2.95, 5); rail(-4.55, -3, -4.45, 1.5, 10); rail(-5.95, -3.05, -4.5, -2.95, 10);
 
   // ---- Furniture ----
   const legs = (x0, z0, x1, z1, y, h, w = .06) => { for (const [a, b] of [[x0, z0], [x1 - w, z0], [x0, z1 - w], [x1 - w, z1 - w]]) D(dark, a, y, b, a + w, y + h, b + w); };
@@ -570,14 +573,14 @@ function buildCastle(K, { blk }, stone, C, m) {
   const hearth = (wx, dir, z, y, top, w = 1.4) => {
     const x1 = wx + dir * .8, [a, b] = [wx, x1].sort((p, q) => p - q);
     B(FS, a, y, z - w, b, top, z - w + .5); B(FS, a, y, z + w - .5, b, top, z + w);
-    B(FS, a, y + 1.6, z - w + .5, b, top, z + w - .5); D(FS, a - .1, y + 1.6, z - w - .1, b + .1, y + 1.72, z + w + .1);
+    B(FS, a, y + 1.6, z - w + .5, b, top, z + w - .5); D(FS, a - .1, y + 1.58, z - w - .1, b + .1, y + 1.72, z + w + .1);
     const [h0, h1] = [x1, x1 + dir * .6].sort((p, q) => p - q); D(FS, h0, y, z - w, h1, y + .06, z + w);
     fire(wx + dir * .4, y, z);
   };
 
   // The entrance hall: a runner from the doors, banners either side of the guardroom's doorway
   rug(-1, -3.9, 1, 2.9, 0);
-  for (const s of [-1, 1]) { D(red, s * 1.6, 1.2, -4.03, s * 2.6, 4, -4); D(gold, s * 1.6, 1.2, -4.06, s * 2.6, 1.4, -4.03); }
+  for (const s of [-1, 1]) { D(red, s * 1.6, 1.2, -3.98, s * 2.6, 4, -3.94); D(gold, s * 1.6, 1.2, -3.94, s * 2.6, 1.4, -3.91); }
   // The great hall: the dais and throne at the west end, the high table, two long tables with benches, two
   // hearths, iron candle-rings hanging from the roof, banners and a tapestry behind the throne
   B(FS, -16.5, 0, -19, -9.5, .5, -15.8); B(FS, -16.5, 0, -15.8, -9.5, .25, -15.3);
@@ -593,8 +596,8 @@ function buildCastle(K, { blk }, stone, C, m) {
   for (const z of [-10, -3]) { D(iron, -13.03, 7, z - .03, -12.97, 9.7, z + .03);
     for (const [a, b, c, d] of [[-13.8, z - .8, -12.2, z - .74], [-13.8, z + .74, -12.2, z + .8], [-13.8, z - .8, -13.74, z + .8], [-12.26, z - .8, -12.2, z + .8]]) D(iron, a, 6.95, b, c, 7.05, d);
     for (const [a, b] of [[-13.77, z], [-12.23, z], [-13, z - .77], [-13, z + .77]]) D('#e8e0c0', a - .04, 7.05, b - .04, a + .04, 7.3, b + .04); }
-  for (const x of [-15.5, -10.5]) { D(red, x - .55, 2.5, -19, x + .55, 7.8, -18.95); D(gold, x - .55, 2.5, -18.95, x + .55, 2.7, -18.92); }
-  D('#5a4a2a', -14.3, 3.4, -19, -11.7, 6.4, -18.97); D('#3a5a3a', -13.9, 3.8, -18.97, -12.1, 6, -18.95);
+  for (const x of [-15.5, -10.5]) { D(red, x - .55, 2.5, -18.95, x + .55, 7.8, -18.91); D(gold, x - .55, 2.5, -18.91, x + .55, 2.7, -18.88); }
+  D('#5a4a2a', -14.3, 3.4, -18.95, -11.7, 6.4, -18.92); D('#3a5a3a', -13.9, 3.8, -18.92, -12.1, 6, -18.89);
   // The guardroom over the cells: a table with stools, a weapon rack
   table(-2.6, -10.6, -1, -9.4, 0); stool(-3.05, -10, 0); stool(-.55, -10, 0); stool(-1.8, -11.05, 0);
   const rack = (x0, z0, x1, z1, y) => {                              // a weapon rack against a wall along z: spears and swords
@@ -646,7 +649,7 @@ function buildCastle(K, { blk }, stone, C, m) {
   { const [x0, z0, x1, z1] = [-1.3, -19, 1.3, -16.3];
     bed(x0, z0, x1, z1, 5, 'z0', red);
     for (const [a, b] of [[x0, z0], [x1 - .12, z0], [x0, z1 - .12], [x1 - .12, z1 - .12]]) B(dark, a, 5, b, a + .12, 7.6, b + .12);
-    D(red, x0, 7.5, z0, x1, 7.7, z1); D(gold, x0 - .02, 7.5, z1 - .02, x1 + .02, 7.6, z1);
+    D(red, x0, 7.5, z0, x1, 7.7, z1); D(gold, x0 - .02, 7.48, z1 - .02, x1 + .02, 7.6, z1 + .02);
     chest(-.8, -16.15, .8, -15.55, 5); }
   B(dark, 4.8, 5, -18.6, 6, 7.4, -16.6); D(wood, 4.78, 5.3, -18.4, 4.8, 7.1, -16.8);
   table(-5.7, -14.2, -4.9, -13.4, 5, .82); D('#c8c8c0', -5.5, 5.82, -14, -5.1, 5.92, -13.6);
@@ -666,12 +669,12 @@ function buildCastle(K, { blk }, stone, C, m) {
   // servants' hall by a passage through both walls: a lobby with the pages' bench, the schoolroom to the west with a
   // blackboard, the teacher's desk and twelve desks with stools, and the nursery to the east with a rug, toys, two
   // cradles, a low table and stools and a chair for the servant minding them. One storey, battlements on top.
-  outer(30, -16, 31, 0, 0, 4.5, [win(-13.2, 1.2, 3.2), win(-10.6, 1.2, 3.2), win(-7.6, 1.2, 3.2), win(-3.6, 1.2, 3.2)], 'x0');
+  outer(30, -16, 31, 0, 0, 4.5, [win(-13.2, 1.2, 3.2), win(-10.6, 1.2, 3.2), win(-7.6, 1.2, 3.2), win(-3.6, 1.2, 3.2)], 'x0', [-15, -1]);
   outer(24, -16, 30, -15, 0, 4.5, [], 'z1'); outer(24, -1, 30, 0, 0, 4.5, [[26.4, 27.6, 1.2, 3.2]], 'z0');
   D(IN, 24, 0, -15, 24.03, 4.2, -1);
   D(FS, 24, 0, -15, 30, .04, -1); D(FS, 19, 0, -8.4, 24, .04, -7.2);
-  B(FL, 24, 4.2, -15, 30, 4.35, -1); B(stone, 24, 4.35, -16, 31, 4.5, 0);
-  merl(30.5, -16, 31, 0, 4.5); merl(24, -16, 31, -15.5, 4.5); merl(24, -.5, 31, 0, 4.5);
+  B(FL, 24, 4.2, -15, 30, 4.35, -1); B(stone, 24, 4.35, -15, 30, 4.5, -1);
+  merl(30.5, -15.5, 31, -.5, 4.5); merl(24, -16, 31, -15.5, 4.5); merl(24, -.5, 31, 0, 4.5);
   D(stone, 31, 0, -16.2, 31.25, .5, .2);
   wall(IN, 24, -8.9, 30, -8.6, 0, 4.2, [[26.4, 27.6, 0, 2.3]]); wall(IN, 24, -6.6, 30, -6.3, 0, 4.2, [[26.4, 27.6, 0, 2.3]]);
   bench(29.4, -8.45, 29.85, -6.75, 0); for (const z of [-8.2, -7.6, -7]) { D(dark, 29.95, 1.6, z - .03, 30, 1.66, z + .03); D(['#5a3a2a', '#3a4a6a', '#6a5a2a'][Math.round(z * 3) & 1 ? 1 : 0], 29.86, .9, z - .18, 29.95, 1.6, z + .18); }
@@ -700,7 +703,7 @@ function buildDungeon(K, { blk }, stone, C) {
   blk('floor:in', X0, -.3, Z0, SX, 0, Z1);
   blk('floor:in', SX, -.3, Z0, X1, 0, Z0 + 1);
   blk('floor:in', SX, -.3, Z1 - 1.6, X1, 0, Z1);
-  blk(stone, ox - 1, -.3, Z1, ox + 1, 0, Z1 + 1.1);                                  // the doorway's threshold, over the sunk ground's edge
+  blk(stone, ox - 1, -.3, Z1, ox + 1, 0, Z1 + 1.1); blk(stone, ox - 1, 0, Z1, ox + 1, .03, Z1 + 1.1, false);                                  // the doorway's threshold, over the sunk ground's edge
   blk(iron, SX - .12, 0, Z0 + 1, SX, 1.15, Z1 - 1.6);                                   // (too high to step up onto)
   // The stair, eight half steps down northwards to the corridor
   const run = (Z1 - 1.6 - (Z0 + 1)) / 8;
@@ -797,8 +800,13 @@ makeFort({ ...plan.models[0], pos: [0, 0, 0], angle: 0 });
   K.solid(cx - w / 2, -D, z - .1, cx + w / 2, -.3, z + .1);
   placeModel(K, { pos: [0, 0, 0], angle: 0 });
 }
-// Seen from any side and sliced open, walls should look solid
-scene.traverse(o => { if (o.material) o.material.side = THREE.DoubleSide; });
+// Sliced open by the cutaway, walls should look solid: each mesh's inside faces are drawn again in a flat dark
+// colour (a cap), pushed a little back in depth so a real surface in the same plane always wins over a cap
+{
+  const cap = new THREE.MeshBasicMaterial({ color: 0x2a2622, side: THREE.BackSide, polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 4 });
+  const meshes = []; scene.traverse(o => { if (o.isMesh) meshes.push(o); });
+  for (const o of meshes) { const c = new THREE.Mesh(o.geometry, cap); o.add(c); }
+}
 
 // ---- The ground: grass outside the walls, beaten earth inside, sunk under the guardroom for the cells ----
 const SUNK = [[-5, -13, 5, -5], [-4.3, -17.3, .3, -13]];                  // [x0, z0, x1, z1]

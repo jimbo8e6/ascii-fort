@@ -15,6 +15,8 @@ seen from above at an angle, with a person to walk about it. The game itself is 
 - **The cutaway:** indoors (anywhere with a floor or roof overhead), everything above head height is sliced away, so
   you see into the room you're in and the walls stand cut at about chest height. Outside you see the whole castle,
   spires and all. C turns the cutaway off.
+  Cut walls show solid dark tops: each mesh's inside faces are drawn again in a flat colour, set a little back in depth
+  so they never fight with a real surface.
 - **Doors:** E opens or closes the nearest door, as in the game.
 - **Light:** daylight, and the castle's torches; the eight nearest cast light.
 - **Where you are:** the panel at the top shows your square on the castle plans' grid (columns A–N west to east,

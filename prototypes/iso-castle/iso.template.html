@@ -54,8 +54,13 @@ makeFort({ ...plan.models[0], pos: [0, 0, 0], angle: 0 });
   K.solid(cx - w / 2, -D, z - .1, cx + w / 2, -.3, z + .1);
   placeModel(K, { pos: [0, 0, 0], angle: 0 });
 }
-// Seen from any side and sliced open, walls should look solid
-scene.traverse(o => { if (o.material) o.material.side = THREE.DoubleSide; });
+// Sliced open by the cutaway, walls should look solid: each mesh's inside faces are drawn again in a flat dark
+// colour (a cap), pushed a little back in depth so a real surface in the same plane always wins over a cap
+{
+  const cap = new THREE.MeshBasicMaterial({ color: 0x2a2622, side: THREE.BackSide, polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 4 });
+  const meshes = []; scene.traverse(o => { if (o.isMesh) meshes.push(o); });
+  for (const o of meshes) { const c = new THREE.Mesh(o.geometry, cap); o.add(c); }
+}
 
 // ---- The ground: grass outside the walls, beaten earth inside, sunk under the guardroom for the cells ----
 const SUNK = [[-5, -13, 5, -5], [-4.3, -17.3, .3, -13]];                  // [x0, z0, x1, z1]
