@@ -164,7 +164,7 @@ renderer.setPixelRatio(Math.min(2, devicePixelRatio)); renderer.setSize(innerWid
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.body.appendChild(renderer.domElement);
 const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, .1, 600);
-const view = { yaw: 0, turnTo: 0, pitch: .9, zoom: 30, cut: true, focus: new THREE.Vector3(P.x, P.y, P.z) };
+const view = { yaw: 0, turnTo: 0, pitch: 1.02, zoom: 30, cut: true, focus: new THREE.Vector3(P.x, P.y, P.z) };
 function fitCamera() {
   const a = innerWidth / innerHeight;
   cam.left = -view.zoom * a / 2; cam.right = view.zoom * a / 2; cam.top = view.zoom / 2; cam.bottom = -view.zoom / 2; cam.updateProjectionMatrix();
@@ -175,28 +175,68 @@ renderer.clippingPlanes = clip;
 const clipBox = b => { if (!b) { for (const c of clip) c.constant = 1e6; return; } const [x0, y0, z0, x1, y1, z1] = b; [-x0, x1, -y0, y1, -z0, z1].forEach((v, i) => { clip[i].constant = v; }); };
 const roofed = (x, y, z) => { for (const k of colliders) if (k.y0 >= y + HT - .2 && k.y0 < y + 16 && over(k, x, z, 0)) return true; return false; };
 
-// ---- Areas, one screen each (as in a console role-playing game): the courtyard outside, and inside the castle a
-// screen for each floor and one for the cells. Walking through a door or up or down a stair takes you to the next.
-// Each: what's shown (box [x0, y0, z0, x1, y1, z1], walls cut at chest height), the stretch the camera frames, and
-// its ways out: where you step ([x0, z0, x1, z1] and a height range), where you arrive and which way you face.
-const WEST = Math.PI, EAST = 0;                                      // (facings: the player model looks along +z)
-const AREAS = {
-  courtyard: { name: 'The courtyard', follow: true, zoom: 30, keep: [-26, -26, 26, 31], exits: [
-    { at: [-1.5, 3.1, 1.5, 4.4], y: [-1, 2], to: 'ground', spawn: [0, 0, 1.6], face: WEST },
-    { at: [12, 3.1, 13.2, 4.6], y: [-1, 2], to: 'ground', spawn: [12.6, 0, 1.2], face: WEST } ] },
-  ground: { name: 'Ground floor', box: [-21.5, -.1, -21.5, 31.5, 2.8, 4.25], frame: [-21, -21, 31, 4], exits: [
-    { at: [-1.5, 3.3, 1.5, 4.6], y: [-1, 2], to: 'courtyard', spawn: [0, 0, 5.8], face: EAST },
-    { at: [12, 2.3, 13.2, 4.6], y: [-1, 2], to: 'courtyard', spawn: [12.6, 0, 5.8], face: EAST },
-    { at: [4.5, -3, 6, -1.2], y: [3.4, 6], to: 'first', spawn: [5.25, 5, -3.6], face: WEST },
-    { at: [3.4, -12.2, 5, -7], y: [-5, -2.4], to: 'cells', spawn: [4.2, -4, -12.3], face: WEST } ] },
-  first: { name: 'First floor', box: [-21.5, 4.9, -21.5, 21.5, 7.8, 4.25], frame: [-21, -21, 21, 4], exits: [
-    { at: [4.5, -2.4, 6, 3], y: [0, 4.4], to: 'ground', spawn: [5.25, 0, 2.6], face: EAST },
-    { at: [-6, -1, -4.5, 2], y: [8.6, 11], to: 'second', spawn: [-5.25, 10, 2.5], face: EAST } ] },
-  second: { name: 'Second floor', box: [-7.5, 9.9, -21.5, 7.5, 12.8, 4.25], frame: [-7, -21, 7, 4], exits: [
-    { at: [-6, -3, -4.5, 1.5], y: [5, 9.4], to: 'first', spawn: [-5.25, 5, -3.7], face: WEST } ] },
-  cells: { name: 'The cells', box: [-6, -4.1, -18, 6, -1.4, -4], frame: [-6, -18, 6, -4], exits: [
-    { at: [3.4, -12, 5, -6.6], y: [-1.5, 1], to: 'ground', spawn: [4.2, 0, -5.8], face: EAST } ] },
-};
+// ---- Rooms, one screen each (as in a console role-playing game): the courtyard outside, and every room of the
+// castle its own screen. Walking into a doorway (or a door: no need to open it) or up or down a stair takes you to
+// the next room. Each room shows only itself, its walls cut at chest height; the camera frames it.
+const WEST = Math.PI, EAST = 0, NORTH = Math.PI / 2, SOUTH = -Math.PI / 2;   // (facings: the player model looks along +z)
+const AREAS = { courtyard: { name: 'The courtyard', follow: true, zoom: 30, keep: [-26, -26, 26, 31], exits: [] } };
+// A room: its floor's extent [x0, z0, x1, z1] and height
+function room(id, name, [x0, z0, x1, z1], y) {
+  AREAS[id] = { name, frame: [x0, z0, x1, z1], box: [x0 - .45, y - .1, z0 - .45, x1 + .45, y + 2.3, z1 + .45], exits: [] };
+}
+room('entrance', 'The entrance hall', [-6, -4, 6, 3], 0);
+room('hall', 'The great hall', [-19, -19, -7, 3], 0);
+room('guardroom', 'The guardroom', [-5, -13, 5, -5], 0);
+room('barracks', 'The barracks', [-6, -19, 6, -14], 0);
+room('kitchen', 'The kitchen', [7, -6, 19, 3], 0);
+room('servants', "The servants' hall", [7, -12, 19, -6.5], 0);
+room('dorm', "The servants' dormitory", [7, -19, 19, -12.5], 0);
+room('lobby', "The children's house", [24, -8.6, 30, -6.6], 0);
+room('school', 'The schoolroom', [24, -15, 30, -8.9], 0);
+room('nursery', 'The nursery', [24, -6.3, 30, -1], 0);
+room('landing', 'The landing', [-6, -4, 6, 3], 5);
+room('solar', "The lord's solar", [-6, -11.6, 6, -5], 5);
+room('bedchamber', "The lord's bedchamber", [-6, -19, 6, -12], 5);
+room('corridor', 'The north corridor', [7, -19, 9, 3], 5);
+CASTLE_ROOMS.forEach(([a, b], i) => room('bedroom' + i, `Bedroom ${i + 1}`, [9.3, a, 19, b], 5));
+room('upper', 'The upper landing', [-6, -4, 6, 3], 10);
+room('roomA', 'The south room', [-6, -19, -.15, -5], 10);
+room('roomB', 'The north room', [.15, -19, 6, -5], 10);
+room('cells', 'The cells', [-5, -13, 5, -5], -4);
+room('jailer', "The jailer's room", [-4.3, -17.3, .3, -13], -4);
+// A doorway between two rooms, both ways: through a wall across `axis` ('x' or 'z') from c0 to c1, a0..a1 wide,
+// at floor height y; room A on the low side, B on the high. Step into it from either side and you're through.
+function link(A, B, axis, c0, c1, a0, a1, y) {
+  const mid = (a0 + a1) / 2, zone = (lo, hi) => axis === 'x' ? [lo, a0 + .1, hi, a1 - .1] : [a0 + .1, lo, a1 - .1, hi];
+  const at = c => axis === 'x' ? [c, y, mid] : [mid, y, c], face = up => axis === 'x' ? (up ? NORTH : SOUTH) : (up ? EAST : WEST);
+  AREAS[A].exits.push({ at: zone(c0 - .7, c1), y: [y - 1, y + 2], to: B, spawn: at(c1 + 1.1), face: face(true) });
+  AREAS[B].exits.push({ at: zone(c0, c1 + .7), y: [y - 1, y + 2], to: A, spawn: at(c0 - 1.1), face: face(false) });
+}
+link('entrance', 'courtyard', 'z', 3, 4, -1.5, 1.5, 0);              // the great doors
+link('kitchen', 'courtyard', 'z', 3, 4, 12, 13.2, 0);                // the kitchen door
+link('hall', 'entrance', 'x', -7, -6, -1.2, 1.2, 0);
+link('guardroom', 'entrance', 'z', -5, -4, -1, 1, 0);
+link('barracks', 'guardroom', 'z', -14, -13, -3.2, -2, 0);
+link('servants', 'kitchen', 'z', -6.5, -6, 8, 9.2, 0);
+link('dorm', 'servants', 'z', -12.5, -12, 8, 9.2, 0);
+link('servants', 'lobby', 'x', 19, 24, -8.4, -7.2, 0);              // the passage out through the walls
+link('school', 'lobby', 'z', -8.9, -8.6, 26.4, 27.6, 0);
+link('lobby', 'nursery', 'z', -6.6, -6.3, 26.4, 27.6, 0);
+link('landing', 'corridor', 'x', 6, 7, -3.8, -2.6, 5);
+link('solar', 'landing', 'z', -5, -4, -.6, .6, 5);
+link('bedchamber', 'solar', 'z', -12, -11.6, 2, 3.2, 5);
+CASTLE_ROOMS.forEach(([a], i) => link('corridor', 'bedroom' + i, 'x', 9, 9.3, a + .5, a + 1.7, 5));
+link('roomA', 'upper', 'z', -5, -4, -3, -1.8, 10);
+link('roomB', 'upper', 'z', -5, -4, 1.8, 3, 10);
+link('jailer', 'cells', 'z', -13, -12.7, -2.2, -1, -4);
+// Stairs: step on and climb (or go down) a little way, and you're at the other end
+const stair = (from, at, y, to, spawn, face) => AREAS[from].exits.push({ at, y, to, spawn, face });
+stair('entrance', [4.5, -3, 6, 1.8], [1, 6], 'landing', [5.25, 5, -3.6], WEST);
+stair('landing', [4.5, -2.4, 6, 2.95], [-1, 4.6], 'entrance', [5.25, 0, 2.6], EAST);
+stair('landing', [-6, -3, -4.5, 2], [6, 11], 'upper', [-5.25, 10, 2.5], EAST);
+stair('upper', [-6, -3, -4.5, 1.5], [4, 9.5], 'landing', [-5.25, 5, -3.55], WEST);
+stair('guardroom', [3.4, -12.2, 5, -7], [-5, -1.5], 'cells', [4.2, -4, -12.3], WEST);
+stair('cells', [3.4, -12, 5, -6.6], [-2.5, 1], 'guardroom', [4.2, 0, -5.8], EAST);
 const state = { mode: 'rooms', area: 'courtyard', fading: false };
 const fadeEl = document.getElementById('fade');
 function frameArea() {
@@ -206,7 +246,7 @@ function frameArea() {
   if (A.follow) { view.zoom = A.zoom; return; }
   // Fit the area's stretch: across the screen its x (north to the right), up the screen its z, foreshortened
   const [x0, z0, x1, z1] = A.frame, a = innerWidth / innerHeight, s = Math.sin(view.pitch);
-  view.zoom = Math.max((z1 - z0) * s + 4, (x1 - x0 + 3) / a);
+  view.zoom = Math.max(9, (z1 - z0) * s + 4, (x1 - x0 + 3) / a);
   const floor = A.box[1] + .1;
   view.focus.set((x0 + x1) / 2, floor, (z0 + z1) / 2);
 }
@@ -225,7 +265,12 @@ const keys = new Set();
 addEventListener('keydown', e => {
   const k = e.key.toLowerCase(); keys.add(k);
   if (k === 'e') { const d = nearestDoor(); if (d) d.manual = !(d.manual === true || d.angle > Math.PI / 2); }
-  if (k === 'm') { state.mode = state.mode === 'rooms' ? 'free' : 'rooms'; if (state.mode === 'free') view.zoom = 26; view.turnTo = view.yaw = 0; frameArea(); fitCamera(); showKeys(); }
+  if (k === 'm') {
+    state.mode = state.mode === 'rooms' ? 'free' : 'rooms'; view.turnTo = view.yaw = 0;
+    if (state.mode === 'free') view.zoom = 26;
+    else state.area = Object.keys(AREAS).find(id => { const b = AREAS[id].box; return b && P.x >= b[0] && P.x <= b[3] && P.z >= b[2] && P.z <= b[5] && P.y >= b[1] - .5 && P.y <= b[1] + 3; }) || 'courtyard';   // (whichever room you're in)
+    frameArea(); fitCamera(); showKeys();
+  }
   if (state.mode === 'free') {                                          // (free roaming: turn, zoom and cut away by hand)
     if (k === 'q') view.turnTo -= Math.PI / 2;
     if (k === 'r') view.turnTo += Math.PI / 2;
@@ -240,7 +285,7 @@ addEventListener('blur', () => keys.clear());
 addEventListener('wheel', e => { if (state.mode !== 'free' && !AREAS[state.area].follow) return; view.zoom = Math.min(90, Math.max(10, view.zoom * (e.deltaY > 0 ? 1.12 : 1 / 1.12))); fitCamera(); }, { passive: true });
 const keysEl = document.getElementById('keys');
 function showKeys() {
-  keysEl.textContent = state.mode === 'rooms' ? 'WASD / arrows walk · E open/close a door · walk through a doorway or up a stair to go on · M free roaming'
+  keysEl.textContent = state.mode === 'rooms' ? 'WASD / arrows walk · walk into a door or up a stair to go through · M free roaming'
     : 'WASD / arrows walk · E door · Q / R turn the view · wheel or +/− zoom · C cutaway on/off · M back to rooms';
 }
 showKeys();
@@ -311,12 +356,12 @@ function frame() {
   }
   // What you can do here
   const d = nearestDoor();
-  hintEl.hidden = !d; if (d) hintEl.textContent = `E · ${d.manual === true || d.angle > Math.PI / 2 ? 'close' : 'open'} the door`;
+  hintEl.hidden = !d || rooms; if (d) hintEl.textContent = `E · ${d.manual === true || d.angle > Math.PI / 2 ? 'close' : 'open'} the door`;
   whereEl.innerHTML = whereText();
   renderer.render(scene, cam);
   requestAnimationFrame(frame);
 }
-window.__iso = { P, view, doors, colliders, keys, state, AREAS, goTo };          // (for tests)
+window.__iso = { P, view, doors, colliders, keys, state, AREAS, goTo, hit, support };          // (for tests)
 requestAnimationFrame(frame);
 </script>
 </body>

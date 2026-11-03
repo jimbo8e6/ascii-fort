@@ -8,12 +8,12 @@ seen from above at an angle, with a person to walk about it. The game itself is 
   (textures, `Kit`, `makeFort`, `buildCastle`, the cells and their furniture, `hangDoor`...) into `iso.html`, between
   the `// <castle-code>` markers. After changing the castle in the game, run `node prototypes/iso-castle/build.mjs`.
   Edit the page itself in `iso.template.html`.
-- **Rooms (the default):** it plays like a console role-playing game, one screen at a time. The courtyard is the
-  first (the camera follows you there, and you can climb to the wall walks). Walking in at the great doors or the
-  kitchen door fades to the ground floor, framed whole on one screen, children's house and all; the great stair
-  leads to the first floor, the stair on its landing to the second, and the stair in the guardroom down to the cells.
-  Walk back out or down to return. Each screen shows only its own floor, its walls cut at chest height (`AREAS` in
-  the template: what each shows, what the camera frames, and its ways out). Up the screen is west, north is to the right.
+- **Rooms (the default):** it plays like a console role-playing game, one screen at a time: the courtyard (the
+  camera follows you there, and you can climb to the wall walks) and every room of the castle its own screen, 24 in
+  all. Walk into a doorway, or a door (no need to open it), and you're through into the next room; step onto a stair
+  and you're at the other end. Each room shows only itself, walls cut at chest height, framed to fill the screen.
+  `room(...)` lists the rooms, `link(...)` the doorways between them (both ways), `stair(...)` the stairs. Up the
+  screen is west, north is to the right.
 - **Free roaming (M):** the whole castle at once, the camera following you. Q and R turn it a quarter at a time,
   the mouse wheel or + and − zoom, and indoors everything above head height is cut away (C turns that off).
 - **Walking:** WASD or the arrow keys, relative to the screen. Walls, furniture and shut doors are solid (the game's own
